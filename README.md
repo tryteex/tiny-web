@@ -16,7 +16,11 @@ tiny-web = "0.4.0"
 Just enter the following code to start the server
 
 ```rust
-tiny_web::run();
+tiny_web::run(
+    env!("CARGO_PKG_NAME"),
+    env!("CARGO_PKG_VERSION"),
+    env!("CARGO_PKG_DESCRIPTION"),
+);
 ```
 
 ## Web site

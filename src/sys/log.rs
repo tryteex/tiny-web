@@ -139,7 +139,7 @@ impl Log {
 
         let str = match log.text {
             Some(s) => format!(
-                "ID:{} Time: {} Type: {:?} Number:{} Text:{} -> {}\n",
+                "ID: {} Time: {} Type: {:?} Number: {} Text: {} -> {}\n",
                 process::id(),
                 time,
                 log.view,
@@ -148,7 +148,7 @@ impl Log {
                 s
             ),
             None => format!(
-                "ID:{} Time: {} Type: {:?} Number:{} Text:{}\n",
+                "ID: {} Time: {} Type: {:?} Number: {} Text: {}\n",
                 process::id(),
                 time,
                 log.view,
@@ -178,7 +178,7 @@ impl Log {
     fn panic(text: &str) -> ! {
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string();
         let str = format!(
-            "ID:{} Time:{} Type: {:?} Number: Text: Panic error -> {}\n",
+            "ID: {} Time: {} Type: {:?} Number: Text: Panic error -> {}\n",
             process::id(),
             time,
             LogView::Critical,
@@ -200,7 +200,7 @@ impl Log {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
                     let str = format!(
-                        "ID:{} Time:{} Type: {:?} Number: Text: Can't write log file \"{}\" - {}\n",
+                        "ID: {} Time: {} Type: {:?} Number: Text: Can't write log file \"{}\" - {}\n",
                         process::id(),
                         time,
                         LogView::Critical,
@@ -212,7 +212,7 @@ impl Log {
             }
             Err(e) => {
                 let str = format!(
-                    "ID:{} Time:{} Type: {:?} Number: Text: Can't open log file \"{}\" - {}\n",
+                    "ID: {} Time: {} Type: {:?} Number: Text: Can't open log file \"{}\" - {}\n",
                     process::id(),
                     time,
                     LogView::Critical,

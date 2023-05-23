@@ -6,8 +6,8 @@ pub mod sys;
 use sys::{app::App, log::Log};
 
 /// Entry point
-pub fn run() {
-    let app = match App::new() {
+pub fn run(name: &str, version: &str, desc: &str) {
+    let app = match App::new(name, version, desc) {
         Some(a) => a,
         None => return,
     };

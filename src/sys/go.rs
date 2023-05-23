@@ -111,6 +111,7 @@ impl Go {
             let html = Arc::new(Html::new(&root_path).await);
             let cache = Cache::new().await;
             let engine = Arc::new(Go::get_engine().await);
+
             let db = Arc::new(db);
             let salt = Arc::clone(&salt);
 

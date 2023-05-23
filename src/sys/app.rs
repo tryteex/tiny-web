@@ -25,8 +25,8 @@ pub struct App {
 
 impl App {
     /// Initializes application
-    pub fn new() -> Option<App> {
-        let init = Init::new()?;
+    pub fn new(name: &str, version: &str, desc: &str) -> Option<App> {
+        let init = Init::new(name, version, desc)?;
         Some(App { init })
     }
 
@@ -36,7 +36,11 @@ impl App {
         match self.init.mode {
             Mode::Start => self.start(),
             Mode::Stop => self.stop(),
-            Mode::Help => Help::show(&self.init.conf.version),
+            Mode::Help => Help::show(
+                &self.init.conf.name,
+                &self.init.conf.version,
+                &self.init.conf.desc,
+            ),
             Mode::Go => Go::run(&self.init),
             Mode::Status => todo!(),
         };

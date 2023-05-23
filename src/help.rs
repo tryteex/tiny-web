@@ -6,10 +6,12 @@ impl Help {
     ///
     /// # Parameters
     ///
+    /// * `name: &str` - Name of app.
     /// * `version: &str` - Version of app.
-    pub fn show(version: &str) {
-        let desc = "Tiny is a high-speed FastCGI server for WEB applications.";
-        let ver = format!("tiny version: {}", version);
+    /// * `desc: &str` - Desciption of app.
+    pub fn show(name: &str, version: &str, desc: &str) {
+        let desc = format!("{}", desc);
+        let ver = format!("{} version: {}", name, version);
         let help = format!(
             "
     Usage: {} [start|stop|status|help] [-r <path to root folder>]
@@ -21,7 +23,7 @@ impl Help {
         help          : show this help
         
     ",
-            env!("CARGO_PKG_NAME")
+            name
         );
         println!("\n{}\n{}\n{}\n", desc, ver, help);
     }

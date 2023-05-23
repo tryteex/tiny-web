@@ -79,7 +79,7 @@ pub struct DBConfig {
 ///
 /// # Values
 ///
-/// * `version: String` - Server version from env!("CARGO_PKG_VERSION");
+/// * `version: String` - Server version from env!("CARGO_PKG_VERSION") primary project;
 /// * `lang: String` - Default language;
 /// * `log: String` - Path to log file;
 /// * `max: SysCount` - Number of work processes in async operations;
@@ -92,7 +92,11 @@ pub struct DBConfig {
 /// * `stop: u64` - Stop signal.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Server version from env!("CARGO_PKG_VERSION").
+    /// Name server from env!("CARGO_PKG_NAME") primary project.
+    pub name: String,
+    /// Description server from env!("CARGO_PKG_DESCRIPTION") primary project.
+    pub desc: String,
+    /// Server version from env!("CARGO_PKG_VERSION") primary project.
     pub version: String,
     /// Default language.
     pub lang: String,
@@ -167,7 +171,7 @@ pub struct Init {
 
 impl Init {
     /// Initializes the server configuration
-    pub fn new() -> Option<Init> {
+    pub fn new(name: &str, version: &str, desc: &str) -> Option<Init> {
         let exe_file = match env::current_exe() {
             Ok(e) => match e.to_str() {
                 Some(e) => {
@@ -278,7 +282,7 @@ impl Init {
             }
         };
 
-        let conf = Init::load_conf(conf, mode != Mode::Help)?;
+        let conf = Init::load_conf(conf, mode != Mode::Help, name, version, desc)?;
 
         Some(Init {
             mode,
@@ -366,17 +370,28 @@ impl Init {
     ///
     /// * `text: String` - Configuration string;
     /// * `check_salt: bool` - Check salt for empty.
+    /// * `name: &str` - Name of app.
+    /// * `version: &str` - Version of app.
+    /// * `desc: &str` - Description of app.
     ///
     /// # Return
     ///
     /// `Option<Config>` - Option of parsed configuration:
     ///   * `None` - Configuration contains errors;
     ///   * `Some(Config)` - is ok.
-    fn load_conf(text: String, check_salt: bool) -> Option<Config> {
+    fn load_conf(
+        text: String,
+        check_salt: bool,
+        name: &str,
+        version: &str,
+        desc: &str,
+    ) -> Option<Config> {
         let num_cpus = num_cpus::get();
         let mut num_connections = num_cpus * 3;
         let mut conf = Config {
-            version: env!("CARGO_PKG_VERSION").to_owned(),
+            name: name.to_owned(),
+            desc: desc.to_owned(),
+            version: version.to_owned(),
             lang: "ua".to_owned(),
             log: "tiny.log".to_owned(),
             max: num_cpus,
