@@ -10,7 +10,7 @@ impl Help {
     /// * `version: &str` - Version of app.
     /// * `desc: &str` - Desciption of app.
     pub fn show(name: &str, version: &str, desc: &str) {
-        let desc = format!("{}", desc);
+        let desc = desc.to_owned();
         let ver = format!("{} version: {}", name, version);
         let help = format!(
             "

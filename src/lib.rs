@@ -3,16 +3,16 @@ pub mod help;
 /// Web server
 pub mod sys;
 
-use sys::{app::App, log::Log};
+use sys::{action::ActMap, app::App, log::Log};
 
 /// Entry point
-pub fn run(name: &str, version: &str, desc: &str) {
+pub fn run(name: &str, version: &str, desc: &str, func: impl Fn() -> ActMap) {
     let app = match App::new(name, version, desc) {
         Some(a) => a,
         None => return,
     };
     Log::info(200, None);
-    app.run();
+    app.run(func);
     Log::info(201, None);
 }
 

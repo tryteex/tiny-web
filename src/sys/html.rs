@@ -148,7 +148,10 @@ impl Html {
         let read_path = match read_dir(&path) {
             Ok(r) => r,
             Err(e) => {
-                Log::warning(1100, Some(e.to_string()));
+                Log::warning(
+                    1100,
+                    Some(format!("Path: {}. Err: {}", path, e)),
+                );
                 return Html {
                     list: BTreeMap::new(),
                 };

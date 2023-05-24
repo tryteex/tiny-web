@@ -117,7 +117,10 @@ impl Lang {
         let read_path = match read_dir(&path) {
             Ok(r) => r,
             Err(e) => {
-                Log::warning(1100, Some(e.to_string()));
+                Log::warning(
+                    1100,
+                    Some(format!("Path: {}. Err: {}", path, e)),
+                );
                 return Lang {
                     langs,
                     list: BTreeMap::new(),

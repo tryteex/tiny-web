@@ -8,6 +8,7 @@ use std::{
 use crate::{help::Help, sys::log::Log};
 
 use super::{
+    action::ActMap,
     go::Go,
     init::{Addr, Init, Mode},
 };
@@ -31,7 +32,7 @@ impl App {
     }
 
     /// Run application
-    pub fn run(&self) {
+    pub fn run(&self, func: impl Fn() -> ActMap) {
         Log::info(17, Some(format!("{:?}", self.init.mode)));
         match self.init.mode {
             Mode::Start => self.start(),
@@ -41,7 +42,7 @@ impl App {
                 &self.init.conf.version,
                 &self.init.conf.desc,
             ),
-            Mode::Go => Go::run(&self.init),
+            Mode::Go => Go::run(&self.init, func),
             Mode::Status => todo!(),
         };
     }

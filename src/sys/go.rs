@@ -19,7 +19,7 @@ use tokio::{
 };
 
 use super::{
-    action::{Act, ActMap},
+    action::ActMap,
     cache::Cache,
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
@@ -33,13 +33,8 @@ use super::{
 pub struct Go;
 
 impl Go {
-    /// Creates a binary tree of controller functions
-    async fn get_engine() -> ActMap {
-        tiny_web_macro::addfn!();
-    }
-
     /// Run server in tokio runtime
-    pub fn run(init: &Init) {
+    pub fn run(init: &Init, func: impl Fn() -> ActMap) {
         let runtime = match Builder::new_multi_thread()
             .worker_threads(init.conf.max)
             .enable_all()
@@ -57,7 +52,7 @@ impl Go {
             let stop = Arc::new(AtomicBool::new(false));
 
             // Start listening to incoming clients
-            if let Some(main) = Go::listen(init, Arc::clone(&stop)).await {
+            if let Some(main) = Go::listen(init, Arc::clone(&stop), func).await {
                 if !main.is_finished() {
                     Go::listen_rpc(&init.conf, stop, main).await;
                 }
@@ -71,7 +66,11 @@ impl Go {
     ///
     /// `None` - The server cannot listen on the bind port
     /// `Some(JoinHandle)` - Handler for main tokio thread
-    async fn listen(init: &Init, stop: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
+    async fn listen(
+        init: &Init,
+        stop: Arc<AtomicBool>,
+        func: impl Fn() -> ActMap,
+    ) -> Option<JoinHandle<()>> {
         // Open bind port
         let bind = match init.conf.bind {
             Addr::SocketAddr(a) => TcpListener::bind(a),
@@ -93,6 +92,7 @@ impl Go {
         let bind_accept = Arc::new(init.conf.bind_accept.clone());
         let salt = Arc::new(init.conf.salt.clone());
         let bind_addr = init.conf.bind.clone();
+        let engine_data = func();
 
         let main = tokio::spawn(async move {
             // Create pool database connector
@@ -110,7 +110,7 @@ impl Go {
             let lang = Arc::new(Lang::new(&root_path, &lang, langs).await);
             let html = Arc::new(Html::new(&root_path).await);
             let cache = Cache::new().await;
-            let engine = Arc::new(Go::get_engine().await);
+            let engine = Arc::new(engine_data);
 
             let db = Arc::new(db);
             let salt = Arc::clone(&salt);
