@@ -630,6 +630,10 @@ impl Net {
                     return RecordType::StreamClose;
                 }
             };
+            if len == 0 {
+                // Stream was closed
+                return RecordType::StreamClose;
+            }
             *size += len;
         }
         // Something went wrong, they could not read some 8 bytes
@@ -660,6 +664,10 @@ impl Net {
                     return RecordType::StreamClose;
                 }
             };
+            if *size == 0 {
+                // Stream was closed
+                return RecordType::StreamClose;
+            }
             seek = 0;
             max_read = std::cmp::min(total - read, *size);
         }
