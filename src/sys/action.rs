@@ -392,7 +392,6 @@ impl Action {
                 &data.request.agent,
                 &data.request.host,
             )
-            .await
         };
         // Module, class and action (controller) from URL
         let route = match Action::extract_route(
@@ -898,7 +897,7 @@ impl Action {
     /// # Value
     ///
     /// * `template: &str` - Name of template
-    pub async fn render(&self, template: &str) -> Answer {
+    pub fn render(&self, template: &str) -> Answer {
         match &self.html {
             Some(h) => {
                 let key = fnv1a_64(template);
@@ -933,20 +932,20 @@ impl Action {
 
 impl Session {
     /// Create new session
-    async fn new(lang_id: i64, salt: &str, ip: &str, agent: &str, host: &str) -> Session {
+    fn new(lang_id: i64, salt: &str, ip: &str, agent: &str, host: &str) -> Session {
         Session {
             id: 0,
             lang_id,
             user_id: 0,
             role_id: 0,
-            key: Session::generate_session(salt, ip, agent, host).await,
+            key: Session::generate_session(salt, ip, agent, host),
             data: HashMap::new(),
             change: false,
         }
     }
 
     /// Create new session by cookie (session) key
-    async fn with_key(lang_id: i64, key: String) -> Session {
+    fn with_key(lang_id: i64, key: String) -> Session {
         Session {
             id: 0,
             lang_id,
@@ -962,10 +961,10 @@ impl Session {
     async fn load_session(key: String, db: Arc<DBPool>, lang_id: i64) -> Session {
         let res = match db.query_fast(0, &[&key]).await {
             Some(r) => r,
-            None => return Session::with_key(lang_id, key).await,
+            None => return Session::with_key(lang_id, key),
         };
         if res.is_empty() {
-            return Session::with_key(lang_id, key).await;
+            return Session::with_key(lang_id, key);
         }
         let row = &res[0];
         let session_id: i64 = row.get(0);
@@ -1031,7 +1030,7 @@ impl Session {
     }
 
     /// Generete new session key
-    async fn generate_session(salt: &str, ip: &str, agent: &str, host: &str) -> String {
+    fn generate_session(salt: &str, ip: &str, agent: &str, host: &str) -> String {
         // Generate a new cookie
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f %:z").to_string();
         let cook = format!("{}{}{}{}{}", salt, ip, agent, host, time);

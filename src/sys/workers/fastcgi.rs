@@ -1,7 +1,5 @@
-use std::{collections::HashMap, io::Write, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
-use chrono::{Duration, Utc};
-use tempfile::NamedTempFile;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -9,9 +7,9 @@ use tokio::{
 
 use crate::{
     sys::{
-        action::{Action, ActionData, Answer, Input, Request, WebFile},
+        action::{ActionData, Input, Request},
         log::Log,
-        worker::WorkerData,
+        worker::{Worker, WorkerData, BUFFER_SIZE},
     },
     TINY_KEY,
 };
@@ -85,145 +83,19 @@ pub const U16_BE_1: [u8; 2] = u16::to_be_bytes(1);
 /// The value of 8 in the Big Endian u16 format
 pub const U16_BE_8: [u8; 2] = u16::to_be_bytes(8);
 
-/// One year in seconds
-const ONE_YEAR: i64 = 31622400;
-
 /// FastCGI protocol
 pub struct Net;
 /// Alias for FastCGI protocol
 type FastCGI = Net;
 
 impl Net {
-    /// Run web engine
-    ///
-    /// # Return
-    ///
-    /// Vector with a binary data
-    async fn call_action(data: ActionData) -> Vec<u8> {
-        let mut action = match Action::new(data).await {
-            Ok(action) => action,
-            Err((redirect, files)) => {
-                // Write status
-                let mut answer: Vec<u8> = Vec::with_capacity(512);
-                if redirect.permanently {
-                    answer.extend_from_slice(
-                        format!(
-                            "Status: 301 {}\r\nLocation: {}\r\n\r\n",
-                            FastCGI::http_code_get(301).await,
-                            redirect.url
-                        )
-                        .as_bytes(),
-                    );
-                } else {
-                    answer.extend_from_slice(
-                        format!(
-                            "Status: 302 {}\r\nLocation: {}\r\n\r\n",
-                            FastCGI::http_code_get(302).await,
-                            redirect.url
-                        )
-                        .as_bytes(),
-                    );
-                }
-
-                // Stopping a call in a parallel thread
-                tokio::spawn(async move {
-                    let mut vec = Vec::with_capacity(32);
-                    for files in files.into_values() {
-                        for f in files {
-                            vec.push(f.tmp)
-                        }
-                    }
-                    Action::clean_file(vec).await;
-                });
-                return answer;
-            }
-        };
-
-        let result = match Action::run(&mut action).await {
-            Answer::Raw(answer) => answer,
-            Answer::String(answer) => answer.into_bytes(),
-            Answer::None => Vec::new(),
-        };
-
-        // + Status + Cookie + Keep-alive + Content-Type + Content-Length + headers
-        // max length
-        let capacity = result.len() + 4096;
-
-        // Write status
-        let mut answer: Vec<u8> = Vec::with_capacity(capacity);
-        if let Some(redirect) = action.response.redirect.as_ref() {
-            if redirect.permanently {
-                answer.extend_from_slice(
-                    format!(
-                        "Status: 301 {}\r\nLocation: {}\r\n",
-                        FastCGI::http_code_get(301).await,
-                        redirect.url
-                    )
-                    .as_bytes(),
-                );
-            } else {
-                answer.extend_from_slice(
-                    format!(
-                        "Status: 302 {}\r\nLocation: {}\r\n",
-                        FastCGI::http_code_get(302).await,
-                        redirect.url
-                    )
-                    .as_bytes(),
-                );
-            }
-        } else if let Some(code) = action.response.http_code {
-            answer.extend_from_slice(
-                format!(
-                    "Status: {} {}\r\n",
-                    code,
-                    FastCGI::http_code_get(code).await
-                )
-                .as_bytes(),
-            );
-        } else {
-            answer.extend_from_slice(
-                format!("Status: 200 {}\r\n", FastCGI::http_code_get(200).await).as_bytes(),
-            );
-        }
-
-        // Write Cookie
-        let time = Utc::now() + Duration::seconds(ONE_YEAR);
-        let date = time.format("%a, %d-%b-%Y %H:%M:%S GMT").to_string();
-        let secure = if action.request.scheme == "https" {
-            "Secure; "
-        } else {
-            ""
-        };
-        answer.extend_from_slice(
-            format!(
-                "Set-Cookie: {}={}; Expires={}; Max-Age={}; path=/; domain={}; {}SameSite=none\r\n",
-                TINY_KEY, &action.session.key, date, ONE_YEAR, action.request.host, secure
-            )
-            .as_bytes(),
-        );
-        // Write Content-Type
-        match &action.response.content_type {
-            Some(content_type) => {
-                answer.extend_from_slice(format!("Content-Type: {}\r\n", content_type).as_bytes())
-            }
-            None => answer.extend_from_slice(b"Content-Type: text/html; charset=utf-8\r\n"),
-        }
-        // Write headers
-        for head in &action.response.headers {
-            answer.extend_from_slice(format!("{}\r\n", head).as_bytes());
-        }
-        // Write Content-Length
-        answer.extend_from_slice(format!("Content-Length: {}\r\n\r\n", result.len()).as_bytes());
-        answer.extend_from_slice(&result);
-        // Stopping a call in a parallel thread
-        tokio::spawn(async move {
-            Action::stop(action).await;
-        });
-        answer
-    }
-
     /// The entry point in the FastCGI protocol
-    pub async fn run(mut tcp: TcpStream, data: WorkerData, mut buffer: [u8; 8192], len: usize) {
+    pub async fn run(
+        mut tcp: TcpStream,
+        data: WorkerData,
+        mut buffer: [u8; BUFFER_SIZE],
+        len: usize,
+    ) {
         let mut size = len;
         loop {
             // Gets one Record
@@ -280,8 +152,8 @@ impl Net {
                         break;
                     }
                 }
-                let (mut request, content_type, session) = FastCGI::read_param(params).await;
-                let (post, file) = FastCGI::read_input(stdin, content_type).await;
+                let (mut request, content_type, session) = FastCGI::read_param(params);
+                let (post, file) = Worker::read_input(stdin, content_type).await;
                 request.input.file = file;
                 request.input.post = post;
                 let data = ActionData {
@@ -296,7 +168,7 @@ impl Net {
                     request,
                     session,
                 };
-                let answer = FastCGI::call_action(data).await;
+                let answer = Worker::call_action(data).await;
                 FastCGI::write(&mut tcp, answer).await;
             } else {
                 Log::warning(2101, Some(format!("{:?}", record)));
@@ -311,7 +183,7 @@ impl Net {
     /// * `Request` - Request struct for web engine.
     /// * `Option<String>` - CONTENT_TYPE parameter for recognizing FASTCGI_STDIN.
     /// * `Option<String>` - key of session.
-    async fn read_param(mut data: Vec<u8>) -> (Request, Option<String>, Option<String>) {
+    fn read_param(mut data: Vec<u8>) -> (Request, Option<String>, Option<String>) {
         let mut params = HashMap::with_capacity(16);
         let len = data.len();
         let mut size = 0;
@@ -490,135 +362,10 @@ impl Net {
         )
     }
 
-    /// Read post and file datas from FastCGI record.
-    ///
-    /// # Params
-    ///
-    /// * `data: Vec<u8>` - Data.
-    /// * `content_type: Option<String>` - CONTENT_TYPE parameter for recognizing FASTCGI_STDIN
-    ///
-    /// # Return
-    ///
-    /// * `HashMap<String, String>` - Post data.
-    /// * `HashMap<String, Vec<WebFile>>` - File data.
-    async fn read_input(
-        data: Vec<u8>,
-        content_type: Option<String>,
-    ) -> (HashMap<String, String>, HashMap<String, Vec<WebFile>>) {
-        let mut post = HashMap::new();
-        let mut file = HashMap::new();
-
-        // Different types of CONTENT_TYPE need to be processed differently
-        if let Some(c) = content_type {
-            // Simple post
-            if c == "application/x-www-form-urlencoded" {
-                if !data.is_empty() {
-                    if let Ok(s) = std::str::from_utf8(&data) {
-                        let val: Vec<&str> = s.split('&').collect();
-                        post.reserve(val.len());
-                        for v in val {
-                            let val: Vec<&str> = v.splitn(2, '=').collect();
-                            match val.len() {
-                                1 => post.insert(v.to_owned(), String::new()),
-                                _ => post.insert(val[0].to_owned(), val[1].to_owned()),
-                            };
-                        }
-                    }
-                }
-            } else if c.len() > 30 {
-                // Multi post with files
-                if let "multipart/form-data; boundary=" = &c[..30] {
-                    let boundary = format!("--{}", &c[30..]);
-                    let stop: [u8; 4] = [13, 10, 13, 10];
-                    if !data.is_empty() {
-                        let mut seek: usize = 0;
-                        let mut start: usize;
-                        let b_len = boundary.len();
-                        let len = data.len() - 4;
-                        let mut found: Option<(usize, &str)> = None;
-                        while seek < len {
-                            // Find a boundary
-                            if boundary.as_bytes() == &data[seek..seek + b_len] {
-                                if seek + b_len == len {
-                                    if let Some((l, h)) = found {
-                                        let d = &data[l..seek - 2];
-                                        FastCGI::get_post_file(h, d, &mut post, &mut file).await;
-                                    };
-                                    break;
-                                }
-                                seek += b_len + 2;
-                                start = seek;
-                                while seek < len {
-                                    if stop == data[seek..seek + 4] {
-                                        if let Ok(s) = std::str::from_utf8(&data[start..seek]) {
-                                            if let Some((l, h)) = found {
-                                                let d = &data[l..start - b_len - 4];
-                                                FastCGI::get_post_file(h, d, &mut post, &mut file)
-                                                    .await;
-                                            };
-                                            found = Some((seek + 4, s));
-                                        }
-                                        seek += 4;
-                                        break;
-                                    } else {
-                                        seek += 1;
-                                    }
-                                }
-                            } else {
-                                seek += 1;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        (post, file)
-    }
-
-    /// Gets post and file records from multipart/form-data
-    async fn get_post_file(
-        header: &str,
-        data: &[u8],
-        post: &mut HashMap<String, String>,
-        file: &mut HashMap<String, Vec<WebFile>>,
-    ) {
-        let h: Vec<&str> = header.splitn(3, "; ").collect();
-        let len = h.len();
-
-        // Post data found
-        if len == 2 {
-            if let Ok(v) = std::str::from_utf8(data) {
-                let k = &h[1][6..h[1].len() - 1];
-                post.insert(k.to_owned(), v.to_owned());
-            }
-        } else if len == 3 {
-            // File data found
-            let k = h[1][6..h[1].len() - 1].to_owned();
-            let n: Vec<&str> = h[2].splitn(2, "\r\n").collect();
-            let n = &n[0][10..n[0].len() - 1];
-
-            if let Ok(tmp) = NamedTempFile::new() {
-                if let Ok((mut f, p)) = tmp.keep() {
-                    if f.write_all(data).is_ok() {
-                        if file.get(&k).is_none() {
-                            file.insert(k.to_owned(), Vec::with_capacity(16));
-                        } else if let Some(d) = file.get_mut(&k) {
-                            d.push(WebFile {
-                                size: data.len(),
-                                name: n.to_owned(),
-                                tmp: p,
-                            })
-                        };
-                    }
-                }
-            }
-        }
-    }
-
     /// Read one record from TcpStream
     async fn read_record_raw(
         tcp: &mut TcpStream,
-        buffer: &mut [u8; 8192],
+        buffer: &mut [u8; BUFFER_SIZE],
         size: &mut usize,
     ) -> RecordType {
         // There is not enough buffer
@@ -641,7 +388,7 @@ impl Net {
             return RecordType::Error(buffer[0..*size].to_vec());
         }
 
-        let header = FastCGI::read_header(&buffer[0..FASTCGI_HEADER_LEN]).await;
+        let header = FastCGI::read_header(&buffer[0..FASTCGI_HEADER_LEN]);
         let total = header.content_length as usize;
         let mut read = 0;
 
@@ -683,7 +430,7 @@ impl Net {
     /// # Safety
     ///
     /// You have to ensure that data length = FASTCGI_HEADER_LEN
-    async fn read_header(data: &[u8]) -> Header {
+    fn read_header(data: &[u8]) -> Header {
         unsafe {
             Header {
                 header_type: *data.get_unchecked(1),
@@ -749,75 +496,5 @@ impl Net {
         data.push(0);
 
         if tcp.write(&data).await.is_err() {}
-    }
-
-    /// Return a text description of the return code
-    pub async fn http_code_get(code: u16) -> &'static str {
-        match code {
-            100 => "Continue",
-            101 => "Switching Protocols",
-            102 => "Processing",
-            103 => "Early Hints",
-            200 => "OK",
-            201 => "Created",
-            202 => "Accepted",
-            203 => "Non-Authoritative Information",
-            204 => "No Content",
-            205 => "Reset Content",
-            206 => "Partial Content",
-            207 => "Multi-Status",
-            208 => "Already Reported",
-            226 => "IM Used",
-            300 => "Multiple Choices",
-            301 => "Moved Permanently",
-            302 => "Found",
-            303 => "See Other",
-            304 => "Not Modified",
-            305 => "Use Proxy",
-            306 => "(Unused)",
-            307 => "Temporary Redirect",
-            308 => "Permanent Redirect",
-            400 => "Bad Request",
-            401 => "Unauthorized",
-            402 => "Payment Required",
-            403 => "Forbidden",
-            404 => "Not Found",
-            405 => "Method Not Allowed",
-            406 => "Not Acceptable",
-            407 => "Proxy Authentication Required",
-            408 => "Request Timeout",
-            409 => "Conflict",
-            410 => "Gone",
-            411 => "Length Required",
-            412 => "Precondition Failed",
-            413 => "Content Too Large",
-            414 => "URI Too Long",
-            415 => "Unsupported Media Type",
-            416 => "Range Not Satisfiable",
-            417 => "Expectation Failed",
-            418 => "(Unused)",
-            421 => "Misdirected Request",
-            422 => "Unprocessable Content",
-            423 => "Locked",
-            424 => "Failed Dependency",
-            425 => "Too Early",
-            426 => "Upgrade Required",
-            428 => "Precondition Required",
-            429 => "Too Many Requests",
-            431 => "Request Header Fields Too Large",
-            451 => "Unavailable For Legal Reasons",
-            500 => "Internal Server Error",
-            501 => "Not Implemented",
-            502 => "Bad Gateway",
-            503 => "Service Unavailable",
-            504 => "Gateway Timeout",
-            505 => "HTTP Version Not Supported",
-            506 => "Variant Also Negotiates",
-            507 => "Insufficient Storage",
-            508 => "Loop Detected",
-            510 => "Not Extended (OBSOLETED)",
-            511 => "Network Authentication Required",
-            _ => "Unassigned",
-        }
     }
 }

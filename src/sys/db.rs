@@ -36,7 +36,7 @@ enum DBResult {
 /// * `sql_conn: tokio_postgres::Config` - Connection config;
 /// * `tls: Option<MakeTlsConnector>` - Use tls for connection when sslmode=require;
 /// * `zone: Option<String>` - Time zone to init database;
-/// * `prepare: Vec<(Statement, &'static str)>` - Prepare statement to database.
+/// * `prepare: Vec<DBStatement>` - Prepare statement to database.
 pub struct DB {
     /// Client for connection to database.
     client: Option<tokio_postgres::Client>,
@@ -47,7 +47,18 @@ pub struct DB {
     /// Time zone to init database.
     zone: Option<String>,
     /// Prepare statement to database.
-    prepare: Vec<Statement>,
+    prepare: Vec<DBStatement>,
+}
+
+/// Statement to database
+///
+/// # Properties
+///
+/// * `statement: Statement` - Statement to database.
+/// * `sql: &'static str` - Sql query to database.
+struct DBStatement {
+    statement: Statement,
+    sql: &'static str,
 }
 
 impl DB {
@@ -348,7 +359,9 @@ impl DB {
                 // ));
                 for (prepare, sql) in vec {
                     match prepare.await {
-                        Ok(s) => self.prepare.push(s),
+                        Ok(s) => {
+                            self.prepare.push(DBStatement { statement: s, sql });
+                        }
                         Err(e) => {
                             Log::stop(613, Some(format!("Error={}. sql={}", e, sql.to_owned())));
                             return false;
@@ -448,7 +461,7 @@ impl DB {
         params: &[&(dyn ToSql + Sync)],
     ) -> Option<Vec<Row>> {
         let statement = match self.prepare.get(index) {
-            Some(s) => s.clone(),
+            Some(s) => s.statement.clone(),
             None => return None,
         };
         match self.exec(&statement, params).await {
@@ -499,5 +512,38 @@ impl DB {
             },
             None => DBResult::NoClient,
         }
+    }
+}
+
+impl std::fmt::Debug for DB {
+    /// Formats the value using the given formatter.
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        let tls = self.tls.clone().map(|_| "TlsConnector");
+        let DB {
+            client,
+            sql_conn,
+            tls: _,
+            zone,
+            prepare,
+        } = self;
+        f.debug_struct("DB")
+            .field("client", &client)
+            .field("sql_conn", &sql_conn)
+            .field("tls", &tls)
+            .field("zone", &zone)
+            .field("prepare", &prepare)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for DBStatement {
+    /// Formats the value using the given formatter.
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        let DBStatement { statement, sql } = self;
+        f.debug_struct("DBStatement")
+            .field("sql", &sql)
+            .field("columns", &statement.columns())
+            .field("params", &statement.params())
+            .finish()
     }
 }

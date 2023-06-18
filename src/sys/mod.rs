@@ -33,3 +33,6 @@ pub mod worker;
 
 /// A set of web protocols.
 pub mod workers;
+
+/// Temp files.
+pub mod file;
