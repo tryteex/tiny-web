@@ -1,7 +1,6 @@
-use std::{fs::OpenOptions, io::Write, process, sync::Arc};
+use std::{fs::OpenOptions, io::Write, process, sync::OnceLock};
 
 use chrono::Local;
-use once_cell::sync::OnceCell;
 
 /// Responsible for log level
 ///
@@ -44,7 +43,7 @@ struct LogText {
 }
 
 /// Path to log file
-static LOG_FILE: OnceCell<Arc<String>> = OnceCell::new();
+static LOG_FILE: OnceLock<String> = OnceLock::new();
 
 /// Responsible for event log messages.
 pub struct Log;
@@ -117,7 +116,7 @@ impl Log {
     ///
     /// * `path: String` - New path to log file.
     pub fn set_path(path: String) {
-        if LOG_FILE.set(Arc::new(path)).is_err() {
+        if LOG_FILE.set(path).is_err() {
             Log::panic("Can't set new path to LOG_FILE");
         };
     }
@@ -317,12 +316,23 @@ impl Log {
 
             2000 => "Unable to read from stream",
             2001 => "It is not possible to read the first time from the stream, due to a timeout",
+            2002 => "Can't create temp file",
+            2003 => "Can't write temp file",
+            2004 => "The temporary file is partially written",
+            2005 => "Clock may have gone backwards",
 
             // FastCGI Error
             2100 => "Unable to recognize fastCGI record",
             2101 => "Incorrect fastCGI header",
             2102 => "Unsupport fastCGI header type",
             2103 => "Unsupport UTF8 symbol in FastCGI params",
+
+            // SCGI Error
+            2200 => "Incorrect SCGI init len",
+            2201 => "No SCGI package length found",
+            2202 => "SCGI package is wrong",
+            2203 => "SCGI package is so big",
+            2204 => "Unsupport UTF8 symbol in SCGI params",
 
             // Ation engine
             3000 => "Wrong cache type key of Redirect",

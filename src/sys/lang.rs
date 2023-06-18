@@ -94,7 +94,7 @@ impl Lang {
     /// To get a translation, it is enough to set the `this.lang("contact")` function,
     /// which will return the corresponding translation.<br />
     /// If no translation is found, the key will be returned.
-    pub async fn new(root: &str, default_lang: &str, langs: Vec<LangItem>) -> Lang {
+    pub fn new(root: &str, default_lang: &str, langs: Vec<LangItem>) -> Lang {
         if langs.is_empty() {
             Log::warning(1151, None);
             return Lang {
@@ -117,10 +117,7 @@ impl Lang {
         let read_path = match read_dir(&path) {
             Ok(r) => r,
             Err(e) => {
-                Log::warning(
-                    1100,
-                    Some(format!("Path: {}. Err: {}", path, e)),
-                );
+                Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
                 return Lang {
                     langs,
                     list: BTreeMap::new(),

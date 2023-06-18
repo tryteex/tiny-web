@@ -143,15 +143,12 @@ impl Html {
     /// * `{%?%}` - End if.
     /// * `{%@ arr %}` - Loop vec.
     /// * `{%@%}` - End loop.
-    pub async fn new(root: &str) -> Html {
+    pub fn new(root: &str) -> Html {
         let path = format!("{}/app/", root);
         let read_path = match read_dir(&path) {
             Ok(r) => r,
             Err(e) => {
-                Log::warning(
-                    1100,
-                    Some(format!("Path: {}. Err: {}", path, e)),
-                );
+                Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
                 return Html {
                     list: BTreeMap::new(),
                 };

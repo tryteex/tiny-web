@@ -12,6 +12,7 @@ use super::{db::DB, init::DBConfig, log::Log};
 /// * `connections: Vec<Arc<Mutex<DB>>>` - Vector of database connections;
 /// * `semaphore: Arc<Semaphore>` - Semaphore for finding free connection;
 /// * `size: usize` - Number of connected databases.
+#[derive(Debug)]
 pub struct DBPool {
     /// Vector of database connections.
     connections: Vec<Arc<Mutex<DB>>>,

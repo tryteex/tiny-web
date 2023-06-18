@@ -107,8 +107,8 @@ impl Go {
                 return;
             }
             let langs = Go::get_langs(&mut db).await;
-            let lang = Arc::new(Lang::new(&root_path, &lang, langs).await);
-            let html = Arc::new(Html::new(&root_path).await);
+            let lang = Arc::new(Lang::new(&root_path, &lang, langs));
+            let html = Arc::new(Html::new(&root_path));
             let cache = Cache::new().await;
             let engine = Arc::new(engine_data);
 
