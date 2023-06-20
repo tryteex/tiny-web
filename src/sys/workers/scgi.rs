@@ -20,6 +20,7 @@ pub struct Net;
 type Scgi = Net;
 
 impl Net {
+    /// The entry point in the SCGI protocol
     pub async fn run(
         mut stream: TcpStream,
         data: WorkerData,
@@ -117,12 +118,12 @@ impl Net {
         Scgi::write(&mut stream, answer).await;
     }
 
-    /// Read post and file datas from FastCGI record.
+    /// Read post and file datas from SCGI record.
     ///
     /// # Params
     ///
     /// * `data: Vec<u8>` - Data.
-    /// * `content_type: Option<String>` - CONTENT_TYPE parameter for recognizing FASTCGI_STDIN
+    /// * `content_type: Option<String>` - CONTENT_TYPE parameter
     ///
     /// # Return
     ///
@@ -368,6 +369,15 @@ impl Net {
 
     /// Writes answer to server
     async fn write(tcp: &mut TcpStream, answer: Vec<u8>) {
-        if tcp.write(&answer).await.is_err() {}
+        match tcp.write(&answer).await {
+            Ok(i) => {
+                if i != answer.len() {
+                    Log::warning(2205, Some(i.to_string()));
+                }
+            }
+            Err(e) => {
+                Log::warning(2206, Some(e.to_string()));
+            }
+        }
     }
 }

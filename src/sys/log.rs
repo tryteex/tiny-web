@@ -326,6 +326,8 @@ impl Log {
             2101 => "Incorrect fastCGI header",
             2102 => "Unsupport fastCGI header type",
             2103 => "Unsupport UTF8 symbol in FastCGI params",
+            2104 => "Not all data was written to the stream",
+            2105 => "An error occurred while writing data to the stream",
 
             // SCGI Error
             2200 => "Incorrect SCGI init len",
@@ -333,6 +335,16 @@ impl Log {
             2202 => "SCGI package is wrong",
             2203 => "SCGI package is so big",
             2204 => "Unsupport UTF8 symbol in SCGI params",
+            2205 => "Not all data was written to the stream",
+            2206 => "An error occurred while writing data to the stream",
+
+            // UWSGI Error
+            2300 => "Incorrect UWSGI init len",
+            2301 => "Buffer is full",
+            2302 => "UWSGI package is wrong. Param len=0",
+            2303 => "Unsupport UTF8 symbol in UWSGI params",
+            2304 => "Not all data was written to the stream",
+            2305 => "An error occurred while writing data to the stream",
 
             // Ation engine
             3000 => "Wrong cache type key of Redirect",

@@ -2,9 +2,9 @@
 
 `tiny-web` is a tiny async library (backend web server) that allows you to write a Laravel-style or Django-style backend in Rust language.
 
-This library works only with FastCGI and SCGI protocols.
+This library works only with FastCGI, SCGI and UWSGI (modifier1=0) protocols.
 > **Note**  
-> Support for GRPC, HTTP (hiding behind a Reverse Proxy), UWSGI, and WebSocket is also under development. Check out our repository on GitHub.
+> Support for GRPC, HTTP (hiding behind a Reverse Proxy), and WebSocket is also under development. Check out our repository on GitHub.
 
 This library works with Postgresql 15+ database. But you can try the lower version.
 

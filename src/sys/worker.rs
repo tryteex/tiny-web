@@ -250,7 +250,6 @@ impl Worker {
                         .as_bytes(),
                     );
                 }
-
                 // Stopping a call in a parallel thread
                 tokio::spawn(async move {
                     let mut vec = Vec::with_capacity(32);
@@ -315,6 +314,7 @@ impl Worker {
         } else {
             ""
         };
+
         answer.extend_from_slice(
             format!(
                 "Set-Cookie: {}={}; Expires={}; Max-Age={}; path=/; domain={}; {}SameSite=none\r\n",
@@ -329,6 +329,7 @@ impl Worker {
             }
             None => answer.extend_from_slice(b"Content-Type: text/html; charset=utf-8\r\n"),
         }
+        answer.extend_from_slice(b"Connection: Keep-Alive\r\n");
         // Write headers
         for head in &action.response.headers {
             answer.extend_from_slice(format!("{}\r\n", head).as_bytes());
@@ -336,6 +337,7 @@ impl Worker {
         // Write Content-Length
         answer.extend_from_slice(format!("Content-Length: {}\r\n\r\n", result.len()).as_bytes());
         answer.extend_from_slice(&result);
+
         // Stopping a call in a parallel thread
         tokio::spawn(async move {
             Action::stop(action).await;

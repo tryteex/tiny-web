@@ -169,7 +169,9 @@ impl Net {
                     session,
                 };
                 let answer = Worker::call_action(data).await;
-                FastCGI::write(&mut tcp, answer).await;
+                if FastCGI::write(&mut tcp, answer).await.is_err() {
+                    return;
+                };
             } else {
                 Log::warning(2101, Some(format!("{:?}", record)));
             }
@@ -444,7 +446,7 @@ impl Net {
     }
 
     /// Writes answer to server
-    async fn write(tcp: &mut TcpStream, answer: Vec<u8>) {
+    async fn write(tcp: &mut TcpStream, answer: Vec<u8>) -> Result<(), ()> {
         let mut seek: usize = 0;
         let len = answer.len();
         let capacity = len + FASTCGI_HEADER_LEN * (4 + len / FASTCGI_MAX_CONTENT_LEN);
@@ -495,6 +497,18 @@ impl Net {
         data.push(0);
         data.push(0);
 
-        if tcp.write(&data).await.is_err() {}
+        match tcp.write(&data).await {
+            Ok(i) => {
+                if i != data.len() {
+                    Log::warning(2104, Some(i.to_string()));
+                    return Err(());
+                }
+            }
+            Err(e) => {
+                Log::warning(2105, Some(e.to_string()));
+                return Err(());
+            }
+        }
+        Ok(())
     }
 }
