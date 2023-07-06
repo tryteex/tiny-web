@@ -37,11 +37,7 @@ impl App {
         match self.init.mode {
             Mode::Start => self.start(),
             Mode::Stop => self.stop(),
-            Mode::Help => Help::show(
-                &self.init.conf.name,
-                &self.init.conf.version,
-                &self.init.conf.desc,
-            ),
+            Mode::Help => Help::show(&self.init.conf.name, &self.init.conf.version, &self.init.conf.desc),
             Mode::Go => Go::run(&self.init, func),
             Mode::Status => todo!(),
         };
@@ -100,14 +96,8 @@ impl App {
             .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
             .spawn()
         {
-            Ok(c) => Log::info(
-                211,
-                Some(format!("{} {}. PID: {}", &exe, args.join(" "), c.id())),
-            ),
-            Err(e) => Log::stop(
-                212,
-                Some(format!("{} {}. Error: {}", &exe, args.join(" "), e)),
-            ),
+            Ok(c) => Log::info(211, Some(format!("{} {}. PID: {}", &exe, args.join(" "), c.id()))),
+            Err(e) => Log::stop(212, Some(format!("{} {}. Error: {}", &exe, args.join(" "), e))),
         };
     }
 
@@ -118,19 +108,9 @@ impl App {
         let exe = &self.init.exe_file;
 
         let args = vec!["go", "-r", &self.init.root_path];
-        match Command::new(&exe)
-            .args(&args[..])
-            .current_dir(&path)
-            .spawn()
-        {
-            Ok(c) => Log::info(
-                211,
-                Some(format!("{} {}. PID: {}", &exe, args.join(" "), c.id())),
-            ),
-            Err(e) => Log::stop(
-                212,
-                Some(format!("{} {}. Error: {}", &exe, args.join(" "), e)),
-            ),
+        match Command::new(&exe).args(&args[..]).current_dir(&path).spawn() {
+            Ok(c) => Log::info(211, Some(format!("{} {}. PID: {}", &exe, args.join(" "), c.id()))),
+            Err(e) => Log::stop(212, Some(format!("{} {}. Error: {}", &exe, args.join(" "), e))),
         };
     }
 

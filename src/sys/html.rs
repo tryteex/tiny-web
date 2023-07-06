@@ -149,9 +149,7 @@ impl Html {
             Ok(r) => r,
             Err(e) => {
                 Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
-                return Html {
-                    list: BTreeMap::new(),
-                };
+                return Html { list: BTreeMap::new() };
             }
         };
 
@@ -275,19 +273,12 @@ impl Html {
                                 ConditionNode::ElseIf(i) => {
                                     match Html::get_view(&html[ind + b + e + 2 + i..], &mut vf) {
                                         ConditionNode::EndIf(j) => {
-                                            vec.push(Node::If(
-                                                fnv1a_64(name),
-                                                Arc::new(vt),
-                                                Arc::new(vf),
-                                            ));
+                                            vec.push(Node::If(fnv1a_64(name), Arc::new(vt), Arc::new(vf)));
                                             shift = i + j;
                                         }
                                         ConditionNode::Err => return ConditionNode::Err,
                                         _ => {
-                                            Log::warning(
-                                                1201,
-                                                Some(html[ind..ind + b + e + 2].to_owned()),
-                                            );
+                                            Log::warning(1201, Some(html[ind..ind + b + e + 2].to_owned()));
                                             return ConditionNode::Err;
                                         }
                                     };
@@ -315,9 +306,7 @@ impl Html {
                                 }
                             };
                         }
-                        TypeNode::EndLoop => {
-                            return ConditionNode::EndLoop(ind + b + e + 2 + shift)
-                        }
+                        TypeNode::EndLoop => return ConditionNode::EndLoop(ind + b + e + 2 + shift),
                         TypeNode::Comment => {}
                         TypeNode::Err => return ConditionNode::Err,
                     };
@@ -388,11 +377,7 @@ impl Html {
     /// * `data: &BTreeMap<i64, Data>` - Keys with data.
     /// * `list: &Vec<Node>` - List of Nodes.
     /// * `add: Option<&BTreeMap<i64, Data>>` - Additional list of Nodes for If of Loop.
-    pub fn render(
-        data: &BTreeMap<i64, Data>,
-        list: &Vec<Node>,
-        add: Option<&BTreeMap<i64, Data>>,
-    ) -> Answer {
+    pub fn render(data: &BTreeMap<i64, Data>, list: &Vec<Node>, add: Option<&BTreeMap<i64, Data>>) -> Answer {
         let mut render = Vec::with_capacity(list.len());
         for node in list.iter() {
             match node {

@@ -201,7 +201,7 @@ pub struct Response {
     /// Content type
     pub content_type: Option<String>,
     /// Additional headers
-    pub headers: Vec<String>,
+    pub headers: Vec<(String, String)>,
     /// Http code
     pub http_code: Option<u16>,
     /// Addition css script
@@ -370,9 +370,7 @@ impl Action {
     ///
     /// `Ok(Action)` - Action (controller) was found success.
     /// `Err(Redirect, HashMap<String, Vec<WebFile>>)` - Must redirect, and then remove temp files.
-    pub async fn new(
-        data: ActionData,
-    ) -> Result<Action, (Redirect, HashMap<String, Vec<WebFile>>)> {
+    pub async fn new(data: ActionData) -> Result<Action, (Redirect, HashMap<String, Vec<WebFile>>)> {
         let response = Response {
             redirect: None,
             content_type: None,
@@ -385,22 +383,10 @@ impl Action {
         let mut session = if let Some(session) = data.session {
             Session::load_session(session.clone(), Arc::clone(&data.data.db), lang_id).await
         } else {
-            Session::new(
-                lang_id,
-                &data.data.salt,
-                &data.request.ip,
-                &data.request.agent,
-                &data.request.host,
-            )
+            Session::new(lang_id, &data.data.salt, &data.request.ip, &data.request.agent, &data.request.host)
         };
         // Module, class and action (controller) from URL
-        let route = match Action::extract_route(
-            &data.request,
-            Arc::clone(&data.data.cache),
-            Arc::clone(&data.data.db),
-        )
-        .await
-        {
+        let route = match Action::extract_route(&data.request, Arc::clone(&data.data.cache), Arc::clone(&data.data.db)).await {
             Ok(r) => r,
             Err(redirect) => return Err((redirect, data.request.input.file)),
         };
@@ -418,12 +404,7 @@ impl Action {
         }
         let param = route.param;
         // Load new template list
-        let html = data
-            .data
-            .html
-            .list
-            .get(&module_id)
-            .and_then(|module| module.get(&class_id).map(Arc::clone));
+        let html = data.data.html.list.get(&module_id).and_then(|module| module.get(&class_id).map(Arc::clone));
         // Load new translate list
         let lang = data
             .data
@@ -463,33 +444,12 @@ impl Action {
 
     /// Run execute of controller
     pub async fn run(action: &mut Action) -> Answer {
-        action
-            .start_route(
-                action.module_id,
-                action.class_id,
-                action.action_id,
-                action.param.clone(),
-                false,
-            )
-            .await
+        action.start_route(action.module_id, action.class_id, action.action_id, action.param.clone(), false).await
     }
 
     /// Load internal controller
-    pub async fn load(
-        &mut self,
-        key: &str,
-        module: &str,
-        class: &str,
-        action: &str,
-        param: Option<String>,
-    ) {
-        let res = self.start_route(
-            fnv1a_64(module),
-            fnv1a_64(class),
-            fnv1a_64(action),
-            param,
-            true,
-        );
+    pub async fn load(&mut self, key: &str, module: &str, class: &str, action: &str, param: Option<String>) {
+        let res = self.start_route(fnv1a_64(module), fnv1a_64(class), fnv1a_64(action), param, true);
         if let Answer::String(value) = res.await {
             self.data.insert(fnv1a_64(key), Data::String(value));
         }
@@ -506,9 +466,7 @@ impl Action {
     ) -> Answer {
         // Check permission
         if self.get_access(module_id, class_id, action_id).await {
-            return self
-                .invoke(module_id, class_id, action_id, param, internal)
-                .await;
+            return self.invoke(module_id, class_id, action_id, param, internal).await;
         }
         if internal {
             return Answer::None;
@@ -535,14 +493,7 @@ impl Action {
     }
 
     /// Invoke found controller
-    async fn invoke(
-        &mut self,
-        module_id: i64,
-        class_id: i64,
-        action_id: i64,
-        param: Option<String>,
-        internal: bool,
-    ) -> Answer {
+    async fn invoke(&mut self, module_id: i64, class_id: i64, action_id: i64, param: Option<String>, internal: bool) -> Answer {
         if let Some(m) = self.engine.get(&module_id) {
             if let Some(c) = m.get(&class_id) {
                 if let Some(a) = c.get(&action_id) {
@@ -612,28 +563,14 @@ impl Action {
     /// Get access to run controller
     pub async fn get_access(&mut self, module_id: i64, class_id: i64, action_id: i64) -> bool {
         // Read from cache
-        let key = format!(
-            "auth:{}:{}:{}:{}",
-            self.session.role_id, module_id, class_id, action_id
-        );
+        let key = format!("auth:{}:{}:{}:{}", self.session.role_id, module_id, class_id, action_id);
         if let Some(Data::Bool(a)) = Cache::get(Arc::clone(&self.cache), &key).await {
             return a;
         };
         // Prepare sql query
         match self
             .db
-            .query_fast(
-                5,
-                &[
-                    &self.session.role_id,
-                    &module_id,
-                    &module_id,
-                    &module_id,
-                    &class_id,
-                    &class_id,
-                    &action_id,
-                ],
-            )
+            .query_fast(5, &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id])
             .await
         {
             Some(rows) => {
@@ -668,8 +605,7 @@ impl Action {
                         } else {
                             let row = unsafe { v.get_unchecked(0) };
                             let url: String = row.get(0);
-                            Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone()))
-                                .await;
+                            Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone())).await;
                             url
                         }
                     }
@@ -680,11 +616,7 @@ impl Action {
     }
 
     /// Extract route from url
-    async fn extract_route(
-        request: &Request,
-        cache: Arc<Mutex<Cache>>,
-        db: Arc<DBPool>,
-    ) -> Result<Route, Redirect> {
+    async fn extract_route(request: &Request, cache: Arc<Mutex<Cache>>, db: Arc<DBPool>) -> Result<Route, Redirect> {
         // Get redirect
         let key = format!("redirect:{}", &request.url);
         match Cache::get(Arc::clone(&cache), &key).await {
@@ -868,10 +800,7 @@ impl Action {
         for val in action.request.input.file.values() {
             for f in val {
                 if let Err(e) = remove_file(&f.tmp).await {
-                    Log::warning(
-                        1103,
-                        Some(format!("filename={}. Error={}", &f.tmp.display(), e)),
-                    );
+                    Log::warning(1103, Some(format!("filename={}. Error={}", &f.tmp.display(), e)));
                 };
             }
         }
@@ -1000,31 +929,9 @@ impl Session {
                 Err(_) => Vec::new(),
             };
             if session.id == 0 {
-                db.query_fast(
-                    1,
-                    &[
-                        &session.user_id,
-                        &session.lang_id,
-                        &data,
-                        &request.ip,
-                        &request.agent,
-                        &session.id,
-                    ],
-                )
-                .await;
+                db.query_fast(1, &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id]).await;
             } else {
-                db.query_fast(
-                    2,
-                    &[
-                        &session.user_id,
-                        &session.lang_id,
-                        &session.key,
-                        &data,
-                        &request.ip,
-                        &request.agent,
-                    ],
-                )
-                .await;
+                db.query_fast(2, &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent]).await;
             };
         }
     }

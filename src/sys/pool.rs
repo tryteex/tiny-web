@@ -45,11 +45,7 @@ impl DBPool {
         }
         let semaphore = Arc::new(Semaphore::new(asize));
 
-        DBPool {
-            connections,
-            semaphore,
-            size: asize,
-        }
+        DBPool { connections, semaphore, size: asize }
     }
 
     /// Execute query to database with paramaters asynchronously
@@ -63,11 +59,7 @@ impl DBPool {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Get result.
-    pub async fn query_params(
-        &self,
-        query: &str,
-        params: &[&(dyn ToSql + Sync)],
-    ) -> Option<Vec<Row>> {
+    pub async fn query_params(&self, query: &str, params: &[&(dyn ToSql + Sync)]) -> Option<Vec<Row>> {
         let permit = match self.semaphore.acquire().await {
             Ok(p) => p,
             Err(e) => {
@@ -131,11 +123,7 @@ impl DBPool {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Get result.
-    pub async fn query_fast(
-        &self,
-        index: usize,
-        params: &[&(dyn ToSql + Sync)],
-    ) -> Option<Vec<Row>> {
+    pub async fn query_fast(&self, index: usize, params: &[&(dyn ToSql + Sync)]) -> Option<Vec<Row>> {
         let permit = match self.semaphore.acquire().await {
             Ok(p) => p,
             Err(e) => {

@@ -118,11 +118,7 @@ impl Lang {
             Ok(r) => r,
             Err(e) => {
                 Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
-                return Lang {
-                    langs,
-                    list: BTreeMap::new(),
-                    default,
-                };
+                return Lang { langs, list: BTreeMap::new(), default };
             }
         };
 
@@ -250,10 +246,6 @@ impl Lang {
             }
             list_lang.insert(key_lang, list_module);
         }
-        Lang {
-            langs,
-            list: list_lang,
-            default,
-        }
+        Lang { langs, list: list_lang, default }
     }
 }

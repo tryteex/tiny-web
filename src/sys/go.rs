@@ -35,11 +35,7 @@ pub struct Go;
 impl Go {
     /// Run server in tokio runtime
     pub fn run(init: &Init, func: impl Fn() -> ActMap) {
-        let runtime = match Builder::new_multi_thread()
-            .worker_threads(init.conf.max)
-            .enable_all()
-            .build()
-        {
+        let runtime = match Builder::new_multi_thread().worker_threads(init.conf.max).enable_all().build() {
             Ok(r) => r,
             Err(e) => {
                 Log::stop(1, Some(e.to_string()));
@@ -66,18 +62,13 @@ impl Go {
     ///
     /// `None` - The server cannot listen on the bind port
     /// `Some(JoinHandle)` - Handler for main tokio thread
-    async fn listen(
-        init: &Init,
-        stop: Arc<AtomicBool>,
-        func: impl Fn() -> ActMap,
-    ) -> Option<JoinHandle<()>> {
+    async fn listen(init: &Init, stop: Arc<AtomicBool>, func: impl Fn() -> ActMap) -> Option<JoinHandle<()>> {
         // Open bind port
         let bind = match init.conf.bind {
             Addr::SocketAddr(a) => TcpListener::bind(a),
             #[cfg(not(target_family = "windows"))]
             Addr::UDS(s) => TcpListener::bind(s),
         };
-
         let bind = match bind.await {
             Ok(i) => i,
             Err(e) => {
@@ -85,7 +76,6 @@ impl Go {
                 return None;
             }
         };
-
         let root_path = Arc::new(init.root_path.clone());
         let db = Arc::new(init.conf.db.clone());
         let lang = Arc::new(init.conf.lang.clone());
@@ -97,7 +87,6 @@ impl Go {
         let main = tokio::spawn(async move {
             // Create pool database connector
             let max = db.max;
-
             let mut db = DBPool::new(max, db).await;
             if max != db.size {
                 stop.store(true, Ordering::Relaxed);
@@ -165,14 +154,7 @@ impl Go {
                         }
                     }
                     // Starting one main thread from the client connection
-                    let data = WorkerData {
-                        engine,
-                        lang,
-                        html,
-                        cache,
-                        db,
-                        salt,
-                    };
+                    let data = WorkerData { engine, lang, html, cache, db, salt };
                     Worker::run(stream, data).await;
                     if let Err(i) = tx.send(id) {
                         Log::error(502, Some(i.to_string()));

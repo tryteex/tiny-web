@@ -1,20 +1,13 @@
-use tokio::net::TcpStream;
-
 use crate::sys::{
     log::Log,
-    worker::{WorkerData, BUFFER_SIZE},
+    worker::{StreamRead, StreamWrite, WorkerData},
 };
 
 /// GRPC protocol
 pub struct Net;
 
 impl Net {
-    pub async fn run(
-        mut _stream: TcpStream,
-        _data: WorkerData,
-        mut _buf: [u8; BUFFER_SIZE],
-        _len: usize,
-    ) {
-        Log::warning(3, Some("GRPC".to_owned()));
+    pub async fn run(_stream_read: StreamRead, _stream_write: StreamWrite, _data: WorkerData) {
+        Log::warning(3, Some("gRPC".to_owned()));
     }
 }

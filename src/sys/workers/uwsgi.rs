@@ -1,18 +1,14 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
-
 use crate::{
     sys::{
         action::{ActionData, Input, Request, WebFile},
-        log::Log,
-        worker::{Worker, WorkerData, BUFFER_SIZE},
+        worker::{StreamRead, StreamWrite, Worker, WorkerData},
     },
     TINY_KEY,
 };
+
+pub const UWSGI_LEN_PACKAGE_SIZE: usize = 4;
 
 /// UWSGI protocol
 pub struct Net;
@@ -21,34 +17,30 @@ type Uwsgi = Net;
 
 impl Net {
     /// The entry point in the UWSGI protocol
-    pub async fn run(
-        mut stream: TcpStream,
-        data: WorkerData,
-        mut buf: [u8; BUFFER_SIZE],
-        mut len: usize,
-    ) {
+    pub async fn run(mut stream_read: StreamRead, mut stream_write: StreamWrite, data: WorkerData) {
         loop {
             // Check package size
-            if len < 4 || buf[0] != 0 || buf[3] != 0 {
-                Log::warning(2300, Some(len.to_string()));
+            let mut buf = stream_read.get(UWSGI_LEN_PACKAGE_SIZE);
+            while buf.len() < UWSGI_LEN_PACKAGE_SIZE {
+                if stream_read.read(0).await.is_err() {
+                    return;
+                }
+                buf = stream_read.get(UWSGI_LEN_PACKAGE_SIZE);
+            }
+            // Check header
+            if unsafe { *buf.get_unchecked(0) != 0 || *buf.get_unchecked(3) != 0 } {
                 return;
             }
-            let packet_len = u16::from_le_bytes([buf[1], buf[2]]) as usize;
-
-            let (mut request, content_type, session, content_len) =
-                match Uwsgi::read_header(&mut stream, &mut buf, &mut len, 4, packet_len).await {
-                    Some(c) => c,
-                    None => return,
-                };
-            let (post, file) = match Uwsgi::read_input(
-                &mut stream,
-                &mut buf,
-                len,
-                content_type,
-                content_len,
-            )
-            .await
-            {
+            // Get package length
+            let packet_len = u16::from_le_bytes(unsafe { [*buf.get_unchecked(1), *buf.get_unchecked(2)] }) as usize;
+            stream_read.shift(UWSGI_LEN_PACKAGE_SIZE);
+            // Reads header
+            let (mut request, content_type, session, content_len) = match Uwsgi::read_header(&mut stream_read, packet_len).await {
+                Some(c) => c,
+                None => return,
+            };
+            // Reads POST data
+            let (post, file) = match Uwsgi::read_input(&mut stream_read, content_type, content_len).await {
                 Some(c) => c,
                 None => return,
             };
@@ -66,74 +58,42 @@ impl Net {
                 request,
                 session,
             };
+            // Run main controller
             let answer = Worker::call_action(data).await;
-            if Uwsgi::write(&mut stream, answer).await.is_err() {
-                return;
-            }
-            // Wait next client
-            len = match stream.read(&mut buf).await {
-                Ok(len) => len,
-                Err(e) => {
-                    Log::warning(2000, Some(e.to_string()));
-                    return;
-                }
-            };
-            if len == 0 {
+            if stream_write.write(&answer).await.is_err() {
                 return;
             }
         }
-    }
-
-    /// Writes answer to server
-    async fn write(tcp: &mut TcpStream, answer: Vec<u8>) -> Result<(), ()> {
-        match tcp.write(&answer).await {
-            Ok(i) => {
-                if i != answer.len() {
-                    Log::warning(2304, Some(i.to_string()));
-                    return Err(());
-                }
-            }
-            Err(e) => {
-                Log::warning(2305, Some(e.to_string()));
-                return Err(());
-            }
-        }
-        Ok(())
     }
 
     /// Read post and file datas from UWSGI record.
-    ///
-    /// # Params
-    ///
-    /// * `data: Vec<u8>` - Data.
-    /// * `content_type: Option<String>` - CONTENT_TYPE parameter
     ///
     /// # Return
     ///
     /// * `HashMap<String, String>` - Post data.
     /// * `HashMap<String, Vec<WebFile>>` - File data.
     async fn read_input(
-        stream: &mut TcpStream,
-        buf: &mut [u8; BUFFER_SIZE],
-        mut len: usize,
+        stream: &mut StreamRead,
         content_type: Option<String>,
         mut content_len: usize,
     ) -> Option<(HashMap<String, String>, HashMap<String, Vec<WebFile>>)> {
         let mut data = Vec::with_capacity(content_len);
+        let mut max_read;
+        let mut buf;
+        let mut buf_len;
         while content_len > 0 {
-            if len == 0 {
-                len = match stream.read(&mut buf[0..]).await {
-                    Ok(len) => len,
-                    Err(e) => {
-                        Log::warning(2000, Some(e.to_string()));
-                        return None;
-                    }
+            max_read = min(content_len, stream.available());
+            while max_read == 0 {
+                if stream.read(1000).await.is_err() {
+                    return None;
                 }
+                max_read = min(content_len, stream.available());
             }
-            let max_read = min(content_len, len);
-            data.extend_from_slice(&buf[0..max_read]);
-            content_len -= max_read;
-            len -= max_read;
+            buf = stream.get(max_read);
+            buf_len = buf.len();
+            data.extend_from_slice(buf);
+            stream.shift(buf_len);
+            content_len -= buf_len;
         }
         Some(Worker::read_input(data, content_type).await)
     }
@@ -147,10 +107,7 @@ impl Net {
     /// * `Option<String>` - key of session.
     /// * `usize` - key of session.
     async fn read_header(
-        stream: &mut TcpStream,
-        buf: &mut [u8; BUFFER_SIZE],
-        len: &mut usize,
-        mut shift: usize,
+        stream: &mut StreamRead,
         mut packet_len: usize,
     ) -> Option<(Request, Option<String>, Option<String>, usize)> {
         let mut ajax = false;
@@ -176,106 +133,119 @@ impl Net {
         let mut is_value = false;
         let mut value_size = 0;
         let mut params = HashMap::with_capacity(16);
+
+        let mut max_read;
+        let mut buf;
+        let mut buf_len;
         while packet_len > 0 {
-            let max_read = min(packet_len, *len - shift);
+            // Reads data to the buffer
+            max_read = min(packet_len, stream.available());
+            while max_read == 0 {
+                if stream.read(1000).await.is_err() {
+                    return None;
+                }
+                max_read = min(packet_len, stream.available());
+            }
             if !is_param {
+                // Search params
                 if param_size == 0 {
-                    if max_read < 2 {
-                        if Uwsgi::read(stream, buf, len, &mut shift).await.is_err() {
+                    while max_read < 2 {
+                        if stream.read(1000).await.is_err() {
                             return None;
                         }
-                        continue;
+                        max_read = min(packet_len, stream.available());
                     }
-                    param_size = u16::from_le_bytes([buf[shift], buf[shift + 1]]) as usize;
+                    buf = stream.get(2);
+                    param_size =
+                        u16::from_le_bytes([unsafe { *buf.get_unchecked(0) }, unsafe { *buf.get_unchecked(1) }]) as usize;
                     if param_size == 0 {
-                        Log::warning(2302, None);
                         return None;
                     }
                     packet_len -= 2;
-                    shift += 2;
+                    stream.shift(2);
                     continue;
                 }
                 if param_size <= max_read {
-                    param.extend_from_slice(&buf[shift..shift + param_size]);
-                    shift += param_size;
-                    packet_len -= param_size;
-                    is_param = true;
-                    param_size = 0;
-                } else {
-                    param.extend_from_slice(&buf[shift..shift + max_read]);
-                    shift += max_read;
-                    packet_len -= max_read;
-                    param_size -= max_read;
-                    if Uwsgi::read(stream, buf, len, &mut shift).await.is_err() {
-                        return None;
+                    buf = stream.get(param_size);
+                    buf_len = buf.len();
+                    param.extend_from_slice(buf);
+                    stream.shift(buf_len);
+                    packet_len -= buf_len;
+                    param_size -= buf_len;
+                    if param_size == 0 {
+                        is_param = true;
                     }
+                } else {
+                    buf = stream.get(max_read);
+                    buf_len = buf.len();
+                    param.extend_from_slice(buf);
+                    stream.shift(buf_len);
+                    packet_len -= buf_len;
+                    param_size -= buf_len;
                 }
             } else if !is_value {
+                // Search values
                 if value_size == 0 {
-                    if max_read < 2 {
-                        if Uwsgi::read(stream, buf, len, &mut shift).await.is_err() {
+                    while max_read < 2 {
+                        if stream.read(1000).await.is_err() {
                             return None;
                         }
-                        continue;
+                        max_read = min(packet_len, stream.available());
                     }
-                    value_size = u16::from_le_bytes([buf[shift], buf[shift + 1]]) as usize;
+                    buf = stream.get(2);
+                    value_size =
+                        u16::from_le_bytes([unsafe { *buf.get_unchecked(0) }, unsafe { *buf.get_unchecked(1) }]) as usize;
                     packet_len -= 2;
-                    shift += 2;
+                    stream.shift(2);
                     if value_size == 0 {
                         is_value = true;
                     }
                     continue;
                 }
                 if value_size <= max_read {
-                    value.extend_from_slice(&buf[shift..shift + value_size]);
-                    shift += value_size;
-                    packet_len -= value_size;
-                    is_value = true;
-                    value_size = 0;
-                } else {
-                    value.extend_from_slice(&buf[shift..shift + max_read]);
-                    shift += max_read;
-                    packet_len -= max_read;
-                    value_size -= max_read;
-                    if Uwsgi::read(stream, buf, len, &mut shift).await.is_err() {
-                        return None;
+                    buf = stream.get(value_size);
+                    buf_len = buf.len();
+                    value.extend_from_slice(buf);
+                    stream.shift(buf_len);
+                    packet_len -= buf_len;
+                    value_size -= buf_len;
+                    if value_size == 0 {
+                        is_value = true;
                     }
+                } else {
+                    buf = stream.get(max_read);
+                    buf_len = buf.len();
+                    value.extend_from_slice(buf);
+                    stream.shift(buf_len);
+                    packet_len -= buf_len;
+                    value_size -= buf_len;
                 }
             } else {
-                let key = match String::from_utf8(param.clone()) {
-                    Ok(key) => key,
-                    Err(e) => {
-                        Log::warning(2303, Some(e.to_string()));
-                        return None;
-                    }
-                };
+                let key = param.clone();
                 let val = match String::from_utf8(value.clone()) {
                     Ok(value) => value,
-                    Err(e) => {
-                        Log::warning(2303, Some(e.to_string()));
-                        return None;
-                    }
+                    Err(_) => return None,
                 };
-                match key.as_str() {
-                    "CONTENT_LENGTH" => {
+                match key.as_slice() {
+                    b"CONTENT_LENGTH" => {
                         if let Ok(c) = val.parse::<usize>() {
                             content_len = c;
                         }
                     }
-                    "HTTP_X_REQUESTED_WITH" => ajax = val.to_lowercase().eq("xmlhttprequest"),
-                    "HTTP_HOST" => host = val,
-                    "REQUEST_SCHEME" => scheme = val,
-                    "HTTP_USER_AGENT" => agent = val,
-                    "HTTP_REFERER" => referer = val,
-                    "REMOTE_ADDR" => ip = val,
-                    "REQUEST_METHOD" => method = val,
-                    "DOCUMENT_ROOT" => path = val,
-                    "REDIRECT_URL" => {
+                    b"HTTP_X_REQUESTED_WITH" => ajax = val.to_lowercase().eq("xmlhttprequest"),
+                    b"HTTP_HOST" => host = val,
+                    b"REQUEST_SCHEME" => scheme = val,
+                    b"HTTP_USER_AGENT" => agent = val,
+                    b"HTTP_REFERER" => referer = val,
+                    b"REMOTE_ADDR" => ip = val,
+                    b"REQUEST_METHOD" => method = val,
+                    b"DOCUMENT_ROOT" => path = val,
+                    b"REDIRECT_URL" => {
                         if let Some(u) = val.split('?').next() {
                             url = u.to_owned();
                         }
                     }
-                    "QUERY_STRING" => {
+                    b"QUERY_STRING" => {
                         if !val.is_empty() {
                             let gets: Vec<&str> = val.split('&').collect();
                             get.reserve(gets.len());
@@ -283,35 +253,45 @@ impl Net {
                                 let key: Vec<&str> = v.splitn(2, '=').collect();
                                 match key.len() {
                                     1 => get.insert(v.to_owned(), String::new()),
-                                    _ => get.insert(key[0].to_owned(), key[1].to_owned()),
+                                    _ => get.insert(
+                                        unsafe { *key.get_unchecked(0) }.to_owned(),
+                                        unsafe { *key.get_unchecked(1) }.to_owned(),
+                                    ),
                                 };
                             }
                         }
                     }
-                    "CONTENT_TYPE" => content_type = Some(val),
-                    "HTTP_COOKIE" => {
+                    b"CONTENT_TYPE" => content_type = Some(val),
+                    b"HTTP_COOKIE" => {
                         let cooks: Vec<&str> = val.split("; ").collect();
                         cookie.reserve(cooks.len());
                         for v in cooks {
                             let key: Vec<&str> = v.splitn(2, '=').collect();
                             if key.len() == 2 {
-                                if key[0] == TINY_KEY {
-                                    let val = key[1];
+                                if unsafe { *key.get_unchecked(0) } == TINY_KEY {
+                                    let val = unsafe { *key.get_unchecked(1) };
                                     if val.len() == 128 {
                                         for b in val.as_bytes() {
                                             if !((*b > 47 && *b < 58) || (*b > 96 && *b < 103)) {
                                                 continue;
                                             }
                                         }
-                                        session_key = Some(key[1].to_owned());
+                                        session_key = Some(unsafe { *key.get_unchecked(1) }.to_owned());
                                     }
                                 } else {
-                                    cookie.insert(key[0].to_owned(), key[1].to_owned());
+                                    cookie.insert(
+                                        unsafe { *key.get_unchecked(0) }.to_owned(),
+                                        unsafe { *key.get_unchecked(1) }.to_owned(),
+                                    );
                                 }
                             }
                         }
                     }
                     _ => {
+                        let key = match String::from_utf8(key) {
+                            Ok(key) => key,
+                            Err(_) => return None,
+                        };
                         params.insert(key, val);
                     }
                 }
@@ -322,8 +302,6 @@ impl Net {
             }
         }
         params.shrink_to_fit();
-        buf.copy_within(shift.., 0);
-        *len -= shift;
         Some((
             Request {
                 ajax,
@@ -347,30 +325,5 @@ impl Net {
             session_key,
             content_len,
         ))
-    }
-
-    async fn read(
-        stream: &mut TcpStream,
-        buf: &mut [u8; BUFFER_SIZE],
-        len: &mut usize,
-        shift: &mut usize,
-    ) -> Result<(), ()> {
-        if *len - *shift == BUFFER_SIZE {
-            Log::warning(2301, None);
-            return Err(());
-        }
-        if *shift < *len {
-            buf.copy_within(*shift..*len, 0);
-        }
-        *len -= *shift;
-        *shift = 0;
-        *len += match stream.read(&mut buf[*len..]).await {
-            Ok(l) => l,
-            Err(e) => {
-                Log::warning(2000, Some(e.to_string()));
-                return Err(());
-            }
-        };
-        Ok(())
     }
 }

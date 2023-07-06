@@ -1,15 +1,9 @@
-use std::{collections::HashMap, sync::Arc};
-
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
+use std::{cmp::min, collections::HashMap, sync::Arc};
 
 use crate::{
     sys::{
         action::{ActionData, Input, Request},
-        log::Log,
-        worker::{Worker, WorkerData, BUFFER_SIZE},
+        worker::{StreamRead, StreamWrite, Worker, WorkerData},
     },
     TINY_KEY,
 };
@@ -90,23 +84,12 @@ type FastCGI = Net;
 
 impl Net {
     /// The entry point in the FastCGI protocol
-    pub async fn run(
-        mut tcp: TcpStream,
-        data: WorkerData,
-        mut buffer: [u8; BUFFER_SIZE],
-        len: usize,
-    ) {
-        let mut size = len;
+    pub async fn run(mut stream_read: StreamRead, mut stream_write: StreamWrite, data: WorkerData) {
         loop {
             // Gets one Record
-            let record = match FastCGI::read_record_raw(&mut tcp, &mut buffer, &mut size).await {
+            let record = match FastCGI::read_record_raw(&mut stream_read, 0).await {
                 RecordType::Some(r) => r,
-                RecordType::Error(e) => {
-                    let s: String = e.iter().map(|byte| format!("{:02x}", byte)).collect();
-                    Log::warning(2100, Some(s));
-                    break;
-                }
-                RecordType::StreamClose => break,
+                RecordType::Error(_) | RecordType::StreamClose => break,
             };
             // Start parsing the protocol, only if it starts with BEGIN_REQUEST
             if FASTCGI_BEGIN_REQUEST == record.header.header_type {
@@ -117,16 +100,9 @@ impl Net {
                 // Loop until empty records PARAMS and STDIN are received
                 loop {
                     // Gets next Record
-                    let record = match FastCGI::read_record_raw(&mut tcp, &mut buffer, &mut size)
-                        .await
-                    {
+                    let record = match FastCGI::read_record_raw(&mut stream_read, 1000).await {
                         RecordType::Some(r) => r,
-                        RecordType::Error(e) => {
-                            let s: String = e.iter().map(|byte| format!("{:02x}", byte)).collect();
-                            Log::warning(2100, Some(s));
-                            break;
-                        }
-                        RecordType::StreamClose => break,
+                        RecordType::Error(_) | RecordType::StreamClose => break,
                     };
                     match record.header.header_type {
                         FASTCGI_PARAMS => {
@@ -143,16 +119,15 @@ impl Net {
                                 stdin.extend_from_slice(&record.data);
                             }
                         }
-                        _ => {
-                            Log::warning(2102, Some(format!("{:?}", record)));
-                            return;
-                        }
+                        _ => return,
                     }
                     if is_stdin_done && is_param_done {
                         break;
                     }
                 }
+                // Reads params
                 let (mut request, content_type, session) = FastCGI::read_param(params);
+                // Reads POST data
                 let (post, file) = Worker::read_input(stdin, content_type).await;
                 request.input.file = file;
                 request.input.post = post;
@@ -168,12 +143,13 @@ impl Net {
                     request,
                     session,
                 };
+                // Run main controller
                 let answer = Worker::call_action(data).await;
-                if FastCGI::write(&mut tcp, answer).await.is_err() {
+                if FastCGI::write(&mut stream_write, answer).await.is_err() {
                     return;
-                };
+                }
             } else {
-                Log::warning(2101, Some(format!("{:?}", record)));
+                break;
             }
         }
     }
@@ -266,39 +242,29 @@ impl Net {
                     break;
                 }
             }
-
-            let key = match String::from_utf8((data[size..size + key_len]).to_vec()) {
-                Ok(key) => key,
-                Err(e) => {
-                    Log::warning(2103, Some(e.to_string()));
-                    break;
-                }
-            };
+            let key = unsafe { data.get_unchecked(size..size + key_len) };
             size += key_len;
-            let value = match String::from_utf8(data[size..size + value_len].to_vec()) {
+            let value = match String::from_utf8(unsafe { data.get_unchecked(size..size + value_len) }.to_vec()) {
                 Ok(value) => value,
-                Err(e) => {
-                    Log::warning(2103, Some(e.to_string()));
-                    break;
-                }
+                Err(_) => break,
             };
             size += value_len;
             // We will take some of the headers right away, and leave some for the user
-            match key.as_str() {
-                "HTTP_X_REQUESTED_WITH" => ajax = value.to_lowercase().eq("xmlhttprequest"),
-                "HTTP_HOST" => host = value,
-                "REQUEST_SCHEME" => scheme = value,
-                "HTTP_USER_AGENT" => agent = value,
-                "HTTP_REFERER" => referer = value,
-                "REMOTE_ADDR" => ip = value,
-                "REQUEST_METHOD" => method = value,
-                "DOCUMENT_ROOT" => path = value,
-                "REDIRECT_URL" => {
+            match key {
+                b"HTTP_X_REQUESTED_WITH" => ajax = value.to_lowercase().eq("xmlhttprequest"),
+                b"HTTP_HOST" => host = value,
+                b"REQUEST_SCHEME" => scheme = value,
+                b"HTTP_USER_AGENT" => agent = value,
+                b"HTTP_REFERER" => referer = value,
+                b"REMOTE_ADDR" => ip = value,
+                b"REQUEST_METHOD" => method = value,
+                b"DOCUMENT_ROOT" => path = value,
+                b"REDIRECT_URL" => {
                     if let Some(u) = value.split('?').next() {
                         url = u.to_owned();
                     }
                 }
-                "QUERY_STRING" => {
+                b"QUERY_STRING" => {
                     if !value.is_empty() {
                         let gets: Vec<&str> = value.split('&').collect();
                         get.reserve(gets.len());
@@ -311,30 +277,36 @@ impl Net {
                         }
                     }
                 }
-                "CONTENT_TYPE" => content_type = Some(value),
-                "HTTP_COOKIE" => {
+                b"CONTENT_TYPE" => content_type = Some(value),
+                b"HTTP_COOKIE" => {
                     let cooks: Vec<&str> = value.split("; ").collect();
                     cookie.reserve(cooks.len());
                     for v in cooks {
                         let key: Vec<&str> = v.splitn(2, '=').collect();
                         if key.len() == 2 {
-                            if key[0] == TINY_KEY {
-                                let val = key[1];
-                                if val.len() == 128 {
-                                    for b in val.as_bytes() {
-                                        if !((*b > 47 && *b < 58) || (*b > 96 && *b < 103)) {
-                                            continue;
+                            unsafe {
+                                if *key.get_unchecked(0) == TINY_KEY {
+                                    let val = *key.get_unchecked(1);
+                                    if val.len() == 128 {
+                                        for b in val.as_bytes() {
+                                            if !((*b > 47 && *b < 58) || (*b > 96 && *b < 103)) {
+                                                continue;
+                                            }
                                         }
+                                        session_key = Some((*key.get_unchecked(1)).to_owned());
                                     }
-                                    session_key = Some(key[1].to_owned());
+                                } else {
+                                    cookie.insert((*key.get_unchecked(0)).to_owned(), (*key.get_unchecked(1)).to_owned());
                                 }
-                            } else {
-                                cookie.insert(key[0].to_owned(), key[1].to_owned());
                             }
                         }
                     }
                 }
                 _ => {
+                    let key = match String::from_utf8(unsafe { data.get_unchecked(size..size + key_len) }.to_vec()) {
+                        Ok(key) => key,
+                        Err(_) => break,
+                    };
                     params.insert(key, value);
                 }
             }
@@ -365,65 +337,41 @@ impl Net {
     }
 
     /// Read one record from TcpStream
-    async fn read_record_raw(
-        tcp: &mut TcpStream,
-        buffer: &mut [u8; BUFFER_SIZE],
-        size: &mut usize,
-    ) -> RecordType {
+    async fn read_record_raw(stream: &mut StreamRead, timeout: u64) -> RecordType {
         // There is not enough buffer
-        if *size < FASTCGI_HEADER_LEN {
-            let len = match tcp.read(&mut buffer[*size..]).await {
-                Ok(len) => len,
-                Err(e) => {
-                    Log::warning(2000, Some(e.to_string()));
-                    return RecordType::StreamClose;
-                }
-            };
-            if len == 0 {
-                // Stream was closed
+        let mut buf = stream.get(stream.available());
+
+        while buf.len() < FASTCGI_HEADER_LEN {
+            if stream.read(timeout).await.is_err() {
                 return RecordType::StreamClose;
             }
-            *size += len;
-        }
-        // Something went wrong, they could not read some 8 bytes
-        if *size < FASTCGI_HEADER_LEN {
-            return RecordType::Error(buffer[0..*size].to_vec());
+            buf = stream.get(stream.available());
         }
 
-        let header = FastCGI::read_header(&buffer[0..FASTCGI_HEADER_LEN]);
-        let total = header.content_length as usize;
-        let mut read = 0;
+        let header = FastCGI::read_header(unsafe { buf.get_unchecked(..FASTCGI_HEADER_LEN) });
+        stream.shift(FASTCGI_HEADER_LEN);
+        let mut total = header.content_length as usize;
 
         // It is necessary to determine how much data is in the record,
         // if it is more than FASTCGI_MAX_CONTENT_LEN, then we read in several approaches
-        let mut max_read = std::cmp::min(total, *size - FASTCGI_HEADER_LEN);
-
+        let mut max_read;
+        let mut buf_len;
         let mut vec = Vec::with_capacity(total);
-        let mut seek = FASTCGI_HEADER_LEN;
-        loop {
-            vec.extend_from_slice(&buffer[seek..seek + max_read]);
-            read += max_read;
-            if read == total {
-                break;
-            }
-            *size = match tcp.read(buffer).await {
-                Ok(len) => len,
-                Err(e) => {
-                    Log::warning(2000, Some(e.to_string()));
+        while total > 0 {
+            max_read = min(total, stream.available());
+            while max_read == 0 {
+                if stream.read(1000).await.is_err() {
                     return RecordType::StreamClose;
                 }
-            };
-            if *size == 0 {
-                // Stream was closed
-                return RecordType::StreamClose;
+                max_read = min(total, stream.available());
             }
-            seek = 0;
-            max_read = std::cmp::min(total - read, *size);
+            buf = stream.get(max_read);
+            buf_len = buf.len();
+            vec.extend_from_slice(buf);
+            stream.shift(buf_len);
+            total -= buf_len;
         }
-
-        buffer.copy_within(header.padding_length as usize + seek + max_read..*size, 0);
-        *size -= max_read + seek + header.padding_length as usize;
-
+        stream.shift(header.padding_length as usize);
         RecordType::Some(Record { header, data: vec })
     }
 
@@ -436,17 +384,14 @@ impl Net {
         unsafe {
             Header {
                 header_type: *data.get_unchecked(1),
-                content_length: u16::from_be_bytes([
-                    *data.get_unchecked(4),
-                    *data.get_unchecked(5),
-                ]),
+                content_length: u16::from_be_bytes([*data.get_unchecked(4), *data.get_unchecked(5)]),
                 padding_length: *data.get_unchecked(6),
             }
         }
     }
 
     /// Writes answer to server
-    async fn write(tcp: &mut TcpStream, answer: Vec<u8>) -> Result<(), ()> {
+    async fn write(stream: &mut StreamWrite, answer: Vec<u8>) -> Result<(), ()> {
         let mut seek: usize = 0;
         let len = answer.len();
         let capacity = len + FASTCGI_HEADER_LEN * (4 + len / FASTCGI_MAX_CONTENT_LEN);
@@ -467,7 +412,7 @@ impl Net {
             data.extend_from_slice(&u16::to_be_bytes(size as u16));
             data.push(0);
             data.push(0);
-            data.extend_from_slice(&answer[seek..seek + size]);
+            data.extend_from_slice(unsafe { answer.get_unchecked(seek..seek + size) });
             seek += size;
         }
         // Empty FASTCGI_STDOUT
@@ -497,15 +442,13 @@ impl Net {
         data.push(0);
         data.push(0);
 
-        match tcp.write(&data).await {
+        match stream.write(&data).await {
             Ok(i) => {
                 if i != data.len() {
-                    Log::warning(2104, Some(i.to_string()));
                     return Err(());
                 }
             }
-            Err(e) => {
-                Log::warning(2105, Some(e.to_string()));
+            Err(_) => {
                 return Err(());
             }
         }

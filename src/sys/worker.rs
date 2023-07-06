@@ -1,7 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{cmp::min, collections::HashMap, io::Error, sync::Arc};
 
 use chrono::Utc;
-use tokio::{io::AsyncReadExt, net::TcpStream, sync::Mutex, time::timeout};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
+    },
+    sync::Mutex,
+};
 
 use crate::TINY_KEY;
 
@@ -18,6 +25,7 @@ use super::{
 
 /// Buffer for read data from TcpStream
 pub const BUFFER_SIZE: usize = 8192;
+// pub const BUFFER_SIZE: usize = 50;
 
 /// One year in seconds
 const ONE_YEAR: i64 = 31622400;
@@ -45,6 +53,8 @@ enum WorkerType {
     Scgi,
     /// HTTP or WebSocket protocol.
     Http,
+    /// Error
+    Error,
 }
 
 /// General data
@@ -73,38 +83,154 @@ pub struct WorkerData {
     pub salt: Arc<String>,
 }
 
+/// Half of the network to read
+pub struct StreamRead {
+    /// A Tokio network stream
+    tcp: OwnedReadHalf,
+    /// Reading buffer
+    buf: [u8; BUFFER_SIZE],
+    /// The number of bytes in the buffer
+    len: usize,
+    // Reading shift
+    shift: usize,
+}
+
+/// Half of the network to write
+pub struct StreamWrite {
+    /// A Tokio network stream
+    tcp: OwnedWriteHalf,
+}
+
+/// A network stream errors
+pub enum StreamError {
+    /// Stream are closed
+    Closed,
+    /// Error reading from stream
+    Error(Error),
+    /// Buffer is small
+    Buffer,
+    /// Read timeout
+    Timeout,
+}
+
+impl StreamRead {
+    /// Read from stream to buffer
+    ///
+    /// # Params
+    ///
+    /// * `timeout: u64` - How long to wait for a reading? (in milliseconds)
+    ///
+    /// If timeout = 0, it will wait until data appears or an error occurs.
+    /// After `StreamError::Timeout`, saving data in the buffer and correct operation of the protocol are not guaranteed, so it is advisable to close the stream.
+    pub async fn read(&mut self, timeout: u64) -> Result<(), StreamError> {
+        if self.shift == 0 && self.len == BUFFER_SIZE {
+            return Err(StreamError::Buffer);
+        } else if self.shift > 0 && self.len <= BUFFER_SIZE {
+            self.buf.copy_within(self.shift.., 0);
+            self.len -= self.shift;
+            self.shift = 0;
+        }
+
+        if timeout > 0 {
+            match tokio::time::timeout(std::time::Duration::from_millis(timeout), async {
+                match self.tcp.read(unsafe { self.buf.get_unchecked_mut(self.len..) }).await {
+                    Ok(len) => {
+                        if len == 0 {
+                            Err(StreamError::Closed)
+                        } else {
+                            Ok(len)
+                        }
+                    }
+                    Err(e) => Err(StreamError::Error(e)),
+                }
+            })
+            .await
+            {
+                Ok(res) => match res {
+                    Ok(len) => {
+                        self.len += len;
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                },
+                Err(_) => Err(StreamError::Timeout),
+            }
+        } else {
+            match self.tcp.read(unsafe { self.buf.get_unchecked_mut(self.len..) }).await {
+                Ok(len) => {
+                    if len == 0 {
+                        Err(StreamError::Closed)
+                    } else {
+                        self.len += len;
+                        Ok(())
+                    }
+                }
+                Err(e) => Err(StreamError::Error(e)),
+            }
+        }
+    }
+
+    /// Gets bytes in the local buffer
+    pub fn get(&self, size: usize) -> &[u8] {
+        let size = min(self.shift + size, self.len);
+        unsafe { self.buf.get_unchecked(self.shift..size) }
+    }
+
+    /// Adds shift in the data
+    pub fn shift(&mut self, shift: usize) {
+        self.shift += shift;
+        if self.shift > self.len {
+            self.shift = self.len;
+        }
+    }
+
+    /// Gets length of available data
+    pub fn available(&self) -> usize {
+        self.len - self.shift
+    }
+}
+
+impl StreamWrite {
+    /// Write unswer to the stream
+    pub async fn write(&mut self, src: &[u8]) -> Result<usize, Error> {
+        self.tcp.write(src).await
+    }
+}
+
 impl Worker {
     /// Run main worker
     ///
     /// # Params
     ///
-    /// * `mut stream: TcpStream` - Tokio tcp stream.
+    /// * `stream: TcpStream` - Tokio tcp stream.
     /// * `data: WorkerData` - General data for the web engine.
-    pub async fn run(mut stream: TcpStream, data: WorkerData) {
-        // Read first data from stream to detect protocol
-        let mut buf: [u8; BUFFER_SIZE] = [0; BUFFER_SIZE];
-        let mut len = 0;
-        if let Err(e) = timeout(std::time::Duration::from_secs(1), async {
-            len = match stream.read(&mut buf).await {
-                Ok(len) => len,
-                Err(e) => {
-                    Log::warning(2000, Some(e.to_string()));
-                    return;
-                }
-            };
-        })
-        .await
-        {
-            Log::warning(2001, Some(e.to_string()));
-            return;
+    pub async fn run(stream: TcpStream, data: WorkerData) {
+        let (read, write) = stream.into_split();
+        let mut stream_read = StreamRead {
+            tcp: read,
+            buf: [0; BUFFER_SIZE],
+            len: 0,
+            shift: 0,
         };
+        let stream_write = StreamWrite { tcp: write };
 
-        match Worker::detect(&buf) {
-            WorkerType::FastCGI => fastcgi::Net::run(stream, data, buf, len).await,
-            WorkerType::Uwsgi => uwsgi::Net::run(stream, data, buf, len).await,
-            WorkerType::Grpc => grpc::Net::run(stream, data, buf, len).await,
-            WorkerType::Scgi => scgi::Net::run(stream, data, buf, len).await,
-            WorkerType::Http => http::Net::run(stream, data, buf, len).await,
+        if let Err(e) = stream_read.read(1000).await {
+            match e {
+                StreamError::Closed => {}
+                StreamError::Error(e) => Log::warning(2000, Some(e.to_string())),
+                StreamError::Buffer => Log::warning(2006, None),
+                StreamError::Timeout => Log::warning(2001, None),
+            }
+            return;
+        }
+
+        match Worker::detect(stream_read.get(14)) {
+            WorkerType::FastCGI => fastcgi::Net::run(stream_read, stream_write, data).await,
+            WorkerType::Uwsgi => uwsgi::Net::run(stream_read, stream_write, data).await,
+            WorkerType::Grpc => grpc::Net::run(stream_read, stream_write, data).await,
+            WorkerType::Scgi => scgi::Net::run(stream_read, stream_write, data).await,
+            WorkerType::Http => http::Net::run(stream_read, stream_write, data).await,
+            WorkerType::Error => {}
         }
     }
 
@@ -120,18 +246,16 @@ impl Worker {
     /// # Notice
     ///
     /// This is a very easy and fast way to determine the protocol, but you shouldn't rely on it.
-    fn detect(slice: &[u8; BUFFER_SIZE]) -> WorkerType {
-        if slice[0..1] == [1] {
+    fn detect(slice: &[u8]) -> WorkerType {
+        if slice.len() < 14 {
+            WorkerType::Error
+        } else if slice[0..1] == [1] {
             // FastCGI starts with a byte equal to 1 (version)
             WorkerType::FastCGI
         } else if slice[0..1] == [0] {
             // UWSGI starts with a byte equal to 0 (modifier1)
             WorkerType::Uwsgi
-        } else if slice[0..14]
-            == [
-                0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32, 0x2e, 0x30,
-            ]
-        {
+        } else if slice[0..14] == [0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32, 0x2e, 0x30] {
             // gRPC starts with a bytes equal to "PRI * HTTP/2.0"
             WorkerType::Grpc
         } else if slice[0..7].iter().enumerate().any(|(idx, byte)| {
@@ -229,27 +353,6 @@ impl Worker {
         let mut action = match Action::new(data).await {
             Ok(action) => action,
             Err((redirect, files)) => {
-                // Write status
-                let mut answer: Vec<u8> = Vec::with_capacity(512);
-                if redirect.permanently {
-                    answer.extend_from_slice(
-                        format!(
-                            "Status: 301 {}\r\nLocation: {}\r\n\r\n",
-                            Worker::http_code_get(301),
-                            redirect.url
-                        )
-                        .as_bytes(),
-                    );
-                } else {
-                    answer.extend_from_slice(
-                        format!(
-                            "Status: 302 {}\r\nLocation: {}\r\n\r\n",
-                            Worker::http_code_get(302),
-                            redirect.url
-                        )
-                        .as_bytes(),
-                    );
-                }
                 // Stopping a call in a parallel thread
                 tokio::spawn(async move {
                     let mut vec = Vec::with_capacity(32);
@@ -260,6 +363,17 @@ impl Worker {
                     }
                     Action::clean_file(vec).await;
                 });
+                // Write status
+                let mut answer: Vec<u8> = Vec::with_capacity(512);
+                if redirect.permanently {
+                    answer.extend_from_slice(
+                        format!("Status: 301 {}\r\nLocation: {}\r\n\r\n", Worker::http_code_get(301), redirect.url).as_bytes(),
+                    );
+                } else {
+                    answer.extend_from_slice(
+                        format!("Status: 302 {}\r\nLocation: {}\r\n\r\n", Worker::http_code_get(302), redirect.url).as_bytes(),
+                    );
+                }
                 return answer;
             }
         };
@@ -279,41 +393,23 @@ impl Worker {
         if let Some(redirect) = action.response.redirect.as_ref() {
             if redirect.permanently {
                 answer.extend_from_slice(
-                    format!(
-                        "Status: 301 {}\r\nLocation: {}\r\n",
-                        Worker::http_code_get(301),
-                        redirect.url
-                    )
-                    .as_bytes(),
+                    format!("Status: 301 {}\r\nLocation: {}\r\n", Worker::http_code_get(301), redirect.url).as_bytes(),
                 );
             } else {
                 answer.extend_from_slice(
-                    format!(
-                        "Status: 302 {}\r\nLocation: {}\r\n",
-                        Worker::http_code_get(302),
-                        redirect.url
-                    )
-                    .as_bytes(),
+                    format!("Status: 302 {}\r\nLocation: {}\r\n", Worker::http_code_get(302), redirect.url).as_bytes(),
                 );
             }
         } else if let Some(code) = action.response.http_code {
-            answer.extend_from_slice(
-                format!("Status: {} {}\r\n", code, Worker::http_code_get(code)).as_bytes(),
-            );
+            answer.extend_from_slice(format!("Status: {} {}\r\n", code, Worker::http_code_get(code)).as_bytes());
         } else {
-            answer.extend_from_slice(
-                format!("Status: 200 {}\r\n", Worker::http_code_get(200)).as_bytes(),
-            );
+            answer.extend_from_slice(format!("Status: 200 {}\r\n", Worker::http_code_get(200)).as_bytes());
         }
 
         // Write Cookie
         let time = Utc::now() + chrono::Duration::seconds(ONE_YEAR);
         let date = time.format("%a, %d-%b-%Y %H:%M:%S GMT").to_string();
-        let secure = if action.request.scheme == "https" {
-            "Secure; "
-        } else {
-            ""
-        };
+        let secure = if action.request.scheme == "https" { "Secure; " } else { "" };
 
         answer.extend_from_slice(
             format!(
@@ -324,15 +420,13 @@ impl Worker {
         );
         // Write Content-Type
         match &action.response.content_type {
-            Some(content_type) => {
-                answer.extend_from_slice(format!("Content-Type: {}\r\n", content_type).as_bytes())
-            }
+            Some(content_type) => answer.extend_from_slice(format!("Content-Type: {}\r\n", content_type).as_bytes()),
             None => answer.extend_from_slice(b"Content-Type: text/html; charset=utf-8\r\n"),
         }
         answer.extend_from_slice(b"Connection: Keep-Alive\r\n");
         // Write headers
-        for head in &action.response.headers {
-            answer.extend_from_slice(format!("{}\r\n", head).as_bytes());
+        for (name, val) in &action.response.headers {
+            answer.extend_from_slice(format!("{}: {}\r\n", name, val).as_bytes());
         }
         // Write Content-Length
         answer.extend_from_slice(format!("Content-Length: {}\r\n\r\n", result.len()).as_bytes());
@@ -408,8 +502,7 @@ impl Worker {
                                         if let Ok(s) = std::str::from_utf8(&data[start..seek]) {
                                             if let Some((l, h)) = found {
                                                 let d = &data[l..start - b_len - 4];
-                                                Worker::get_post_file(h, d, &mut post, &mut file)
-                                                    .await;
+                                                Worker::get_post_file(h, d, &mut post, &mut file).await;
                                             };
                                             found = Some((seek + 4, s));
                                         }

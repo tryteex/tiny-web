@@ -56,11 +56,7 @@ impl Log {
     /// * `number: u16` - Log number;
     /// * `text: Option<String>` - Additional log description.
     pub fn info(number: u16, text: Option<String>) {
-        Log::save(LogText {
-            view: LogView::Info,
-            number,
-            text,
-        });
+        Log::save(LogText { view: LogView::Info, number, text });
     }
 
     /// Save warning message to log file, the program may continue to run.
@@ -70,11 +66,7 @@ impl Log {
     /// * `number: u16` - Log number;
     /// * `text: Option<String>` - Additional log description.
     pub fn warning(number: u16, text: Option<String>) {
-        Log::save(LogText {
-            view: LogView::Warning,
-            number,
-            text,
-        });
+        Log::save(LogText { view: LogView::Warning, number, text });
     }
 
     /// Save stop message to log file, the program must soft stop.
@@ -84,11 +76,7 @@ impl Log {
     /// * `number: u16` - Log number;
     /// * `text: Option<String>` - Additional log description.
     pub fn stop(number: u16, text: Option<String>) {
-        Log::save(LogText {
-            view: LogView::Stop,
-            number,
-            text,
-        });
+        Log::save(LogText { view: LogView::Stop, number, text });
     }
 
     /// Save error message to log file, this is abnormal behavior, the program stops immediately.
@@ -102,11 +90,7 @@ impl Log {
     ///
     /// Program call process::exit(1).
     pub fn error(number: u16, text: Option<String>) -> ! {
-        Log::save(LogText {
-            view: LogView::Error,
-            number,
-            text,
-        });
+        Log::save(LogText { view: LogView::Error, number, text });
         process::exit(number as i32);
     }
 
@@ -155,12 +139,7 @@ impl Log {
                 Log::number_to_text(log.number)
             ),
         };
-        match OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(true)
-            .open(file)
-        {
+        match OpenOptions::new().create(true).write(true).append(true).open(file) {
             Ok(mut file) => match file.write_all(str.as_bytes()) {
                 Ok(f) => f,
                 Err(e) => Log::panic(&e.to_string()),
@@ -176,13 +155,8 @@ impl Log {
     /// * `text: &str` - Panic message.
     fn panic(text: &str) -> ! {
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string();
-        let str = format!(
-            "ID: {} Time: {} Type: {:?} Number: Text: Panic error -> {}\n",
-            process::id(),
-            time,
-            LogView::Critical,
-            text
-        );
+        let str =
+            format!("ID: {} Time: {} Type: {:?} Number: Text: Panic error -> {}\n", process::id(), time, LogView::Critical, text);
         let file = match LOG_FILE.get() {
             Some(path) => path.as_str(),
             None => {
@@ -190,12 +164,7 @@ impl Log {
                 "tiny.log"
             }
         };
-        match OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(true)
-            .open(file)
-        {
+        match OpenOptions::new().create(true).write(true).append(true).open(file) {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
                     let str = format!(
@@ -320,31 +289,7 @@ impl Log {
             2003 => "Can't write temp file",
             2004 => "The temporary file is partially written",
             2005 => "Clock may have gone backwards",
-
-            // FastCGI Error
-            2100 => "Unable to recognize fastCGI record",
-            2101 => "Incorrect fastCGI header",
-            2102 => "Unsupport fastCGI header type",
-            2103 => "Unsupport UTF8 symbol in FastCGI params",
-            2104 => "Not all data was written to the stream",
-            2105 => "An error occurred while writing data to the stream",
-
-            // SCGI Error
-            2200 => "Incorrect SCGI init len",
-            2201 => "No SCGI package length found",
-            2202 => "SCGI package is wrong",
-            2203 => "SCGI package is so big",
-            2204 => "Unsupport UTF8 symbol in SCGI params",
-            2205 => "Not all data was written to the stream",
-            2206 => "An error occurred while writing data to the stream",
-
-            // UWSGI Error
-            2300 => "Incorrect UWSGI init len",
-            2301 => "Buffer is full",
-            2302 => "UWSGI package is wrong. Param len=0",
-            2303 => "Unsupport UTF8 symbol in UWSGI params",
-            2304 => "Not all data was written to the stream",
-            2305 => "An error occurred while writing data to the stream",
+            2006 => "System error with buffer",
 
             // Ation engine
             3000 => "Wrong cache type key of Redirect",

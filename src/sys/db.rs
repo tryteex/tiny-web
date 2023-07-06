@@ -163,20 +163,21 @@ impl DB {
                     self.client = Some(client);
                 }
                 Err(e) => {
-                    Log::stop(601, Some(format!("Error: {} => {:#?}", e, &self.sql_conn)));
+                    Log::stop(601, Some(format!("Error: {} => {:?}", e, &self.sql_conn)));
                     return false;
                 }
             },
             None => match self.sql_conn.connect(NoTls).await {
                 Ok((client, connection)) => {
-                    if let Err(e) = connection.await {
-                        Log::warning(612, Some(e.to_string()));
-                        return false;
-                    }
+                    tokio::spawn(async move {
+                        if let Err(e) = connection.await {
+                            Log::warning(612, Some(e.to_string()));
+                        }
+                    });
                     self.client = Some(client);
                 }
                 Err(e) => {
-                    Log::stop(601, Some(format!("Error: {} => {:#?}", e, &self.sql_conn)));
+                    Log::stop(601, Some(format!("Error: {} => {:?}", e, &self.sql_conn)));
                     return false;
                 }
             },
@@ -256,17 +257,7 @@ impl DB {
                         session_id=$6
                 ";
                 vec.push((
-                    client.prepare_typed(
-                        sql,
-                        &[
-                            Type::INT8,
-                            Type::INT8,
-                            Type::BYTEA,
-                            Type::TEXT,
-                            Type::TEXT,
-                            Type::INT8,
-                        ],
-                    ),
+                    client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::BYTEA, Type::TEXT, Type::TEXT, Type::INT8]),
                     sql,
                 ));
 
@@ -276,17 +267,7 @@ impl DB {
                     SELECT $1, $2, $3, $4, now(), now(), $5, $6
                 ";
                 vec.push((
-                    client.prepare_typed(
-                        sql,
-                        &[
-                            Type::INT8,
-                            Type::INT8,
-                            Type::TEXT,
-                            Type::BYTEA,
-                            Type::TEXT,
-                            Type::TEXT,
-                        ],
-                    ),
+                    client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::TEXT, Type::BYTEA, Type::TEXT, Type::TEXT]),
                     sql,
                 ));
 
@@ -326,15 +307,7 @@ impl DB {
                 vec.push((
                     client.prepare_typed(
                         sql,
-                        &[
-                            Type::INT8,
-                            Type::INT8,
-                            Type::INT8,
-                            Type::INT8,
-                            Type::INT8,
-                            Type::INT8,
-                            Type::INT8,
-                        ],
+                        &[Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8],
                     ),
                     sql,
                 ));
@@ -385,11 +358,7 @@ impl DB {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Get result.
-    pub async fn query_params(
-        &mut self,
-        query: &str,
-        params: &[&(dyn ToSql + Sync)],
-    ) -> Option<Vec<Row>> {
+    pub async fn query_params(&mut self, query: &str, params: &[&(dyn ToSql + Sync)]) -> Option<Vec<Row>> {
         match self.exec(query, params).await {
             DBResult::Ok(r) => Some(r),
             DBResult::ErrQuery(e) => {
@@ -455,11 +424,7 @@ impl DB {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Results.
-    pub async fn query_fast(
-        &mut self,
-        index: usize,
-        params: &[&(dyn ToSql + Sync)],
-    ) -> Option<Vec<Row>> {
+    pub async fn query_fast(&mut self, index: usize, params: &[&(dyn ToSql + Sync)]) -> Option<Vec<Row>> {
         let statement = match self.prepare.get(index) {
             Some(s) => s.statement.clone(),
             None => return None,

@@ -254,10 +254,7 @@ impl Init {
                                                 }
                                             }
                                             Err(e) => {
-                                                Log::stop(
-                                                    14,
-                                                    Some(format!("{}. Error: {}", &p, e)),
-                                                );
+                                                Log::stop(14, Some(format!("{}. Error: {}", &p, e)));
                                                 return None;
                                             }
                                         }
@@ -379,13 +376,7 @@ impl Init {
     /// `Option<Config>` - Option of parsed configuration:
     ///   * `None` - Configuration contains errors;
     ///   * `Some(Config)` - is ok.
-    fn load_conf(
-        text: String,
-        check_salt: bool,
-        name: &str,
-        version: &str,
-        desc: &str,
-    ) -> Option<Config> {
+    fn load_conf(text: String, check_salt: bool, name: &str, version: &str, desc: &str) -> Option<Config> {
         let num_cpus = num_cpus::get();
         let mut num_connections = num_cpus * 3;
         let mut conf = Config {
@@ -396,15 +387,9 @@ impl Init {
             log: "tiny.log".to_owned(),
             max: num_cpus,
             bind_accept: AcceptAddr::Any,
-            bind: Addr::SocketAddr(SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-                12500,
-            )),
+            bind: Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500)),
             rpc_accept: AcceptAddr::IpAddr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
-            rpc: Addr::SocketAddr(SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-                12501,
-            )),
+            rpc: Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12501)),
             salt: "".to_owned(),
             db: DBConfig {
                 host: "".to_owned(),
@@ -446,9 +431,7 @@ impl Init {
                                                 Log::warning(52, Some(val.to_owned()));
                                             }
                                         }
-                                        Err(e) => {
-                                            Log::warning(52, Some(format!("{} ({})", e, val)))
-                                        }
+                                        Err(e) => Log::warning(52, Some(format!("{} ({})", e, val))),
                                     }
                                 }
                             }
@@ -467,9 +450,7 @@ impl Init {
                                 } else {
                                     match IpAddr::from_str(val) {
                                         Ok(ip) => conf.bind_accept = AcceptAddr::IpAddr(ip),
-                                        Err(e) => {
-                                            Log::warning(53, Some(format!("{} ({})", e, val)))
-                                        }
+                                        Err(e) => Log::warning(53, Some(format!("{} ({})", e, val))),
                                     };
                                 }
                             }
@@ -477,9 +458,7 @@ impl Init {
                                 if val.contains(':') {
                                     match SocketAddr::from_str(val) {
                                         Ok(s) => conf.bind = Addr::SocketAddr(s),
-                                        Err(e) => {
-                                            Log::warning(54, Some(format!("{} ({})", e, val)))
-                                        }
+                                        Err(e) => Log::warning(54, Some(format!("{} ({})", e, val))),
                                     }
                                 } else {
                                     #[cfg(target_family = "windows")]
@@ -509,9 +488,7 @@ impl Init {
                                 } else {
                                     match IpAddr::from_str(val) {
                                         Ok(ip) => conf.rpc_accept = AcceptAddr::IpAddr(ip),
-                                        Err(e) => {
-                                            Log::warning(55, Some(format!("{} ({})", e, val)))
-                                        }
+                                        Err(e) => Log::warning(55, Some(format!("{} ({})", e, val))),
                                     };
                                 }
                             }
@@ -519,9 +496,7 @@ impl Init {
                                 if val.contains(':') {
                                     match SocketAddr::from_str(val) {
                                         Ok(s) => conf.rpc = Addr::SocketAddr(s),
-                                        Err(e) => {
-                                            Log::warning(56, Some(format!("{} ({})", e, val)))
-                                        }
+                                        Err(e) => Log::warning(56, Some(format!("{} ({})", e, val))),
                                     }
                                 } else {
                                     #[cfg(target_family = "windows")]
@@ -575,9 +550,7 @@ impl Init {
                                                 Log::warning(58, Some(val.to_owned()));
                                             }
                                         }
-                                        Err(e) => {
-                                            Log::warning(58, Some(format!("{} ({})", e, val)))
-                                        }
+                                        Err(e) => Log::warning(58, Some(format!("{} ({})", e, val))),
                                     }
                                 }
                             }
