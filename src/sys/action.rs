@@ -1,3 +1,4 @@
+use chrono::{serde::ts_seconds::serialize as to_ts, Utc};
 use std::{
     collections::{BTreeMap, HashMap},
     future::Future,
@@ -6,8 +7,9 @@ use std::{
     sync::Arc,
 };
 
-use chrono::Local;
+use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha3::{Digest, Sha3_512};
 use tokio::{fs::remove_file, sync::Mutex};
 
@@ -15,7 +17,7 @@ use crate::{fnv1a_64, ERR_ID, INDEX_ID, NOT_FOUND_ID};
 
 use super::{
     cache::Cache,
-    html::{Html, Node},
+    html::{Html, Nodes},
     lang::Lang,
     log::Log,
     pool::DBPool,
@@ -34,17 +36,21 @@ pub type Act = fn(&mut Action) -> Pin<Box<dyn Future<Output = Answer> + Send + '
 /// * 3 - Action ID
 pub type ActMap = BTreeMap<i64, BTreeMap<i64, BTreeMap<i64, Act>>>;
 
-/// Data transferred between controllers template markers and cache
+/// Data transferred between controllers, template, markers, database and cache
 ///
 /// # Values
 ///
 /// * `None` - No data transferred.
-/// * `U8(u8)` - u8 data.
+/// * `Usize(usize)` - No data transferred.
+/// * `I16(i16)` - No data transferred.
+/// * `I32(i32)` - No data transferred.
 /// * `I64(i64)` - i64 data.
-/// * `U64(u64)` - u64 data.
+/// * `F32(f32)` - f32 data.
 /// * `F64(f64)` - f64 data.
 /// * `Bool(bool)` - bool data.
 /// * `String(String)` - String data.
+/// * `Date(DateTime<Utc>)` - Chrono dateTime.
+/// * `Json(Value)` - Serde json.
 /// * `Vec(Vec<Data>)` - List of `Data`.
 /// * `Map(BTreeMap<i64, Data>)` - Map of `Data`.
 /// * `Route(Route)` - Route data.
@@ -53,20 +59,31 @@ pub type ActMap = BTreeMap<i64, BTreeMap<i64, BTreeMap<i64, Act>>>;
 pub enum Data {
     /// No data transferred.
     None,
-    /// u8 data.
-    U8(u8),
+    /// usize data.
+    Usize(usize),
+    /// i16 data.
+    I16(i16),
+    /// i32 data.
+    I32(i32),
     /// i64 data.
     I64(i64),
-    /// u64 data.
-    U64(u64),
+    /// f32 data.
+    F32(f32),
     /// f64 data.
     F64(f64),
     /// bool data.
     Bool(bool),
     /// String data.
     String(String),
+    /// DateTime.
+    #[serde(serialize_with = "to_ts")]
+    Date(DateTime<Utc>),
+    /// Json
+    Json(Value),
     /// List of `Data`.
     Vec(Vec<Data>),
+    /// Raw data,
+    Raw(Vec<u8>),
     /// Map of `Data`.
     Map(BTreeMap<i64, Data>),
     /// Route data.
@@ -344,7 +361,7 @@ pub struct Action {
     /// Current class ID
     current_class_id: i64,
     /// Current templates
-    html: Option<Arc<BTreeMap<i64, Vec<Node>>>>,
+    html: Option<Arc<BTreeMap<i64, Nodes>>>,
     /// Current translates
     lang: Option<Arc<BTreeMap<i64, String>>>,
 
@@ -357,7 +374,7 @@ pub struct Action {
     /// Cache
     cache: Arc<Mutex<Cache>>,
     /// Database pool
-    db: Arc<DBPool>,
+    pub db: Arc<DBPool>,
 
     /// Internal call of controller
     pub internal: bool,
@@ -817,8 +834,8 @@ impl Action {
     }
 
     /// Set value for the template
-    pub fn set(&mut self, text: &str, value: Data) {
-        self.data.insert(fnv1a_64(text), value);
+    pub fn set(&mut self, key: &str, value: Data) {
+        self.data.insert(fnv1a_64(key), value);
     }
 
     /// Render template
@@ -831,7 +848,7 @@ impl Action {
             Some(h) => {
                 let key = fnv1a_64(template);
                 match h.get(&key) {
-                    Some(vec) => Html::render(&self.data, vec, None),
+                    Some(vec) => Html::render(&self.data, vec),
                     None => Answer::None,
                 }
             }

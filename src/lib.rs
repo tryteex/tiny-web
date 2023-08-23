@@ -38,7 +38,7 @@ pub const NOT_FOUND_ID: i64 = -1573091631220776463;
 ///
 /// i64 hash
 #[inline]
-fn fnv1a_64(text: &str) -> i64 {
+pub fn fnv1a_64(text: &str) -> i64 {
     let mut hash: u64 = 0xcbf29ce484222325;
     let prime: u64 = 0x100000001b3;
 

@@ -22,8 +22,6 @@ pub struct LangItem {
     pub id: i64,
     /// Languane name ISO 639-1: uk - ukrainian, en - english, en - english
     pub lang: String,
-    /// Languane code ISO 3166 alpha-2: ua - Ukraine, us - USA, gb - United Kingdom
-    pub code: String,
     /// Native name of the language
     pub name: String,
 }
@@ -107,8 +105,8 @@ impl Lang {
         let mut codes = BTreeMap::new();
         let mut default = 0;
         for item in &langs {
-            codes.insert(item.code.clone(), item.id);
-            if item.code == default_lang {
+            codes.insert(item.lang.clone(), item.id);
+            if item.lang == default_lang {
                 default = item.id as usize;
             }
         }

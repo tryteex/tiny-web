@@ -64,12 +64,12 @@ impl Go {
     /// `Some(JoinHandle)` - Handler for main tokio thread
     async fn listen(init: &Init, stop: Arc<AtomicBool>, func: impl Fn() -> ActMap) -> Option<JoinHandle<()>> {
         // Open bind port
-        let bind = match init.conf.bind {
-            Addr::SocketAddr(a) => TcpListener::bind(a),
+        let bind = match &init.conf.bind {
+            Addr::SocketAddr(a) => TcpListener::bind(a).await,
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(s) => TcpListener::bind(s),
+            Addr::UDS(s) => TcpListener::bind(s).await,
         };
-        let bind = match bind.await {
+        let bind = match bind {
             Ok(i) => i,
             Err(e) => {
                 Log::stop(500, Some(e.to_string()));
@@ -190,12 +190,12 @@ impl Go {
     /// Listens for rcp connection
     async fn listen_rpc(conf: &Config, stop: Arc<AtomicBool>, main: JoinHandle<()>) {
         // Open rpc port
-        let rpc = match conf.rpc {
-            Addr::SocketAddr(a) => TcpListener::bind(a),
+        let rpc = match &conf.rpc {
+            Addr::SocketAddr(a) => TcpListener::bind(a).await,
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(s) => TcpListener::bind(s),
+            Addr::UDS(s) => TcpListener::bind(s).await,
         };
-        let rpc = match rpc.await {
+        let rpc = match rpc {
             Ok(i) => i,
             Err(e) => {
                 Log::stop(202, Some(e.to_string()));
@@ -255,30 +255,36 @@ impl Go {
     /// Send stop signal to bind port
     async fn send_stop(addr: &Addr) {
         #[allow(clippy::infallible_destructuring_match)]
-        let socket = match addr {
-            Addr::SocketAddr(s) => s,
-            #[cfg(not(target_family = "windows"))]
-            UDS(s) => SocketAddr::from(s),
-        };
-        match time::timeout(Duration::from_secs(1), TcpStream::connect(socket)).await {
-            Ok(stream) => {
-                if let Err(e) = stream {
-                    Log::warning(222, Some(e.to_string()))
+        match addr {
+            Addr::SocketAddr(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {
+                Ok(stream) => {
+                    if let Err(e) = stream {
+                        Log::warning(222, Some(e.to_string()))
+                    }
                 }
-            }
-            Err(_) => Log::warning(221, None),
+                Err(_) => Log::warning(221, None),
+            },
+            #[cfg(not(target_family = "windows"))]
+            Addr::UDS(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {
+                Ok(stream) => {
+                    if let Err(e) = stream {
+                        Log::warning(222, Some(e.to_string()))
+                    }
+                }
+                Err(_) => Log::warning(221, None),
+            },
         }
     }
 
     /// Get list of enabled langs from database
     async fn get_langs(db: &mut DBPool) -> Vec<LangItem> {
         let sql = "
-            SELECT lang_id, lang, code, name
+            SELECT lang_id, lang, name
             FROM lang
             WHERE enable
             ORDER BY sort
         ";
-        let res = match db.query(sql).await {
+        let res = match db.query_raw(sql).await {
             Some(res) => res,
             None => {
                 Log::warning(1150, None);
@@ -288,12 +294,7 @@ impl Go {
         let mut vec = Vec::with_capacity(res.len());
         for row in res {
             let id = row.get::<usize, i64>(0);
-            vec.push(LangItem {
-                id,
-                code: row.get(1),
-                lang: row.get(2),
-                name: row.get(3),
-            });
+            vec.push(LangItem { id, lang: row.get(1), name: row.get(2) });
         }
         vec.shrink_to_fit();
         vec

@@ -1,5 +1,3 @@
 /target
 Cargo.lock
-tiny.log
-tiny.conf
 rustfmt.toml

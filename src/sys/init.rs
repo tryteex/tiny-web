@@ -172,30 +172,7 @@ pub struct Init {
 impl Init {
     /// Initializes the server configuration
     pub fn new(name: &str, version: &str, desc: &str) -> Option<Init> {
-        let exe_file = match env::current_exe() {
-            Ok(e) => match e.to_str() {
-                Some(e) => {
-                    if &e[..2] == "\\\\" {
-                        if &e[..4] == "\\\\?\\" {
-                            e[4..].replace('\\', "/")
-                        } else {
-                            Log::stop(12, Some(e.to_string()));
-                            return None;
-                        }
-                    } else {
-                        e.replace('\\', "/")
-                    }
-                }
-                None => {
-                    Log::stop(11, Some(e.to_string_lossy().to_string()));
-                    return None;
-                }
-            },
-            Err(e) => {
-                Log::stop(10, Some(e.to_string()));
-                return None;
-            }
-        };
+        let exe_file = Init::get_current_exe()?;
 
         let exe_path = match exe_file.rfind('/') {
             Some(i) => exe_file[..i].to_owned(),
@@ -289,6 +266,35 @@ impl Init {
             conf_file,
             root_path,
         })
+    }
+
+    /// Get the path to the current executable
+    pub fn get_current_exe() -> Option<String> {
+        let exe = match env::current_exe() {
+            Ok(e) => match e.to_str() {
+                Some(e) => {
+                    if &e[..2] == "\\\\" {
+                        if &e[..4] == "\\\\?\\" {
+                            e[4..].replace('\\', "/")
+                        } else {
+                            Log::stop(12, Some(e.to_string()));
+                            return None;
+                        }
+                    } else {
+                        e.replace('\\', "/")
+                    }
+                }
+                None => {
+                    Log::stop(11, Some(e.to_string_lossy().to_string()));
+                    return None;
+                }
+            },
+            Err(e) => {
+                Log::stop(10, Some(e.to_string()));
+                return None;
+            }
+        };
+        Some(exe)
     }
 
     /// Try to read configuration file
@@ -466,7 +472,7 @@ impl Init {
                                         Log::warning(54, Some(val.to_owned()));
                                     }
                                     #[cfg(not(target_family = "windows"))]
-                                    if val.len() == 0 || &val[0] != "/" {
+                                    if val.is_empty() || &val[..1] != "/" {
                                         Log::warning(54, None);
                                     } else {
                                         conf.bind = Addr::UDS(val.to_owned());
@@ -504,7 +510,7 @@ impl Init {
                                         Log::warning(56, Some(val.to_owned()));
                                     }
                                     #[cfg(not(target_family = "windows"))]
-                                    if val.len() == 0 || &val[0] != "/" {
+                                    if val.is_empty() || &val[..1] != "/" {
                                         Log::warning(56, None);
                                     } else {
                                         conf.rpc = Addr::UDS(val.to_owned());
@@ -554,7 +560,11 @@ impl Init {
                                     }
                                 }
                             }
-                            "zone" => conf.db.zone = Some(val.to_owned()),
+                            "zone" => {
+                                if !val.is_empty() {
+                                    conf.db.zone = Some(val.to_owned())
+                                }
+                            }
                             _ => {}
                         };
                     }

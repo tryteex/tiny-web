@@ -3,7 +3,7 @@ use std::sync::Arc;
 use postgres::{types::ToSql, Row};
 use tokio::sync::{Mutex, Semaphore};
 
-use super::{db::DB, init::DBConfig, log::Log};
+use super::{action::Data, db::DB, init::DBConfig, log::Log};
 
 /// Pool of database connections for asynchronous work.
 ///
@@ -91,7 +91,7 @@ impl DBPool {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Results.
-    pub async fn query(&self, query: &str) -> Option<Vec<Row>> {
+    pub async fn query_raw(&self, query: &str) -> Option<Vec<Row>> {
         let permit = match self.semaphore.acquire().await {
             Ok(p) => p,
             Err(e) => {
@@ -101,7 +101,39 @@ impl DBPool {
         };
         for connection_mutex in &self.connections {
             if let Ok(mut db) = connection_mutex.try_lock() {
-                let res = db.query(query).await;
+                let res = db.query_raw(query).await;
+                drop(db);
+                drop(permit);
+                return res;
+            }
+        }
+        drop(permit);
+        Log::warning(607, None);
+        None
+    }
+
+    /// Execute query to database synchronously
+    ///
+    /// # Parmeters
+    ///
+    /// * `query: &str` - SQL query;
+    /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
+    ///
+    /// # Return
+    ///
+    /// * `Option::None` - When error query or diconnected;
+    /// * `Option::Some(Vec<Data>)` - Results.
+    pub async fn query(&self, query: &str, assoc: bool) -> Option<Vec<Data>> {
+        let permit = match self.semaphore.acquire().await {
+            Ok(p) => p,
+            Err(e) => {
+                Log::warning(606, Some(e.to_string()));
+                return None;
+            }
+        };
+        for connection_mutex in &self.connections {
+            if let Ok(mut db) = connection_mutex.try_lock() {
+                let res = db.query(query, assoc).await;
                 drop(db);
                 drop(permit);
                 return res;

@@ -54,19 +54,197 @@ CREATE TABLE "public"."lang" (
   "name" text COLLATE "pg_catalog"."default" NOT NULL,
   "enable" bool NOT NULL DEFAULT true,
   "lang" text COLLATE "pg_catalog"."default" NOT NULL,
-  "sort" int8 NOT NULL,
-  "code" text COLLATE "pg_catalog"."default" NOT NULL
+  "sort" int8 NOT NULL
 );
 COMMENT ON COLUMN "public"."lang"."lang_id" IS 'Identifier';
 COMMENT ON COLUMN "public"."lang"."name" IS 'Language name';
 COMMENT ON COLUMN "public"."lang"."enable" IS 'Enable';
 COMMENT ON COLUMN "public"."lang"."lang" IS 'ISO 639-1 : uk - ukrainian, en - english';
-COMMENT ON COLUMN "public"."lang"."sort" IS 'Order';
-COMMENT ON COLUMN "public"."lang"."code" IS 'ISO 3166 alpha-2: ua - Ukraine, us - USA, gb - United Kingdom';
+COMMENT ON COLUMN "public"."lang"."sort" IS 'Sort order';
 COMMENT ON TABLE "public"."lang" IS 'Languages';
 
-INSERT INTO "public"."lang" VALUES (0, 'English', 't', 'en', 0, 'us');
-INSERT INTO "public"."lang" VALUES (1, 'Українська', 't', 'uk', 1, 'ua');
+INSERT INTO "public"."lang" VALUES (0, 'English', 'f', 'en', 0);
+INSERT INTO "public"."lang" VALUES (1, 'Ukrainian (Українська)', 'f', 'uk', 1);
+INSERT INTO "public"."lang" VALUES (2, 'Afar (Afaraf)', 'f', 'aa', 2);
+INSERT INTO "public"."lang" VALUES (3, 'Abkhaz (аҧсуа бызшәа, аҧсшәа)', 'f', 'ab', 3);
+INSERT INTO "public"."lang" VALUES (4, 'Avestan (avesta)', 'f', 'ae', 4);
+INSERT INTO "public"."lang" VALUES (5, 'Afrikaans', 'f', 'af', 5);
+INSERT INTO "public"."lang" VALUES (6, 'Akan', 'f', 'ak', 6);
+INSERT INTO "public"."lang" VALUES (7, 'Amharic (አማርኛ)', 'f', 'am', 7);
+INSERT INTO "public"."lang" VALUES (8, 'Aragonese (aragonés)', 'f', 'an', 8);
+INSERT INTO "public"."lang" VALUES (9, 'Arabic (العربية)', 'f', 'ar', 9);
+INSERT INTO "public"."lang" VALUES (10, 'Assamese (অসমীয়া)', 'f', 'as', 10);
+INSERT INTO "public"."lang" VALUES (11, 'Avaric (авар мацӀ, магӀарул мацӀ)', 'f', 'av', 11);
+INSERT INTO "public"."lang" VALUES (12, 'Aymara (aymar aru)', 'f', 'ay', 12);
+INSERT INTO "public"."lang" VALUES (13, 'Azerbaijani (azərbaycan dili)', 'f', 'az', 13);
+INSERT INTO "public"."lang" VALUES (14, 'Bashkir (башҡорт теле)', 'f', 'ba', 14);
+INSERT INTO "public"."lang" VALUES (15, 'Bulgarian (български език)', 'f', 'bg', 15);
+INSERT INTO "public"."lang" VALUES (16, 'Bihari (भोजपुरी)', 'f', 'bh', 16);
+INSERT INTO "public"."lang" VALUES (17, 'Bislama', 'f', 'bi', 17);
+INSERT INTO "public"."lang" VALUES (18, 'Bambara (bamanankan)', 'f', 'bm', 18);
+INSERT INTO "public"."lang" VALUES (19, 'Bengali, Bangla (বাংলা)', 'f', 'bn', 19);
+INSERT INTO "public"."lang" VALUES (20, 'Tibetan Standard, Tibetan, Central (བོད་ཡིག)', 'f', 'bo', 20);
+INSERT INTO "public"."lang" VALUES (21, 'Breton (brezhoneg)', 'f', 'br', 21);
+INSERT INTO "public"."lang" VALUES (22, 'Bosnian (bosanski jezik)', 'f', 'bs', 22);
+INSERT INTO "public"."lang" VALUES (23, 'Catalan (català)', 'f', 'ca', 23);
+INSERT INTO "public"."lang" VALUES (24, 'Chechen (нохчийн мотт)', 'f', 'ce', 24);
+INSERT INTO "public"."lang" VALUES (25, 'Chamorro (Chamoru)', 'f', 'ch', 25);
+INSERT INTO "public"."lang" VALUES (26, 'Corsican (corsu, lingua corsa)', 'f', 'co', 26);
+INSERT INTO "public"."lang" VALUES (27, 'Cree (ᓀᐦᐃᔭᐍᐏᐣ)', 'f', 'cr', 27);
+INSERT INTO "public"."lang" VALUES (28, 'Czech (čeština, český jazyk)', 'f', 'cs', 28);
+INSERT INTO "public"."lang" VALUES (29, 'Old Church Slavonic, Church Slavonic, Old Bulgarian (ѩзыкъ словѣньскъ)', 'f', 'cu', 29);
+INSERT INTO "public"."lang" VALUES (30, 'Chuvash (чӑваш чӗлхи)', 'f', 'cv', 30);
+INSERT INTO "public"."lang" VALUES (31, 'Welsh (Cymraeg)', 'f', 'cy', 31);
+INSERT INTO "public"."lang" VALUES (32, 'Danish (dansk)', 'f', 'da', 32);
+INSERT INTO "public"."lang" VALUES (33, 'German (Deutsch)', 'f', 'de', 33);
+INSERT INTO "public"."lang" VALUES (34, 'Divehi, Dhivehi, Maldivian (ދިވެހި)', 'f', 'dv', 34);
+INSERT INTO "public"."lang" VALUES (35, 'Dzongkha (རྫོང་ཁ)', 'f', 'dz', 35);
+INSERT INTO "public"."lang" VALUES (36, 'Ewe (Eʋegbe)', 'f', 'ee', 36);
+INSERT INTO "public"."lang" VALUES (37, 'Greek (modern) (ελληνικά)', 'f', 'el', 37);
+INSERT INTO "public"."lang" VALUES (38, 'Esperanto', 'f', 'eo', 38);
+INSERT INTO "public"."lang" VALUES (39, 'Spanish (Español)', 'f', 'es', 39);
+INSERT INTO "public"."lang" VALUES (40, 'Estonian (eesti, eesti keel)', 'f', 'et', 40);
+INSERT INTO "public"."lang" VALUES (41, 'Basque (euskara, euskera)', 'f', 'eu', 41);
+INSERT INTO "public"."lang" VALUES (42, 'Persian (Farsi) (فارسی)', 'f', 'fa', 42);
+INSERT INTO "public"."lang" VALUES (43, 'Fula, Fulah, Pulaar, Pular (Fulfulde, Pulaar, Pular)', 'f', 'ff', 43);
+INSERT INTO "public"."lang" VALUES (44, 'Finnish (suomi, suomen kieli)', 'f', 'fi', 44);
+INSERT INTO "public"."lang" VALUES (45, 'Fijian (vosa Vakaviti)', 'f', 'fj', 45);
+INSERT INTO "public"."lang" VALUES (46, 'Faroese (føroyskt)', 'f', 'fo', 46);
+INSERT INTO "public"."lang" VALUES (47, 'French (français, langue française)', 'f', 'fr', 47);
+INSERT INTO "public"."lang" VALUES (48, 'Western Frisian (Frysk)', 'f', 'fy', 48);
+INSERT INTO "public"."lang" VALUES (49, 'Irish (Gaeilge)', 'f', 'ga', 49);
+INSERT INTO "public"."lang" VALUES (50, 'Scottish Gaelic, Gaelic (Gàidhlig)', 'f', 'gd', 50);
+INSERT INTO "public"."lang" VALUES (51, 'Galician (galego)', 'f', 'gl', 51);
+INSERT INTO "public"."lang" VALUES (52, 'Guaraní (Avañe''ẽ)', 'f', 'gn', 52);
+INSERT INTO "public"."lang" VALUES (53, 'Gujarati (ગુજરાતી)', 'f', 'gu', 53);
+INSERT INTO "public"."lang" VALUES (54, 'Manx (Gaelg, Gailck)', 'f', 'gv', 54);
+INSERT INTO "public"."lang" VALUES (55, 'Hausa ((Hausa) هَوُسَ)', 'f', 'ha', 55);
+INSERT INTO "public"."lang" VALUES (56, 'Hebrew (modern) (עברית)', 'f', 'he', 56);
+INSERT INTO "public"."lang" VALUES (57, 'Hindi (हिन्दी, हिंदी)', 'f', 'hi', 57);
+INSERT INTO "public"."lang" VALUES (58, 'Hiri Motu', 'f', 'ho', 58);
+INSERT INTO "public"."lang" VALUES (59, 'Croatian (hrvatski jezik)', 'f', 'hr', 59);
+INSERT INTO "public"."lang" VALUES (60, 'Haitian, Haitian Creole (Kreyòl ayisyen)', 'f', 'ht', 60);
+INSERT INTO "public"."lang" VALUES (61, 'Hungarian (magyar)', 'f', 'hu', 61);
+INSERT INTO "public"."lang" VALUES (62, 'Armenian (Հայերեն)', 'f', 'hy', 62);
+INSERT INTO "public"."lang" VALUES (63, 'Herero (Otjiherero)', 'f', 'hz', 63);
+INSERT INTO "public"."lang" VALUES (64, 'Interlingua', 'f', 'ia', 64);
+INSERT INTO "public"."lang" VALUES (65, 'Indonesian (Bahasa Indonesia)', 'f', 'id', 65);
+INSERT INTO "public"."lang" VALUES (66, 'Interlingue (Originally called Occidental; then Interlingue after WWII)', 'f', 'ie', 66);
+INSERT INTO "public"."lang" VALUES (67, 'Igbo (Asụsụ Igbo)', 'f', 'ig', 67);
+INSERT INTO "public"."lang" VALUES (68, 'Nuosu (ꆈꌠ꒿ Nuosuhxop)', 'f', 'ii', 68);
+INSERT INTO "public"."lang" VALUES (69, 'Inupiaq (Iñupiaq, Iñupiatun)', 'f', 'ik', 69);
+INSERT INTO "public"."lang" VALUES (70, 'Ido', 'f', 'io', 70);
+INSERT INTO "public"."lang" VALUES (71, 'Icelandic (Íslenska)', 'f', 'is', 71);
+INSERT INTO "public"."lang" VALUES (72, 'Italian (Italiano)', 'f', 'it', 72);
+INSERT INTO "public"."lang" VALUES (73, 'Inuktitut (ᐃᓄᒃᑎᑐᑦ)', 'f', 'iu', 73);
+INSERT INTO "public"."lang" VALUES (74, 'Japanese (日本語 (にほんご))', 'f', 'ja', 74);
+INSERT INTO "public"."lang" VALUES (75, 'Javanese (ꦧꦱꦗꦮ, Basa Jawa)', 'f', 'jv', 75);
+INSERT INTO "public"."lang" VALUES (76, 'Georgian (ქართული)', 'f', 'ka', 76);
+INSERT INTO "public"."lang" VALUES (77, 'Kongo (Kikongo)', 'f', 'kg', 77);
+INSERT INTO "public"."lang" VALUES (78, 'Kikuyu, Gikuyu (Gĩkũyũ)', 'f', 'ki', 78);
+INSERT INTO "public"."lang" VALUES (79, 'Kwanyama, Kuanyama (Kuanyama)', 'f', 'kj', 79);
+INSERT INTO "public"."lang" VALUES (80, 'Kazakh (қазақ тілі)', 'f', 'kk', 80);
+INSERT INTO "public"."lang" VALUES (81, 'Kalaallisut, Greenlandic (kalaallisut, kalaallit oqaasii)', 'f', 'kl', 81);
+INSERT INTO "public"."lang" VALUES (82, 'Khmer (ខ្មែរ, ខេមរភាសា, ភាសាខ្មែរ)', 'f', 'km', 82);
+INSERT INTO "public"."lang" VALUES (83, 'Kannada (ಕನ್ನಡ)', 'f', 'kn', 83);
+INSERT INTO "public"."lang" VALUES (84, 'Korean (한국어)', 'f', 'ko', 84);
+INSERT INTO "public"."lang" VALUES (85, 'Kanuri', 'f', 'kr', 85);
+INSERT INTO "public"."lang" VALUES (86, 'Kashmiri (कश्मीरी, کشمیری)', 'f', 'ks', 86);
+INSERT INTO "public"."lang" VALUES (87, 'Kurdish (Kurdî, كوردی)', 'f', 'ku', 87);
+INSERT INTO "public"."lang" VALUES (88, 'Komi (коми кыв)', 'f', 'kv', 88);
+INSERT INTO "public"."lang" VALUES (89, 'Cornish (Kernewek)', 'f', 'kw', 89);
+INSERT INTO "public"."lang" VALUES (90, 'Kyrgyz (Кыргызча, Кыргыз тили)', 'f', 'ky', 90);
+INSERT INTO "public"."lang" VALUES (91, 'Latin (latine, lingua latina)', 'f', 'la', 91);
+INSERT INTO "public"."lang" VALUES (92, 'Luxembourgish, Letzeburgesch (Lëtzebuergesch)', 'f', 'lb', 92);
+INSERT INTO "public"."lang" VALUES (93, 'Ganda (Luganda)', 'f', 'lg', 93);
+INSERT INTO "public"."lang" VALUES (94, 'Limburgish, Limburgan, Limburger (Limburgs)', 'f', 'li', 94);
+INSERT INTO "public"."lang" VALUES (95, 'Lingala (Lingála)', 'f', 'ln', 95);
+INSERT INTO "public"."lang" VALUES (96, 'Lao (ພາສາລາວ)', 'f', 'lo', 96);
+INSERT INTO "public"."lang" VALUES (97, 'Lithuanian (lietuvių kalba)', 'f', 'lt', 97);
+INSERT INTO "public"."lang" VALUES (98, 'Luba-Katanga (Tshiluba)', 'f', 'lu', 98);
+INSERT INTO "public"."lang" VALUES (99, 'Latvian (latviešu valoda)', 'f', 'lv', 99);
+INSERT INTO "public"."lang" VALUES (100, 'Malagasy (fiteny malagasy)', 'f', 'mg', 100);
+INSERT INTO "public"."lang" VALUES (101, 'Marshallese (Kajin M̧ajeļ)', 'f', 'mh', 101);
+INSERT INTO "public"."lang" VALUES (102, 'Māori (te reo Māori)', 'f', 'mi', 102);
+INSERT INTO "public"."lang" VALUES (103, 'Macedonian (македонски јазик)', 'f', 'mk', 103);
+INSERT INTO "public"."lang" VALUES (104, 'Malayalam (മലയാളം)', 'f', 'ml', 104);
+INSERT INTO "public"."lang" VALUES (105, 'Mongolian (Монгол хэл)', 'f', 'mn', 105);
+INSERT INTO "public"."lang" VALUES (106, 'Marathi (Marāṭhī) (मराठी)', 'f', 'mr', 106);
+INSERT INTO "public"."lang" VALUES (107, 'Malay (bahasa Melayu, بهاس ملايو)', 'f', 'ms', 107);
+INSERT INTO "public"."lang" VALUES (108, 'Maltese (Malti)', 'f', 'mt', 108);
+INSERT INTO "public"."lang" VALUES (109, 'Burmese (ဗမာစာ)', 'f', 'my', 109);
+INSERT INTO "public"."lang" VALUES (110, 'Nauruan (Dorerin Naoero)', 'f', 'na', 110);
+INSERT INTO "public"."lang" VALUES (111, 'Norwegian Bokmål (Norsk bokmål)', 'f', 'nb', 111);
+INSERT INTO "public"."lang" VALUES (112, 'Northern Ndebele (isiNdebele)', 'f', 'nd', 112);
+INSERT INTO "public"."lang" VALUES (113, 'Nepali (नेपाली)', 'f', 'ne', 113);
+INSERT INTO "public"."lang" VALUES (114, 'Ndonga (Owambo)', 'f', 'ng', 114);
+INSERT INTO "public"."lang" VALUES (115, 'Dutch (Nederlands, Vlaams)', 'f', 'nl', 115);
+INSERT INTO "public"."lang" VALUES (116, 'Norwegian Nynorsk (Norsk nynorsk)', 'f', 'nn', 116);
+INSERT INTO "public"."lang" VALUES (117, 'Norwegian (Norsk)', 'f', 'no', 117);
+INSERT INTO "public"."lang" VALUES (118, 'Southern Ndebele (isiNdebele)', 'f', 'nr', 118);
+INSERT INTO "public"."lang" VALUES (119, 'Navajo, Navaho (Diné bizaad)', 'f', 'nv', 119);
+INSERT INTO "public"."lang" VALUES (120, 'Chichewa, Chewa, Nyanja (chiCheŵa, chinyanja)', 'f', 'ny', 120);
+INSERT INTO "public"."lang" VALUES (121, 'Occitan (occitan, lenga d''òc)', 'f', 'oc', 121);
+INSERT INTO "public"."lang" VALUES (122, 'Ojibwe, Ojibwa (ᐊᓂᔑᓈᐯᒧᐎᓐ)', 'f', 'oj', 122);
+INSERT INTO "public"."lang" VALUES (123, 'Oromo (Afaan Oromoo)', 'f', 'om', 123);
+INSERT INTO "public"."lang" VALUES (124, 'Oriya (ଓଡ଼ିଆ)', 'f', 'or', 124);
+INSERT INTO "public"."lang" VALUES (125, 'Ossetian, Ossetic (ирон æвзаг)', 'f', 'os', 125);
+INSERT INTO "public"."lang" VALUES (126, '(Eastern) Punjabi (ਪੰਜਾਬੀ)', 'f', 'pa', 126);
+INSERT INTO "public"."lang" VALUES (127, 'Pāli (पाऴि)', 'f', 'pi', 127);
+INSERT INTO "public"."lang" VALUES (128, 'Polish (język polski, polszczyzna)', 'f', 'pl', 128);
+INSERT INTO "public"."lang" VALUES (129, 'Pashto, Pushto (پښتو)', 'f', 'ps', 129);
+INSERT INTO "public"."lang" VALUES (130, 'Portuguese (Português)', 'f', 'pt', 130);
+INSERT INTO "public"."lang" VALUES (131, 'Quechua (Runa Simi, Kichwa)', 'f', 'qu', 131);
+INSERT INTO "public"."lang" VALUES (132, 'Romansh (rumantsch grischun)', 'f', 'rm', 132);
+INSERT INTO "public"."lang" VALUES (133, 'Kirundi (Ikirundi)', 'f', 'rn', 133);
+INSERT INTO "public"."lang" VALUES (134, 'Romanian (Română)', 'f', 'ro', 134);
+INSERT INTO "public"."lang" VALUES (135, 'Kinyarwanda (Ikinyarwanda)', 'f', 'rw', 135);
+INSERT INTO "public"."lang" VALUES (136, 'Sanskrit (Saṁskṛta) (संस्कृतम्)', 'f', 'sa', 136);
+INSERT INTO "public"."lang" VALUES (137, 'Sardinian (sardu)', 'f', 'sc', 137);
+INSERT INTO "public"."lang" VALUES (138, 'Sindhi (सिन्धी, سنڌي، سندھی)', 'f', 'sd', 138);
+INSERT INTO "public"."lang" VALUES (139, 'Northern Sami (Davvisámegiella)', 'f', 'se', 139);
+INSERT INTO "public"."lang" VALUES (140, 'Sango (yângâ tî sängö)', 'f', 'sg', 140);
+INSERT INTO "public"."lang" VALUES (141, 'Sinhalese, Sinhala (සිංහල)', 'f', 'si', 141);
+INSERT INTO "public"."lang" VALUES (142, 'Slovak (slovenčina, slovenský jazyk)', 'f', 'sk', 142);
+INSERT INTO "public"."lang" VALUES (143, 'Slovene (slovenski jezik, slovenščina)', 'f', 'sl', 143);
+INSERT INTO "public"."lang" VALUES (144, 'Samoan (gagana fa''a Samoa)', 'f', 'sm', 144);
+INSERT INTO "public"."lang" VALUES (145, 'Shona (chiShona)', 'f', 'sn', 145);
+INSERT INTO "public"."lang" VALUES (146, 'Somali (Soomaaliga, af Soomaali)', 'f', 'so', 146);
+INSERT INTO "public"."lang" VALUES (147, 'Albanian (Shqip)', 'f', 'sq', 147);
+INSERT INTO "public"."lang" VALUES (148, 'Serbian (српски језик)', 'f', 'sr', 148);
+INSERT INTO "public"."lang" VALUES (149, 'Swati (SiSwati)', 'f', 'ss', 149);
+INSERT INTO "public"."lang" VALUES (150, 'Southern Sotho (Sesotho)', 'f', 'st', 150);
+INSERT INTO "public"."lang" VALUES (151, 'Sundanese (Basa Sunda)', 'f', 'su', 151);
+INSERT INTO "public"."lang" VALUES (152, 'Swedish (svenska)', 'f', 'sv', 152);
+INSERT INTO "public"."lang" VALUES (153, 'Swahili (Kiswahili)', 'f', 'sw', 153);
+INSERT INTO "public"."lang" VALUES (154, 'Tamil (தமிழ்)', 'f', 'ta', 154);
+INSERT INTO "public"."lang" VALUES (155, 'Telugu (తెలుగు)', 'f', 'te', 155);
+INSERT INTO "public"."lang" VALUES (156, 'Tajik (тоҷикӣ, toçikī, تاجیکی)', 'f', 'tg', 156);
+INSERT INTO "public"."lang" VALUES (157, 'Thai (ไทย)', 'f', 'th', 157);
+INSERT INTO "public"."lang" VALUES (158, 'Tigrinya (ትግርኛ)', 'f', 'ti', 158);
+INSERT INTO "public"."lang" VALUES (159, 'Turkmen (Türkmen, Түркмен)', 'f', 'tk', 159);
+INSERT INTO "public"."lang" VALUES (160, 'Tagalog (Wikang Tagalog)', 'f', 'tl', 160);
+INSERT INTO "public"."lang" VALUES (161, 'Tswana (Setswana)', 'f', 'tn', 161);
+INSERT INTO "public"."lang" VALUES (162, 'Tonga (Tonga Islands) (faka Tonga)', 'f', 'to', 162);
+INSERT INTO "public"."lang" VALUES (163, 'Turkish (Türkçe)', 'f', 'tr', 163);
+INSERT INTO "public"."lang" VALUES (164, 'Tsonga (Xitsonga)', 'f', 'ts', 164);
+INSERT INTO "public"."lang" VALUES (165, 'Tatar (татар теле, tatar tele)', 'f', 'tt', 165);
+INSERT INTO "public"."lang" VALUES (166, 'Twi', 'f', 'tw', 166);
+INSERT INTO "public"."lang" VALUES (167, 'Tahitian (Reo Tahiti)', 'f', 'ty', 167);
+INSERT INTO "public"."lang" VALUES (168, 'Uyghur (ئۇيغۇرچە, Uyghurche)', 'f', 'ug', 168);
+INSERT INTO "public"."lang" VALUES (169, 'Urdu (اردو)', 'f', 'ur', 169);
+INSERT INTO "public"."lang" VALUES (170, 'Uzbek (Oʻzbek, Ўзбек, أۇزبېك)', 'f', 'uz', 170);
+INSERT INTO "public"."lang" VALUES (171, 'Venda (Tshivenḓa)', 'f', 've', 171);
+INSERT INTO "public"."lang" VALUES (172, 'Vietnamese (Tiếng Việt)', 'f', 'vi', 172);
+INSERT INTO "public"."lang" VALUES (173, 'Volapük', 'f', 'vo', 173);
+INSERT INTO "public"."lang" VALUES (174, 'Walloon (walon)', 'f', 'wa', 174);
+INSERT INTO "public"."lang" VALUES (175, 'Wolof (Wollof)', 'f', 'wo', 175);
+INSERT INTO "public"."lang" VALUES (176, 'Xhosa (isiXhosa)', 'f', 'xh', 176);
+INSERT INTO "public"."lang" VALUES (177, 'Yiddish (ייִדיש)', 'f', 'yi', 177);
+INSERT INTO "public"."lang" VALUES (178, 'Yoruba (Yorùbá)', 'f', 'yo', 178);
+INSERT INTO "public"."lang" VALUES (179, 'Zhuang, Chuang (Saɯ cueŋƅ, Saw cuengh)', 'f', 'za', 179);
+INSERT INTO "public"."lang" VALUES (180, 'Chinese (中文 (Zhōngwén), 汉语, 漢語)', 'f', 'zh', 180);
+INSERT INTO "public"."lang" VALUES (181, 'Zulu (isiZulu)', 'f', 'zu', 181);
 
 -- ----------------------------
 -- Table structure for redirect
@@ -187,7 +365,7 @@ INSERT INTO "public"."user" VALUES (0, 't', 0, '2023-01-01 00:00:00+02', 't', 0)
 -- ----------------------------
 SELECT setval('"public"."access_access_id_seq"', 1, true);
 SELECT setval('"public"."controller_controller_id_seq"', 4, true);
-SELECT setval('"public"."lang_lang_id_seq"', 1, true);
+SELECT setval('"public"."lang_lang_id_seq"', 181, true);
 SELECT setval('"public"."role_role_id_seq"', 2, true);
 SELECT setval('"public"."user_user_id_seq"', 1, false);
 
@@ -232,15 +410,8 @@ ALTER TABLE "public"."controller" ADD CONSTRAINT "controller_pkey" PRIMARY KEY (
 -- ----------------------------
 -- Indexes structure for table lang
 -- ----------------------------
-CREATE INDEX "lang_code_idx" ON "public"."lang" USING btree (
-  "code" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
-);
 CREATE INDEX "lang_enable_idx" ON "public"."lang" USING btree (
   "enable" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE UNIQUE INDEX "lang_lang_code_idx" ON "public"."lang" USING btree (
-  "lang" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST,
-  "code" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST
 );
 CREATE INDEX "lang_lang_idx" ON "public"."lang" USING btree (
   "lang" COLLATE "pg_catalog"."default" "pg_catalog"."text_ops" ASC NULLS LAST

@@ -248,6 +248,7 @@ impl Log {
             220 => "An error occurred while waiting for the main thread to stop",
             221 => "Unable to connect to server due to timeout",
             222 => "Can't connect to server",
+            223 => "Can't set write_timeout",
 
             500 => "Unable to open server port",
             501 => "IP address from which to accept connections is not allowed",
@@ -270,6 +271,10 @@ impl Log {
             611 => "Error close connection task in connection with database",
             612 => "Error close connection with database",
             613 => "Can't prepare statement",
+            614 => "Unknown database type",
+
+            700 => "Error parse html template",
+
 
             1100 => "Can't open root_dir/app",
             1101 => "Can't get dir entry",

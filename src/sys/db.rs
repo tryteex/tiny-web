@@ -1,11 +1,15 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
+use chrono::{DateTime, Utc};
 use native_tls::Protocol;
 use postgres::{types::ToSql, NoTls, Row, Statement, ToStatement};
 use postgres_native_tls::MakeTlsConnector;
+use serde_json::Value;
 use tokio_postgres::types::Type;
 
-use super::{init::DBConfig, log::Log};
+use crate::fnv1a_64;
+
+use super::{action::Data, init::DBConfig, log::Log};
 
 const PREPARE_CAPACITY: usize = 8;
 
@@ -336,7 +340,7 @@ impl DB {
                             self.prepare.push(DBStatement { statement: s, sql });
                         }
                         Err(e) => {
-                            Log::stop(613, Some(format!("Error={}. sql={}", e, sql.to_owned())));
+                            Log::stop(613, Some(format!("Error={}. sql={}", e, sql)));
                             return false;
                         }
                     }
@@ -380,7 +384,7 @@ impl DB {
         }
     }
 
-    /// Execute query to database
+    /// Execute query to database and return a raw result
     ///
     /// # Parmeters
     ///
@@ -391,7 +395,7 @@ impl DB {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Results.
-    pub async fn query(&mut self, query: &str) -> Option<Vec<Row>> {
+    pub async fn query_raw(&mut self, query: &str) -> Option<Vec<Row>> {
         match self.exec(query, &[]).await {
             DBResult::Ok(r) => Some(r),
             DBResult::ErrQuery(e) => {
@@ -410,6 +414,173 @@ impl DB {
                 self.prepare.clear();
                 None
             }
+        }
+    }
+
+    /// Execute query to database
+    ///
+    /// # Parmeters
+    ///
+    /// * `query: &str` - SQL query;
+    /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
+    ///
+    /// # Return
+    ///
+    /// * `Option::None` - When error query or diconnected;
+    /// * `Option::Some(Vec<Data>)` - Results.
+    pub async fn query(&mut self, query: &str, assoc: bool) -> Option<Vec<Data>> {
+        // Run query
+        let res = self.query_raw(query).await?;
+        // Convert Row to Data
+        let mut vec = Vec::with_capacity(res.len());
+        if res.is_empty() {
+            return Some(vec);
+        };
+        // Detect columns
+        let cols = unsafe { res.get_unchecked(0) }.columns();
+        let mut columns = Vec::with_capacity(cols.len());
+        for (idx, col) in cols.iter().enumerate() {
+            let func = match col.type_() {
+                &Type::BOOL => Self::get_bool,
+                &Type::BYTEA => Self::get_bytea,
+                &Type::TEXT => Self::get_string,
+                &Type::JSON => Self::get_json,
+                &Type::JSONB => Self::get_json,
+                &Type::UUID => Self::get_uuid,
+                &Type::VARCHAR => Self::get_string,
+                &Type::INT8 => Self::get_i64,
+                &Type::INT2 => Self::get_i16,
+                &Type::INT4 => Self::get_i32,
+                &Type::FLOAT4 => Self::get_f32,
+                &Type::FLOAT8 => Self::get_f64,
+                &Type::TIMESTAMPTZ => Self::get_date,
+                u => {
+                    Log::warning(614, Some(format!("Type={}. sql={}", u, query)));
+                    Self::get_unknown
+                }
+            };
+            columns.push((idx, col.name(), func));
+        }
+        // Read data
+        for row in &res {
+            if !assoc {
+                let mut v = Vec::with_capacity(columns.len());
+                for (idx, _, func) in &columns {
+                    v.push(func(row, *idx));
+                }
+                vec.push(Data::Vec(v));
+            } else {
+                let mut t = BTreeMap::new();
+                for (idx, name, func) in &columns {
+                    t.insert(fnv1a_64(name), func(row, *idx));
+                }
+                vec.push(Data::Map(t));
+            };
+        }
+        Some(vec)
+    }
+
+    /// Unknown Row type to Data::None
+    fn get_unknown(_: &Row, _: usize) -> Data {
+        Data::None
+    }
+
+    /// Row::i16 to Data::I16
+    fn get_i16(row: &Row, idx: usize) -> Data {
+        let i: Option<i16> = row.get(idx);
+        match i {
+            Some(i) => Data::I16(i),
+            None => Data::None,
+        }
+    }
+
+    /// Row::i32 to Data::I32
+    fn get_i32(row: &Row, idx: usize) -> Data {
+        let i: Option<i32> = row.get(idx);
+        match i {
+            Some(i) => Data::I32(i),
+            None => Data::None,
+        }
+    }
+
+    /// Row::f32 to Data::F32
+    fn get_f32(row: &Row, idx: usize) -> Data {
+        let f: Option<f32> = row.get(idx);
+        match f {
+            Some(f) => Data::F32(f),
+            None => Data::None,
+        }
+    }
+
+    /// Row::Uuid to Data::String
+    fn get_uuid(row: &Row, idx: usize) -> Data {
+        let u: Option<uuid::Uuid> = row.get(idx);
+        match u {
+            Some(u) => Data::String(u.to_string()),
+            None => Data::None,
+        }
+    }
+
+    /// Row::Json to Data::Json
+    fn get_json(row: &Row, idx: usize) -> Data {
+        let j: Option<Value> = row.get(idx);
+        match j {
+            Some(j) => Data::Json(j),
+            None => Data::None,
+        }
+    }
+
+    /// Row::DateTime<Utc> to Data::DateTime<Utc>
+    fn get_date(row: &Row, idx: usize) -> Data {
+        let d: Option<DateTime<Utc>> = row.get(idx);
+        match d {
+            Some(d) => Data::Date(d),
+            None => Data::None,
+        }
+    }
+
+    /// Row::f64 to Data::F64
+    fn get_f64(row: &Row, idx: usize) -> Data {
+        let f: Option<f64> = row.get(idx);
+        match f {
+            Some(f) => Data::F64(f),
+            None => Data::None,
+        }
+    }
+
+    /// Row::i64 to Data::I64
+    fn get_i64(row: &Row, idx: usize) -> Data {
+        let i: Option<i64> = row.get(idx);
+        match i {
+            Some(i) => Data::I64(i),
+            None => Data::None,
+        }
+    }
+
+    /// Row::String to Data::String
+    fn get_string(row: &Row, idx: usize) -> Data {
+        let s: Option<String> = row.get(idx);
+        match s {
+            Some(s) => Data::String(s),
+            None => Data::None,
+        }
+    }
+
+    /// Row::Vec<u8> to Data::Raw
+    fn get_bytea(row: &Row, idx: usize) -> Data {
+        let r: Option<Vec<u8>> = row.get(idx);
+        match r {
+            Some(r) => Data::Raw(r),
+            None => Data::None,
+        }
+    }
+
+    /// Row::Bool to Data::Bool
+    fn get_bool(row: &Row, idx: usize) -> Data {
+        let b: Option<bool> = row.get(idx);
+        match b {
+            Some(b) => Data::Bool(b),
+            None => Data::None,
         }
     }
 
