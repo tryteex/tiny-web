@@ -55,8 +55,8 @@ impl Log {
     ///
     /// * `number: u16` - Log number;
     /// * `text: Option<String>` - Additional log description.
-    pub fn info(number: u16, text: Option<String>) {
-        Log::save(LogText { view: LogView::Info, number, text });
+    pub fn info(number: u16, text: Option<String>) -> String {
+        Log::save(LogText { view: LogView::Info, number, text })
     }
 
     /// Save warning message to log file, the program may continue to run.
@@ -65,8 +65,8 @@ impl Log {
     ///
     /// * `number: u16` - Log number;
     /// * `text: Option<String>` - Additional log description.
-    pub fn warning(number: u16, text: Option<String>) {
-        Log::save(LogText { view: LogView::Warning, number, text });
+    pub fn warning(number: u16, text: Option<String>) -> String {
+        Log::save(LogText { view: LogView::Warning, number, text })
     }
 
     /// Save stop message to log file, the program must soft stop.
@@ -75,8 +75,8 @@ impl Log {
     ///
     /// * `number: u16` - Log number;
     /// * `text: Option<String>` - Additional log description.
-    pub fn stop(number: u16, text: Option<String>) {
-        Log::save(LogText { view: LogView::Stop, number, text });
+    pub fn stop(number: u16, text: Option<String>) -> String {
+        Log::save(LogText { view: LogView::Stop, number, text })
     }
 
     /// Save error message to log file, this is abnormal behavior, the program stops immediately.
@@ -110,7 +110,7 @@ impl Log {
     /// # Parameters
     ///
     /// * `log: LogText` - Description log message.
-    fn save(log: LogText) {
+    fn save(log: LogText) -> String {
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string();
         let file = match LOG_FILE.get() {
             Some(path) => path.as_str(),
@@ -119,26 +119,11 @@ impl Log {
                 "tiny.log"
             }
         };
-
-        let str = match log.text {
-            Some(s) => format!(
-                "ID: {} Time: {} Type: {:?} Number: {} Text: {} -> {}\n",
-                process::id(),
-                time,
-                log.view,
-                log.number,
-                Log::number_to_text(log.number),
-                s
-            ),
-            None => format!(
-                "ID: {} Time: {} Type: {:?} Number: {} Text: {}\n",
-                process::id(),
-                time,
-                log.view,
-                log.number,
-                Log::number_to_text(log.number)
-            ),
+        let text = match log.text {
+            Some(s) => format!("Text: {} -> {}", Log::number_to_text(log.number), s),
+            None => format!("Text: {}", Log::number_to_text(log.number)),
         };
+        let str = format!("ID: {} Time: {} Type: {:?} Number: {} {}\n", process::id(), time, log.view, log.number, text);
         match OpenOptions::new().create(true).write(true).append(true).open(file) {
             Ok(mut file) => match file.write_all(str.as_bytes()) {
                 Ok(f) => f,
@@ -146,6 +131,7 @@ impl Log {
             },
             Err(e) => Log::panic(&format!("Can't save data to log file {} -> {}", file, e)),
         };
+        text
     }
 
     /// Save or show panic message:
@@ -168,7 +154,7 @@ impl Log {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
                     let str = format!(
-                        "ID: {} Time: {} Type: {:?} Number: Text: Can't write log file \"{}\" - {}\n",
+                        r#"ID: {} Time: {} Type: {:?} Number: Text: Can't write log file "{}" - {}\n"#,
                         process::id(),
                         time,
                         LogView::Critical,
@@ -180,7 +166,7 @@ impl Log {
             }
             Err(e) => {
                 let str = format!(
-                    "ID: {} Time: {} Type: {:?} Number: Text: Can't open log file \"{}\" - {}\n",
+                    r#"ID: {} Time: {} Type: {:?} Number: Text: Can't open log file "{}" - {}\n"#,
                     process::id(),
                     time,
                     LogView::Critical,
@@ -282,8 +268,8 @@ impl Log {
             1103 => "Can't delete input file",
 
             1200 => "Unable to specify node type",
-            1201 => "Unable to specify \"if\" node type",
-            1202 => "Unable to specify \"loop\" node type",
+            1201 => r#"Unable to specify "if" node type"#,
+            1202 => r#"Unable to specify "loop" node type"#,
 
             1150 => "Can't load languages from database",
             1151 => "Language list is empty",
@@ -299,6 +285,20 @@ impl Log {
             // Ation engine
             3000 => "Wrong cache type key of Redirect",
             3001 => "Wrong cache type key of Route",
+            3002 => "Cannot serialize Mail Message",
+            3003 => "Cannot get Message-ID",
+            3004 => r#"Unable to read "from" mail"#,
+            3005 => r#"Unable to read "reply-to" mail"#,
+            3006 => r#"Unable to read "to" mail"#,
+            3007 => r#"Unable to read "cc" mail"#,
+            3008 => r#"Unable to read "bcc" mail"#,
+            3009 => "Unable to create mail message",
+            3010 => "Unable to get content type from filename",
+            3011 => "Cannot read parameter for Mail config",
+            3012 => "Cannot send email via sendmail transport",
+            3013 => "Cannot send email via file transport",
+            3014 => "Cannot send email via smtp transport",
+            3015 => "Cannot create dir for file transport",
 
             _ => "Unknown error"
         }

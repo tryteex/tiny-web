@@ -20,6 +20,7 @@ use super::{
     html::{Html, Nodes},
     lang::Lang,
     log::Log,
+    mail::{Mail, MailMessage, MailProvider},
     pool::DBPool,
     worker::WorkerData,
 };
@@ -55,7 +56,8 @@ pub type ActMap = BTreeMap<i64, BTreeMap<i64, BTreeMap<i64, Act>>>;
 /// * `Map(BTreeMap<i64, Data>)` - Map of `Data`.
 /// * `Route(Route)` - Route data.
 /// * `Redirect(Redirect)` - Redirect data.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// * `MailProvider(MailProvider)` - Mail provider data.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Data {
     /// No data transferred.
     None,
@@ -87,9 +89,14 @@ pub enum Data {
     /// Map of `Data`.
     Map(BTreeMap<i64, Data>),
     /// Route data.
+    #[serde(skip_serializing, skip_deserializing)]
     Route(Route),
     /// Redirect data.
+    #[serde(skip_serializing, skip_deserializing)]
     Redirect(Redirect),
+    /// Mail provider data
+    #[serde(skip_serializing, skip_deserializing)]
+    MailProvider(MailProvider),
 }
 
 /// Type of Answer
@@ -115,7 +122,7 @@ pub enum Answer {
 ///
 /// * `url: String` - Url.
 /// * `permanently: bool,` - Permanently redirect.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Redirect {
     /// Url
     pub url: String,
@@ -284,7 +291,7 @@ pub struct ActionData {
 /// * `action_id: i64` - Action id.
 /// * `param: Option<String>` - Controller param.
 /// * `lang_id: Option<i64>` - Set lang id.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Route {
     /// Start module
     module: String,
@@ -329,6 +336,7 @@ pub struct Route {
 /// * `template: Arc<Html>` - All templates.
 /// * `cache: Arc<Mutex<Cache>>` - Cache.
 /// * `db: Arc<DBPool>` - Database pool.
+/// * `mail: Arc<Mail>` - Mail function.
 /// * `internal: bool` - Internal call of controller.
 pub struct Action {
     /// Request from web server
@@ -375,6 +383,8 @@ pub struct Action {
     cache: Arc<Mutex<Cache>>,
     /// Database pool
     pub db: Arc<DBPool>,
+    /// Mail function
+    mail: Arc<Mutex<Mail>>,
 
     /// Internal call of controller
     pub internal: bool,
@@ -455,6 +465,7 @@ impl Action {
             template: data.data.html,
             cache: data.data.cache,
             db: data.data.db,
+            mail: data.data.mail,
             internal: false,
         })
     }
@@ -496,6 +507,15 @@ impl Action {
             });
         }
         Answer::None
+    }
+
+    /// Send email
+    pub async fn mail(&self, message: MailMessage) -> bool {
+        let provider = {
+            let mail = self.mail.lock().await;
+            mail.provider.clone()
+        };
+        Mail::send(provider, Arc::clone(&self.db), message, self.session.user_id, self.request.host.clone()).await
     }
 
     /// Get translate
@@ -640,7 +660,9 @@ impl Action {
             Some(d) => match d {
                 Data::None => {}
                 Data::Redirect(r) => return Err(r),
-                _ => Log::warning(3000, Some(format!("{:?}", d))),
+                _ => {
+                    Log::warning(3000, Some(format!("{:?}", d)));
+                }
             },
             None => {
                 // Load from database
@@ -681,7 +703,9 @@ impl Action {
             Some(d) => match d {
                 Data::None => {}
                 Data::Route(r) => return Ok(r),
-                _ => Log::warning(3001, Some(format!("{:?}", d))),
+                _ => {
+                    Log::warning(3001, Some(format!("{:?}", d)));
+                }
             },
             None => {
                 // Load from database

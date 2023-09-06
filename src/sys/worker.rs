@@ -19,6 +19,7 @@ use super::{
     html::Html,
     lang::Lang,
     log::Log,
+    mail::Mail,
     pool::DBPool,
     workers::{fastcgi, grpc, http, scgi, uwsgi},
 };
@@ -81,6 +82,8 @@ pub struct WorkerData {
     pub db: Arc<DBPool>,
     /// Salt for a crypto functions.
     pub salt: Arc<String>,
+    /// Mail provider.
+    pub mail: Arc<Mutex<Mail>>,
 }
 
 /// Half of the network to read
@@ -217,9 +220,15 @@ impl Worker {
         if let Err(e) = stream_read.read(1000).await {
             match e {
                 StreamError::Closed => {}
-                StreamError::Error(e) => Log::warning(2000, Some(e.to_string())),
-                StreamError::Buffer => Log::warning(2006, None),
-                StreamError::Timeout => Log::warning(2001, None),
+                StreamError::Error(e) => {
+                    Log::warning(2000, Some(e.to_string()));
+                }
+                StreamError::Buffer => {
+                    Log::warning(2006, None);
+                }
+                StreamError::Timeout => {
+                    Log::warning(2001, None);
+                }
             }
             return;
         }

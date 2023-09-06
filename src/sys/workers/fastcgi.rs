@@ -139,6 +139,7 @@ impl Net {
                         cache: Arc::clone(&data.cache),
                         db: Arc::clone(&data.db),
                         salt: data.salt.clone(),
+                        mail: Arc::clone(&data.mail),
                     },
                     request,
                     session,

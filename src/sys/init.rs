@@ -273,8 +273,8 @@ impl Init {
         let exe = match env::current_exe() {
             Ok(e) => match e.to_str() {
                 Some(e) => {
-                    if &e[..2] == "\\\\" {
-                        if &e[..4] == "\\\\?\\" {
+                    if &e[..2] == r"\\" {
+                        if &e[..4] == r"\\?\" {
                             e[4..].replace('\\', "/")
                         } else {
                             Log::stop(12, Some(e.to_string()));
@@ -437,7 +437,9 @@ impl Init {
                                                 Log::warning(52, Some(val.to_owned()));
                                             }
                                         }
-                                        Err(e) => Log::warning(52, Some(format!("{} ({})", e, val))),
+                                        Err(e) => {
+                                            Log::warning(52, Some(format!("{} ({})", e, val)));
+                                        }
                                     }
                                 }
                             }
@@ -456,7 +458,9 @@ impl Init {
                                 } else {
                                     match IpAddr::from_str(val) {
                                         Ok(ip) => conf.bind_accept = AcceptAddr::IpAddr(ip),
-                                        Err(e) => Log::warning(53, Some(format!("{} ({})", e, val))),
+                                        Err(e) => {
+                                            Log::warning(53, Some(format!("{} ({})", e, val)));
+                                        }
                                     };
                                 }
                             }
@@ -464,7 +468,9 @@ impl Init {
                                 if val.contains(':') {
                                     match SocketAddr::from_str(val) {
                                         Ok(s) => conf.bind = Addr::SocketAddr(s),
-                                        Err(e) => Log::warning(54, Some(format!("{} ({})", e, val))),
+                                        Err(e) => {
+                                            Log::warning(54, Some(format!("{} ({})", e, val)));
+                                        }
                                     }
                                 } else {
                                     #[cfg(target_family = "windows")]
@@ -494,7 +500,9 @@ impl Init {
                                 } else {
                                     match IpAddr::from_str(val) {
                                         Ok(ip) => conf.rpc_accept = AcceptAddr::IpAddr(ip),
-                                        Err(e) => Log::warning(55, Some(format!("{} ({})", e, val))),
+                                        Err(e) => {
+                                            Log::warning(55, Some(format!("{} ({})", e, val)));
+                                        }
                                     };
                                 }
                             }
@@ -502,7 +510,9 @@ impl Init {
                                 if val.contains(':') {
                                     match SocketAddr::from_str(val) {
                                         Ok(s) => conf.rpc = Addr::SocketAddr(s),
-                                        Err(e) => Log::warning(56, Some(format!("{} ({})", e, val))),
+                                        Err(e) => {
+                                            Log::warning(56, Some(format!("{} ({})", e, val)));
+                                        }
                                     }
                                 } else {
                                     #[cfg(target_family = "windows")]
@@ -534,7 +544,9 @@ impl Init {
                                         Log::warning(57, Some(val.to_owned()));
                                     }
                                 }
-                                Err(e) => Log::warning(57, Some(format!("{} ({})", e, val))),
+                                Err(e) => {
+                                    Log::warning(57, Some(format!("{} ({})", e, val)));
+                                }
                             },
                             "db_name" => conf.db.name = val.to_owned(),
                             "db_user" => conf.db.user = Some(val.to_owned()),
@@ -556,7 +568,9 @@ impl Init {
                                                 Log::warning(58, Some(val.to_owned()));
                                             }
                                         }
-                                        Err(e) => Log::warning(58, Some(format!("{} ({})", e, val))),
+                                        Err(e) => {
+                                            Log::warning(58, Some(format!("{} ({})", e, val)));
+                                        }
                                     }
                                 }
                             }

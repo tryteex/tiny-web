@@ -155,10 +155,10 @@ impl App {
         };
     }
 
-    /// Convecrt windows path to unix
+    /// Convecrt unix path to windows
     #[cfg(target_family = "windows")]
     fn to_win_path(text: &str) -> String {
-        text.replace('/', "\\")
+        text.replace('/', r"\")
     }
 
     /// Create config file

@@ -230,7 +230,7 @@ impl DB {
                 let mut vec = Vec::with_capacity(PREPARE_CAPACITY);
 
                 // 0 Get session
-                let sql = "
+                let sql = r#"
                     WITH upd AS (
                         UPDATE session
                         SET 
@@ -243,8 +243,8 @@ impl DB {
                         s.session_id, s.user_id, u.role_id, s.data, s.user_id, s.lang_id 
                     FROM 
                         upd s
-                        INNER JOIN \"user\" u ON u.user_id=s.user_id
-                ";
+                        INNER JOIN "user" u ON u.user_id=s.user_id
+                "#;
                 vec.push((client.prepare_typed(sql, &[Type::TEXT]), sql));
 
                 // 1 Update session
@@ -294,11 +294,11 @@ impl DB {
                 ";
                 vec.push((client.prepare_typed(sql, &[Type::TEXT]), sql));
                 // 5 Get auth permissions
-                let sql = "
+                let sql = r#"
                     SELECT COALESCE(MAX(a.access::int), 0)::bool AS access
                     FROM
                         access a
-                        INNER JOIN \"user\" u ON u.role_id=a.role_id
+                        INNER JOIN "user" u ON u.role_id=a.role_id
                         INNER JOIN controller c ON a.controller_id=c.controller_id
                     WHERE
                         a.access AND a.role_id=$1 AND (
@@ -307,7 +307,7 @@ impl DB {
                             OR (c.module_id=$3 AND c.class_id=$5 AND c.action_id=-3750763034362895579)
                             OR (c.module_id=$4 AND c.class_id=$6 AND c.action_id=$7)
                         )
-                ";
+                "#;
                 vec.push((
                     client.prepare_typed(
                         sql,
@@ -322,18 +322,39 @@ impl DB {
                     WHERE controller_id=3 AND lang_id=$1
                 ";
                 vec.push((client.prepare_typed(sql, &[Type::INT8]), sql));
-                // 7 Get url by route map
-                // let sql = "
-                //     SELECT r.url
-                //     FROM
-                //         route r
-                //         INNER JOIN controller c ON c.controller_id=r.controller_id
-                //     WHERE c.module=$1 AND c.class=$2 AND c.action=$3 AND COALESCE(r.params, '')=$4 AND COALESCE(r.lang_id, -1)=$5
-                // ";
-                // vec.push(client.prepare_typed(
-                //     sql,
-                //     &[Type::TEXT, Type::TEXT, Type::TEXT, Type::TEXT, Type::INT8],
-                // ));
+                // 7 Insert email
+                let sql = r#"
+                    INSERT INTO mail(user_id, mail, "create", err, transport)
+                    VALUES ($1, $2, now(), false, $3)
+                    RETURNING mail_id;
+                "#;
+                vec.push((client.prepare_typed(sql, &[Type::INT8, Type::JSON, Type::TEXT]), sql));
+                // 8 Insert email without provider
+                let sql = r#"
+                    INSERT INTO mail(user_id, mail, "create", send, err, transport)
+                    VALUES ($1, $2, now(), now(), false, 'None')
+                "#;
+                vec.push((client.prepare_typed(sql, &[Type::INT8, Type::JSON]), sql));
+                // 9 Insert email without provider
+                let sql = r#"
+                    SELECT data FROM setting WHERE key=$1
+                "#;
+                vec.push((client.prepare_typed(sql, &[Type::INT8]), sql));
+                // 10 Insert error send email
+                let sql = r#"
+                    UPDATE mail
+                    SET err=true, send=now(), err_text=$1
+                    WHERE mail_id=$2
+                "#;
+                vec.push((client.prepare_typed(sql, &[Type::TEXT, Type::INT8]), sql));
+                // 11 Insert success send email
+                let sql = r#"
+                    UPDATE mail
+                    SET err=false, send=now()
+                    WHERE mail_id=$1
+                "#;
+                vec.push((client.prepare_typed(sql, &[Type::INT8]), sql));
+                // Prepare statements
                 for (prepare, sql) in vec {
                     match prepare.await {
                         Ok(s) => {

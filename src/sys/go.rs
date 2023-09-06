@@ -25,6 +25,7 @@ use super::{
     init::{AcceptAddr, Addr, Config, Init},
     lang::{Lang, LangItem},
     log::Log,
+    mail::Mail,
     pool::DBPool,
     worker::{Worker, WorkerData},
 };
@@ -103,6 +104,7 @@ impl Go {
 
             let db = Arc::new(db);
             let salt = Arc::clone(&salt);
+            let mail = Arc::new(Mutex::new(Mail::new(Arc::clone(&db)).await));
 
             // Started (accepted) threads
             let handles = Arc::new(Mutex::new(BTreeMap::new()));
@@ -139,6 +141,7 @@ impl Go {
                 let db = Arc::clone(&db);
                 let bind_accept = Arc::clone(&bind_accept);
                 let salt = Arc::clone(&salt);
+                let mail = Arc::clone(&mail);
 
                 let handle = tokio::spawn(async move {
                     let id = counter;
@@ -154,7 +157,15 @@ impl Go {
                         }
                     }
                     // Starting one main thread from the client connection
-                    let data = WorkerData { engine, lang, html, cache, db, salt };
+                    let data = WorkerData {
+                        engine,
+                        lang,
+                        html,
+                        cache,
+                        db,
+                        salt,
+                        mail,
+                    };
                     Worker::run(stream, data).await;
                     if let Err(i) = tx.send(id) {
                         Log::error(502, Some(i.to_string()));
@@ -259,10 +270,12 @@ impl Go {
             Addr::SocketAddr(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {
                 Ok(stream) => {
                     if let Err(e) = stream {
-                        Log::warning(222, Some(e.to_string()))
+                        Log::warning(222, Some(e.to_string()));
                     }
                 }
-                Err(_) => Log::warning(221, None),
+                Err(_) => {
+                    Log::warning(221, None);
+                }
             },
             #[cfg(not(target_family = "windows"))]
             Addr::UDS(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {

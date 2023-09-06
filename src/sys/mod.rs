@@ -36,3 +36,6 @@ pub mod workers;
 
 /// Temp files.
 pub mod file;
+
+/// Send mail functions.
+pub mod mail;
