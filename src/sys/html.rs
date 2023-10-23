@@ -965,7 +965,7 @@ impl Html {
                     None => {
                         return Err(format!(
                             r#"Incorrect echo "{}" in "{}""#,
-                            item.text,
+                            &item.text[1..item.text.len()-3],
                             Html::get_err_msg(item.begin, item.end, html)
                         ))
                     }
@@ -978,7 +978,7 @@ impl Html {
                             None => {
                                 return Err(format!(
                                     r#"Incorrect expression "{}" in "{}""#,
-                                    item.text,
+                                    &item.text[1..item.text.len()-3],
                                     Html::get_err_msg(item.begin, item.end, html)
                                 ));
                             }
@@ -999,7 +999,7 @@ impl Html {
                             None => {
                                 return Err(format!(
                                     r#"Incorrect expression "{}" in "{}""#,
-                                    item.text,
+                                    &item.text[1..item.text.len()-3],
                                     Html::get_err_msg(item.begin, item.end, html)
                                 ));
                             }
@@ -1140,9 +1140,11 @@ impl Html {
 
     /// Prepares an error message
     fn get_err_msg(begin: usize, end: usize, html: &str) -> String {
-        let chars_start: Vec<char> = html[1..begin].chars().collect();
+        let html = &html[1..html.len() - 3];
+        let end = if end > html.len() { html.len() } else { end };
+        let chars_start: Vec<char> = html[0..begin].chars().collect();
         let chars_middle: Vec<char> = html[begin..end].chars().collect();
-        let chars_finish: Vec<char> = html[end..html.len() - 3].chars().collect();
+        let chars_finish: Vec<char> = html[end..html.len()].chars().collect();
         let start = if chars_start.len() < 25 { 0 } else { chars_start.len() - 25 };
         let finish = if chars_finish.len() < 25 { chars_finish.len() } else { 25 };
         let mut msg = chars_start[start..].iter().collect::<String>();

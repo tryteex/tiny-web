@@ -281,10 +281,12 @@ impl Go {
             Addr::UDS(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {
                 Ok(stream) => {
                     if let Err(e) = stream {
-                        Log::warning(222, Some(e.to_string()))
+                        Log::warning(222, Some(e.to_string()));
                     }
                 }
-                Err(_) => Log::warning(221, None),
+                Err(_) => {
+                    Log::warning(221, None);
+                }
             },
         }
     }

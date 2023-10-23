@@ -252,7 +252,7 @@ pub struct Session {
     /// lang_id from database
     lang_id: i64,
     /// user_id from database
-    user_id: i64,
+    pub user_id: i64,
     /// role_id from database
     role_id: i64,
     /// Cookie key
@@ -338,6 +338,7 @@ pub struct Route {
 /// * `db: Arc<DBPool>` - Database pool.
 /// * `mail: Arc<Mail>` - Mail function.
 /// * `internal: bool` - Internal call of controller.
+#[derive(Debug)]
 pub struct Action {
     /// Request from web server
     pub request: Request,
