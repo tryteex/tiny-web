@@ -213,6 +213,7 @@ impl Log {
             57 => "The 'db_port' parameter in configuration file must be u16 and greater than 0",
             58 => "The 'db_max' parameter in configuration file must be usize and greater than 0",
             59 => "The 'db_host' parameter in configuration file can't be empty",
+            60 => "The 'protokol' parameter in configuration file must be only: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
 
             200 => "Start",
             201 => "Stop",

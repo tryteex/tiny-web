@@ -881,24 +881,40 @@ impl Action {
         }
     }
 
-    // pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: Option<u64>) -> String {
-    // //     let id = match lang_id {
-    // //         Some(id) => id as i64,
-    // //         None => -1,
-    // //     };
-    // //     if let Some(v) = self.db.query_fast(4, &[&module, &class, &action, &p, &id]) {
-    // //         if let Some(r) = v.get(0) {
-    // //             let url: String = r.get(0);
-    // //             return url;
-    // //         };
-    // //     };
-    //     match param {
-    //         Some(s) => {
-    //             format!("/{}/{}/{}/{}", module, class, action, s)
-    //         },
-    //         None => format!("/{}/{}/{}", module, class, action),
-    //     }
-    // }
+    /// Get route
+    pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: i64) -> String {
+        let p = param.unwrap_or("");
+        // Read from cache
+        let key = format!("route:{}:{}:{}:{}:{}", module, class, action, p, lang_id);
+        if let Some(Data::String(s)) = Cache::get(Arc::clone(&self.cache), &key).await {
+            return s;
+        };
+        // Prepare sql query
+        match self.db.query_fast(12, &[&fnv1a_64(module), &fnv1a_64(class), &fnv1a_64(action), &param, &lang_id]).await {
+            Some(rows) => {
+                if rows.len() == 1 {
+                    let url: String = rows[0].get(0);
+                    Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone())).await;
+                    url
+                } else {
+                    let url = match param {
+                        Some(s) => {
+                            format!("/{}/{}/{}/{}", module, class, action, s)
+                        }
+                        None => format!("/{}/{}/{}", module, class, action),
+                    };
+                    Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone())).await;
+                    url
+                }
+            }
+            None => match param {
+                Some(s) => {
+                    format!("/{}/{}/{}/{}", module, class, action, s)
+                }
+                None => format!("/{}/{}/{}", module, class, action),
+            },
+        }
+    }
 }
 
 impl Session {

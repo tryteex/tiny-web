@@ -21,7 +21,7 @@ use super::{
     log::Log,
     mail::Mail,
     pool::DBPool,
-    workers::{fastcgi, grpc, http, scgi, uwsgi},
+    workers::{fastcgi, grpc, http, scgi, uwsgi, websocket},
 };
 
 /// Buffer for read data from TcpStream
@@ -42,8 +42,10 @@ pub struct Worker;
 /// * `Uwsgi` - UWSGI protocol.
 /// * `Grpc` - GRPC protocol.
 /// * `Scgi` - SCGI protocol.
-/// * `Http` - HTTP or WebSocket protocol.
-enum WorkerType {
+/// * `Http` - HTTP protocol.
+/// * `WebSocket` - WebSocket protocol.
+#[derive(Debug, Clone)]
+pub enum WorkerType {
     /// FastCGI protocol.
     FastCGI,
     /// UWSGI protocol.
@@ -54,6 +56,8 @@ enum WorkerType {
     Scgi,
     /// HTTP or WebSocket protocol.
     Http,
+    /// WebSocket
+    WebSocket,
     /// Error
     Error,
 }
@@ -207,7 +211,8 @@ impl Worker {
     ///
     /// * `stream: TcpStream` - Tokio tcp stream.
     /// * `data: WorkerData` - General data for the web engine.
-    pub async fn run(stream: TcpStream, data: WorkerData) {
+    /// * `protocol: Arc<WorkerType>` - Used protocol.
+    pub async fn run(stream: TcpStream, data: WorkerData, protocol: Arc<WorkerType>) {
         let (read, write) = stream.into_split();
         let mut stream_read = StreamRead {
             tcp: read,
@@ -232,54 +237,14 @@ impl Worker {
             }
             return;
         }
-
-        match Worker::detect(stream_read.get(14)) {
+        match protocol.as_ref() {
             WorkerType::FastCGI => fastcgi::Net::run(stream_read, stream_write, data).await,
             WorkerType::Uwsgi => uwsgi::Net::run(stream_read, stream_write, data).await,
             WorkerType::Grpc => grpc::Net::run(stream_read, stream_write, data).await,
             WorkerType::Scgi => scgi::Net::run(stream_read, stream_write, data).await,
             WorkerType::Http => http::Net::run(stream_read, stream_write, data).await,
+            WorkerType::WebSocket => websocket::Net::run(stream_read, stream_write, data).await,
             WorkerType::Error => {}
-        }
-    }
-
-    /// Autodetect protocol
-    ///
-    /// # Params
-    ///
-    /// * `slice: &[u8; BUFFER_SIZE]` - Slice of some first data from stream
-    ///
-    /// # Return
-    /// * `WorkerType` - Type of the protocol
-    ///
-    /// # Notice
-    ///
-    /// This is a very easy and fast way to determine the protocol, but you shouldn't rely on it.
-    fn detect(slice: &[u8]) -> WorkerType {
-        if slice.len() < 14 {
-            WorkerType::Error
-        } else if slice[0..1] == [1] {
-            // FastCGI starts with a byte equal to 1 (version)
-            WorkerType::FastCGI
-        } else if slice[0..1] == [0] {
-            // UWSGI starts with a byte equal to 0 (modifier1)
-            WorkerType::Uwsgi
-        } else if slice[0..14] == [0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54, 0x54, 0x50, 0x2f, 0x32, 0x2e, 0x30] {
-            // gRPC starts with a bytes equal to "PRI * HTTP/2.0"
-            WorkerType::Grpc
-        } else if slice[0..7].iter().enumerate().any(|(idx, byte)| {
-            if *byte == 0x3a {
-                let num = String::from_utf8_lossy(&slice[..idx]);
-                num.parse::<u16>().is_ok()
-            } else {
-                false
-            }
-        }) {
-            // SCGI starts with bytes equal to a number (string format) and the character ":"
-            WorkerType::Scgi
-        } else {
-            // Everything else to be HTTP or WebSocket
-            WorkerType::Http
         }
     }
 

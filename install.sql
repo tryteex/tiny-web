@@ -14,8 +14,8 @@ COMMENT ON COLUMN "public"."access"."controller_id" IS 'Controller ID';
 COMMENT ON TABLE "public"."access" IS 'Access to controllers';
 
 INSERT INTO "public"."access" VALUES (1, 0, 't', 1);
-INSERT INTO "public"."access" VALUES (2, 0, 't', 5);
-INSERT INTO "public"."access" VALUES (3, 0, 't', 6);
+INSERT INTO "public"."access" VALUES (2, 0, 't', 4);
+INSERT INTO "public"."access" VALUES (3, 0, 't', 5);
 
 -- ----------------------------
 -- Table structure for controller
@@ -43,9 +43,8 @@ COMMENT ON TABLE "public"."controller" IS 'Controllers list';
 INSERT INTO "public"."controller" VALUES (1, 'index', '', '', '[]', -8948777187306027381, -3750763034362895579, -3750763034362895579);
 INSERT INTO "public"."controller" VALUES (2, 'index', 'index', 'index', '[]', -8948777187306027381, -8948777187306027381, -8948777187306027381);
 INSERT INTO "public"."controller" VALUES (3, 'index', 'index', 'not_found', '[]', -8948777187306027381, -8948777187306027381, -1573091631220776463);
-INSERT INTO "public"."controller" VALUES (4, 'index', 'article', 'index', '[]', -8948777187306027381, -6149118718490150151, -8948777187306027381);
-INSERT INTO "public"."controller" VALUES (5, 'admin', 'index', '', '[]', -1887597591324883884, -8948777187306027381, -3750763034362895579);
-INSERT INTO "public"."controller" VALUES (6, 'admin', 'login', '', '[]', -1887597591324883884, 272289342528891346, -3750763034362895579);
+INSERT INTO "public"."controller" VALUES (4, 'admin', 'index', '', '[]', -1887597591324883884, -8948777187306027381, -3750763034362895579);
+INSERT INTO "public"."controller" VALUES (5, 'admin', 'login', '', '[]', -1887597591324883884, 272289342528891346, -3750763034362895579);
 
 -- ----------------------------
 -- Table structure for lang
@@ -439,7 +438,7 @@ COMMENT ON TABLE "public"."user_provider" IS 'Use of the provider for the user';
 -- Auto increment value
 -- ----------------------------
 SELECT setval('"public"."access_access_id_seq"', 3, true);
-SELECT setval('"public"."controller_controller_id_seq"', 6, true);
+SELECT setval('"public"."controller_controller_id_seq"', 5, true);
 SELECT setval('"public"."lang_lang_id_seq"', 181, true);
 SELECT setval('"public"."role_role_id_seq"', 2, true);
 SELECT setval('"public"."setting_setting_id_seq"', 9, true);

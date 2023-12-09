@@ -8,7 +8,7 @@ use std::{
 
 use crate::fnv1a_64;
 
-use super::log::Log;
+use super::{log::Log, worker::WorkerType};
 
 /// Responsible for the IP address that should be accepted.
 ///
@@ -118,6 +118,8 @@ pub struct Config {
     pub db: DBConfig,
     /// Stop signal
     pub stop: i64,
+    /// Protocol
+    pub protocol: WorkerType,
 }
 
 /// Responsible for running mode of server.
@@ -408,6 +410,7 @@ impl Init {
                 zone: None,
             },
             stop: 0,
+            protocol: WorkerType::FastCGI,
         };
         if !text.is_empty() {
             for part in text.split('\n') {
@@ -577,6 +580,20 @@ impl Init {
                             "zone" => {
                                 if !val.is_empty() {
                                     conf.db.zone = Some(val.to_owned())
+                                }
+                            }
+                            "protokol" => {
+                                conf.protocol = match val {
+                                    "FastCGI" => WorkerType::FastCGI,
+                                    "SCGI" => WorkerType::Scgi,
+                                    "uWSGI" => WorkerType::Uwsgi,
+                                    "FastgRPCCGI" => WorkerType::Grpc,
+                                    "HTTP" => WorkerType::Http,
+                                    "WebSocket" => WorkerType::WebSocket,
+                                    _ => {
+                                        Log::warning(60, Some(val.to_owned()));
+                                        WorkerType::FastCGI
+                                    }
                                 }
                             }
                             _ => {}

@@ -84,6 +84,7 @@ impl Go {
         let salt = Arc::new(init.conf.salt.clone());
         let bind_addr = init.conf.bind.clone();
         let engine_data = func();
+        let protocol = init.conf.protocol.clone();
 
         let main = tokio::spawn(async move {
             // Create pool database connector
@@ -105,6 +106,7 @@ impl Go {
             let db = Arc::new(db);
             let salt = Arc::clone(&salt);
             let mail = Arc::new(Mutex::new(Mail::new(Arc::clone(&db)).await));
+            let protocol = Arc::new(protocol);
 
             // Started (accepted) threads
             let handles = Arc::new(Mutex::new(BTreeMap::new()));
@@ -142,6 +144,7 @@ impl Go {
                 let bind_accept = Arc::clone(&bind_accept);
                 let salt = Arc::clone(&salt);
                 let mail = Arc::clone(&mail);
+                let protocol = Arc::clone(&protocol);
 
                 let handle = tokio::spawn(async move {
                     let id = counter;
@@ -166,7 +169,7 @@ impl Go {
                         salt,
                         mail,
                     };
-                    Worker::run(stream, data).await;
+                    Worker::run(stream, data, protocol).await;
                     if let Err(i) = tx.send(id) {
                         Log::error(502, Some(i.to_string()));
                     }

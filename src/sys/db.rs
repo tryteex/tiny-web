@@ -354,6 +354,18 @@ impl DB {
                     WHERE mail_id=$1
                 "#;
                 vec.push((client.prepare_typed(sql, &[Type::INT8]), sql));
+                // 12 Get route from module/class/action
+                let sql = r#"
+                    SELECT r.url 
+                    FROM 
+                        controller c
+                        INNER JOIN route r ON 
+                            r.controller_id=c.controller_id AND r.lang_id=$5 AND r.params = $4
+                    WHERE 
+                        c.module_id=$1 AND c.class_id=$2 AND c.action_id=$3
+                "#;
+                vec.push((client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::INT8, Type::TEXT, Type::INT8]), sql));
+
                 // Prepare statements
                 for (prepare, sql) in vec {
                     match prepare.await {

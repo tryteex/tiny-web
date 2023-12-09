@@ -965,7 +965,7 @@ impl Html {
                     None => {
                         return Err(format!(
                             r#"Incorrect echo "{}" in "{}""#,
-                            &item.text[1..item.text.len()-3],
+                            &item.text[1..item.text.len() - 3],
                             Html::get_err_msg(item.begin, item.end, html)
                         ))
                     }
@@ -978,7 +978,7 @@ impl Html {
                             None => {
                                 return Err(format!(
                                     r#"Incorrect expression "{}" in "{}""#,
-                                    &item.text[1..item.text.len()-3],
+                                    &item.text[1..item.text.len() - 3],
                                     Html::get_err_msg(item.begin, item.end, html)
                                 ));
                             }
@@ -999,7 +999,7 @@ impl Html {
                             None => {
                                 return Err(format!(
                                     r#"Incorrect expression "{}" in "{}""#,
-                                    &item.text[1..item.text.len()-3],
+                                    &item.text[1..item.text.len() - 3],
                                     Html::get_err_msg(item.begin, item.end, html)
                                 ));
                             }
