@@ -444,175 +444,100 @@ SELECT setval('"public"."role_role_id_seq"', 2, true);
 SELECT setval('"public"."setting_setting_id_seq"', 9, true);
 SELECT setval('"public"."user_user_id_seq"', 1, false);
 
-
 -- ----------------------------
 -- Indexes structure for table access
 -- ----------------------------
-CREATE INDEX "access_access_idx" ON "public"."access" USING btree (
-  "access" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "access_controller_id_idx" ON "public"."access" USING btree (
-  "controller_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE UNIQUE INDEX "access_role_id_controller_id_idx" ON "public"."access" USING btree (
-  "role_id" "pg_catalog"."int8_ops" ASC NULLS LAST,
-  "controller_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "access_role_id_idx" ON "public"."access" USING btree (
-  "role_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE INDEX "access_access_idx" ON "public"."access" USING btree ("access" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "access_controller_id_idx" ON "public"."access" USING btree ("controller_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE UNIQUE INDEX "access_role_id_controller_id_idx" ON "public"."access" USING btree ("role_id" "pg_catalog"."int8_ops" ASC NULLS LAST, "controller_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "access_role_id_idx" ON "public"."access" USING btree ("role_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."access" ADD CONSTRAINT "access_pkey" PRIMARY KEY ("access_id");
 
 -- ----------------------------
 -- Indexes structure for table controller
 -- ----------------------------
-CREATE INDEX "controller_action_id_idx" ON "public"."controller" USING btree (
-  "action_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "controller_class_id_idx" ON "public"."controller" USING btree (
-  "class_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE UNIQUE INDEX "controller_module_id_class_id_action_id_idx" ON "public"."controller" USING btree (
-  "module_id" "pg_catalog"."int8_ops" ASC NULLS LAST,
-  "class_id" "pg_catalog"."int8_ops" ASC NULLS LAST,
-  "action_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "controller_module_id_idx" ON "public"."controller" USING btree (
-  "module_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE INDEX "controller_action_id_idx" ON "public"."controller" USING btree ("action_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "controller_class_id_idx" ON "public"."controller" USING btree ("class_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE UNIQUE INDEX "controller_module_id_class_id_action_id_idx" ON "public"."controller" USING btree ("module_id" "pg_catalog"."int8_ops" ASC NULLS LAST, "class_id" "pg_catalog"."int8_ops" ASC NULLS LAST, "action_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "controller_module_id_idx" ON "public"."controller" USING btree ("module_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."controller" ADD CONSTRAINT "controller_expr_ch" CHECK (length(module) = 0 AND length(class) = 0 AND length(action) = 0 OR length(module) > 0 AND length(class) = 0 AND length(action) = 0 OR length(module) > 0 AND length(class) > 0 AND length(action) = 0 OR length(module) > 0 AND length(class) > 0 AND length(action) > 0);
 ALTER TABLE "public"."controller" ADD CONSTRAINT "controller_pkey" PRIMARY KEY ("controller_id");
 
 -- ----------------------------
 -- Indexes structure for table lang
 -- ----------------------------
-CREATE INDEX "lang_enable_idx" ON "public"."lang" USING btree (
-  "enable" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "lang_lang_idx" ON "public"."lang" USING btree (
-  "lang" "pg_catalog"."text_ops" ASC NULLS LAST
-);
-CREATE INDEX "lang_name_idx" ON "public"."lang" USING btree (
-  "name" "pg_catalog"."text_ops" ASC NULLS LAST
-);
+CREATE INDEX "lang_enable_idx" ON "public"."lang" USING btree ("enable" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "lang_lang_idx" ON "public"."lang" USING btree ("lang" "pg_catalog"."text_ops" ASC NULLS LAST);
+CREATE INDEX "lang_name_idx" ON "public"."lang" USING btree ("name" "pg_catalog"."text_ops" ASC NULLS LAST);
 ALTER TABLE "public"."lang" ADD CONSTRAINT "lang_pkey" PRIMARY KEY ("lang_id");
 
 -- ----------------------------
 -- Indexes structure for table mail
 -- ----------------------------
-CREATE INDEX "mail_err_idx" ON "public"."mail" USING btree (
-  "err" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "mail_send_idx" ON "public"."mail" USING btree (
-  "send" "pg_catalog"."timestamptz_ops" ASC NULLS LAST
-);
-CREATE INDEX "mail_user_id_idx" ON "public"."mail" USING btree (
-  "user_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE INDEX "mail_err_idx" ON "public"."mail" USING btree ("err" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "mail_send_idx" ON "public"."mail" USING btree ("send" "pg_catalog"."timestamptz_ops" ASC NULLS LAST);
+CREATE INDEX "mail_user_id_idx" ON "public"."mail" USING btree ("user_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."mail" ADD CONSTRAINT "mail_pkey" PRIMARY KEY ("mail_id");
 
 -- ----------------------------
 -- Indexes structure for table provider
 -- ----------------------------
-CREATE INDEX "provider_enabled_idx" ON "public"."provider" USING btree (
-  "enable" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "provider_master_idx" ON "public"."provider" USING btree (
-  "master" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE UNIQUE INDEX "provider_name_idx" ON "public"."provider" USING btree (
-  "name" "pg_catalog"."text_ops" ASC NULLS LAST
-);
-CREATE INDEX "provider_slave_idx" ON "public"."provider" USING btree (
-  "slave" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
+CREATE INDEX "provider_enabled_idx" ON "public"."provider" USING btree ("enable" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "provider_master_idx" ON "public"."provider" USING btree ("master" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE UNIQUE INDEX "provider_name_idx" ON "public"."provider" USING btree ("name" "pg_catalog"."text_ops" ASC NULLS LAST);
+CREATE INDEX "provider_slave_idx" ON "public"."provider" USING btree ("slave" "pg_catalog"."bool_ops" ASC NULLS LAST);
 ALTER TABLE "public"."provider" ADD CONSTRAINT "provider_pkey" PRIMARY KEY ("provider_id");
 
 -- ----------------------------
 -- Indexes structure for table redirect
 -- ----------------------------
-CREATE UNIQUE INDEX "redirect_url_idx" ON "public"."redirect" USING btree (
-  "url" "pg_catalog"."text_ops" ASC NULLS LAST
-);
+CREATE UNIQUE INDEX "redirect_url_idx" ON "public"."redirect" USING btree ("url" "pg_catalog"."text_ops" ASC NULLS LAST);
 ALTER TABLE "public"."redirect" ADD CONSTRAINT "redirect_pkey" PRIMARY KEY ("redirect_id");
 
 -- ----------------------------
 -- Indexes structure for table role
 -- ----------------------------
-CREATE UNIQUE INDEX "role_name_idx" ON "public"."role" USING btree (
-  "name" "pg_catalog"."jsonb_ops" ASC NULLS LAST
-);
+CREATE UNIQUE INDEX "role_name_idx" ON "public"."role" USING btree ("name" "pg_catalog"."jsonb_ops" ASC NULLS LAST);
 ALTER TABLE "public"."role" ADD CONSTRAINT "role_pkey" PRIMARY KEY ("role_id");
 
 -- ----------------------------
 -- Indexes structure for table route
 -- ----------------------------
-CREATE INDEX "route_controller_id_idx" ON "public"."route" USING btree (
-  "controller_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "route_lang_id_idx" ON "public"."route" USING btree (
-  "lang_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "route_params_idx" ON "public"."route" USING btree (
-  "params" "pg_catalog"."text_ops" ASC NULLS LAST
-);
-CREATE UNIQUE INDEX "route_url_idx" ON "public"."route" USING btree (
-  "url" "pg_catalog"."text_ops" ASC NULLS LAST
-);
+CREATE INDEX "route_controller_id_idx" ON "public"."route" USING btree ("controller_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "route_lang_id_idx" ON "public"."route" USING btree ("lang_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "route_params_idx" ON "public"."route" USING btree ("params" "pg_catalog"."text_ops" ASC NULLS LAST);
+CREATE UNIQUE INDEX "route_url_idx" ON "public"."route" USING btree ("url" "pg_catalog"."text_ops" ASC NULLS LAST);
 ALTER TABLE "public"."route" ADD CONSTRAINT "route_pkey" PRIMARY KEY ("route_id");
 
 -- ----------------------------
 -- Indexes structure for table session
 -- ----------------------------
-CREATE UNIQUE INDEX "session_session_idx" ON "public"."session" USING btree (
-  "session" "pg_catalog"."text_ops" ASC NULLS LAST
-);
-CREATE INDEX "session_user_id_idx" ON "public"."session" USING btree (
-  "user_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE UNIQUE INDEX "session_session_idx" ON "public"."session" USING btree ("session" "pg_catalog"."text_ops" ASC NULLS LAST);
+CREATE INDEX "session_user_id_idx" ON "public"."session" USING btree ("user_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("session_id");
 
 -- ----------------------------
 -- Indexes structure for table setting
 -- ----------------------------
-CREATE UNIQUE INDEX "setting_key_idx" ON "public"."setting" USING btree (
-  "key" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE UNIQUE INDEX "setting_key_idx" ON "public"."setting" USING btree ("key" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."setting" ADD CONSTRAINT "setting_pkey" PRIMARY KEY ("setting_id");
 
 -- ----------------------------
 -- Indexes structure for table user
 -- ----------------------------
-CREATE INDEX "user_enable_idx" ON "public"."user" USING btree (
-  "enable" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "user_lang_id_idx" ON "public"."user" USING btree (
-  "lang_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "user_protect_idx" ON "public"."user" USING btree (
-  "protect" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "user_role_id_idx" ON "public"."user" USING btree (
-  "role_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE INDEX "user_enable_idx" ON "public"."user" USING btree ("enable" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "user_lang_id_idx" ON "public"."user" USING btree ("lang_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "user_protect_idx" ON "public"."user" USING btree ("protect" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "user_role_id_idx" ON "public"."user" USING btree ("role_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."user" ADD CONSTRAINT "user_pkey" PRIMARY KEY ("user_id");
 
 -- ----------------------------
 -- Indexes structure for table user_provider
 -- ----------------------------
-CREATE INDEX "user_provider_enabled_idx" ON "public"."user_provider" USING btree (
-  "enable" "pg_catalog"."bool_ops" ASC NULLS LAST
-);
-CREATE INDEX "user_provider_provider_id_idx" ON "public"."user_provider" USING btree (
-  "provider_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE INDEX "user_provider_user_id_idx" ON "public"."user_provider" USING btree (
-  "user_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
-CREATE UNIQUE INDEX "user_provider_user_id_provider_id_idx" ON "public"."user_provider" USING btree (
-  "user_id" "pg_catalog"."int8_ops" ASC NULLS LAST,
-  "provider_id" "pg_catalog"."int8_ops" ASC NULLS LAST
-);
+CREATE INDEX "user_provider_enabled_idx" ON "public"."user_provider" USING btree ("enable" "pg_catalog"."bool_ops" ASC NULLS LAST);
+CREATE INDEX "user_provider_provider_id_idx" ON "public"."user_provider" USING btree ("provider_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE INDEX "user_provider_user_id_idx" ON "public"."user_provider" USING btree ("user_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
+CREATE UNIQUE INDEX "user_provider_user_id_provider_id_idx" ON "public"."user_provider" USING btree ("user_id" "pg_catalog"."int8_ops" ASC NULLS LAST, "provider_id" "pg_catalog"."int8_ops" ASC NULLS LAST);
 ALTER TABLE "public"."user_provider" ADD CONSTRAINT "user_provider_pkey" PRIMARY KEY ("user_provider_id");
 
 -- ----------------------------

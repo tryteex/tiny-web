@@ -304,7 +304,7 @@ impl Net {
                     }
                 }
                 _ => {
-                    let key = match String::from_utf8(unsafe { data.get_unchecked(size..size + key_len) }.to_vec()) {
+                    let key = match String::from_utf8(key.to_vec()) {
                         Ok(key) => key,
                         Err(_) => break,
                     };

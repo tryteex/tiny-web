@@ -748,10 +748,11 @@ impl Action {
         }
 
         if request.url != "/" {
-            let load: Vec<&str> = request.url.splitn(5, '/').collect();
+            let mut load: Vec<&str> = request.url.splitn(5, '/').collect();
+            load.retain(|&x| x != "");
             let r = match load.len() {
-                2 => {
-                    let module = unsafe { *load.get_unchecked(1) };
+                1 => {
+                    let module = unsafe { *load.get_unchecked(0) };
                     Route {
                         module: module.to_owned(),
                         class: "index".to_owned(),
@@ -763,9 +764,9 @@ impl Action {
                         lang_id: None,
                     }
                 }
-                3 => {
-                    let module = unsafe { *load.get_unchecked(1) };
-                    let class = unsafe { *load.get_unchecked(2) };
+                2 => {
+                    let module = unsafe { *load.get_unchecked(0) };
+                    let class = unsafe { *load.get_unchecked(1) };
                     Route {
                         module: module.to_owned(),
                         class: class.to_owned(),
@@ -777,10 +778,10 @@ impl Action {
                         lang_id: None,
                     }
                 }
-                4 => {
-                    let module = unsafe { *load.get_unchecked(1) };
-                    let class = unsafe { *load.get_unchecked(2) };
-                    let action = unsafe { *load.get_unchecked(3) };
+                3 => {
+                    let module = unsafe { *load.get_unchecked(0) };
+                    let class = unsafe { *load.get_unchecked(1) };
+                    let action = unsafe { *load.get_unchecked(2) };
                     Route {
                         module: module.to_owned(),
                         class: class.to_owned(),
@@ -792,11 +793,11 @@ impl Action {
                         lang_id: None,
                     }
                 }
-                5 => {
-                    let module = unsafe { *load.get_unchecked(1) };
-                    let class = unsafe { *load.get_unchecked(2) };
-                    let action = unsafe { *load.get_unchecked(3) };
-                    let param = unsafe { *load.get_unchecked(4) };
+                4 => {
+                    let module = unsafe { *load.get_unchecked(0) };
+                    let class = unsafe { *load.get_unchecked(1) };
+                    let action = unsafe { *load.get_unchecked(2) };
+                    let param = unsafe { *load.get_unchecked(3) };
                     Route {
                         module: module.to_owned(),
                         class: class.to_owned(),
