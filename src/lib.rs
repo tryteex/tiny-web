@@ -19,15 +19,6 @@ pub fn run(name: &str, version: &str, desc: &str, func: impl Fn() -> ActMap) {
 /// Session paramater name
 pub const TINY_KEY: &str = "tinysession";
 
-/// fnv1a_64 from `` (empty)
-pub const EMPTY_ID: i64 = -3750763034362895579;
-/// fnv1a_64 from `index`
-pub const INDEX_ID: i64 = -8948777187306027381;
-/// fnv1a_64 from `err`
-pub const ERR_ID: i64 = -4396352056573698612;
-/// fnv1a_64 from `not_found`
-pub const NOT_FOUND_ID: i64 = -1573091631220776463;
-
 /// fnv1a_64 hash function
 ///
 /// # Parameters

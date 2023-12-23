@@ -1,4 +1,5 @@
 use chrono::{serde::ts_seconds::serialize as to_ts, Utc};
+use tiny_web_macro::fnv1a_64_m;
 use std::{
     collections::{BTreeMap, HashMap},
     future::Future,
@@ -13,7 +14,7 @@ use serde_json::Value;
 use sha3::{Digest, Sha3_512};
 use tokio::{fs::remove_file, sync::Mutex};
 
-use crate::{fnv1a_64, ERR_ID, INDEX_ID, NOT_FOUND_ID};
+use crate::fnv1a_64;
 
 use super::{
     cache::Cache,
@@ -501,7 +502,7 @@ impl Action {
             return Answer::None;
         }
         // If not /index/index/not_found - then redirect
-        if !(module_id == INDEX_ID && class_id == INDEX_ID && action_id == NOT_FOUND_ID) {
+        if !(module_id == fnv1a_64_m!("index") && class_id == fnv1a_64_m!("index") && action_id == fnv1a_64_m!("not_found")) {
             self.response.redirect = Some(Redirect {
                 url: self.not_found().await,
                 permanently: false,
@@ -686,9 +687,9 @@ impl Action {
                             module: "index".to_owned(),
                             class: "index".to_owned(),
                             action: "err".to_owned(),
-                            module_id: INDEX_ID,
-                            class_id: INDEX_ID,
-                            action_id: ERR_ID,
+                            module_id: fnv1a_64_m!("index"),
+                            class_id: fnv1a_64_m!("index"),
+                            action_id: fnv1a_64_m!("err"),
                             param: None,
                             lang_id: None,
                         };
@@ -735,9 +736,9 @@ impl Action {
                             module: "index".to_owned(),
                             class: "index".to_owned(),
                             action: "err".to_owned(),
-                            module_id: INDEX_ID,
-                            class_id: INDEX_ID,
-                            action_id: ERR_ID,
+                            module_id: fnv1a_64_m!("index"),
+                            class_id: fnv1a_64_m!("index"),
+                            action_id: fnv1a_64_m!("err"),
                             param: None,
                             lang_id: None,
                         };
@@ -758,8 +759,8 @@ impl Action {
                         class: "index".to_owned(),
                         action: "index".to_owned(),
                         module_id: fnv1a_64(module),
-                        class_id: INDEX_ID,
-                        action_id: INDEX_ID,
+                        class_id: fnv1a_64_m!("index"),
+                        action_id: fnv1a_64_m!("index"),
                         param: None,
                         lang_id: None,
                     }
@@ -773,7 +774,7 @@ impl Action {
                         action: "index".to_owned(),
                         module_id: fnv1a_64(module),
                         class_id: fnv1a_64(class),
-                        action_id: INDEX_ID,
+                        action_id: fnv1a_64_m!("index"),
                         param: None,
                         lang_id: None,
                     }
@@ -813,9 +814,9 @@ impl Action {
                     module: "index".to_owned(),
                     class: "index".to_owned(),
                     action: "index".to_owned(),
-                    module_id: INDEX_ID,
-                    class_id: INDEX_ID,
-                    action_id: INDEX_ID,
+                    module_id: fnv1a_64_m!("index"),
+                    class_id: fnv1a_64_m!("index"),
+                    action_id: fnv1a_64_m!("index"),
                     param: None,
                     lang_id: None,
                 },
@@ -826,9 +827,9 @@ impl Action {
                 module: "index".to_owned(),
                 class: "index".to_owned(),
                 action: "index".to_owned(),
-                module_id: INDEX_ID,
-                class_id: INDEX_ID,
-                action_id: INDEX_ID,
+                module_id: fnv1a_64_m!("index"),
+                class_id: fnv1a_64_m!("index"),
+                action_id: fnv1a_64_m!("index"),
                 param: None,
                 lang_id: None,
             })
