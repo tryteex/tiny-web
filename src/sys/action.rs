@@ -1,5 +1,4 @@
 use chrono::{serde::ts_seconds::serialize as to_ts, Utc};
-use tiny_web_macro::fnv1a_64_m;
 use std::{
     collections::{BTreeMap, HashMap},
     future::Future,
@@ -7,6 +6,7 @@ use std::{
     pin::Pin,
     sync::Arc,
 };
+use tiny_web_macro::fnv1a_64_m;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -750,7 +750,7 @@ impl Action {
 
         if request.url != "/" {
             let mut load: Vec<&str> = request.url.splitn(5, '/').collect();
-            load.retain(|&x| x != "");
+            load.retain(|&x| !x.is_empty());
             let r = match load.len() {
                 1 => {
                     let module = unsafe { *load.get_unchecked(0) };
