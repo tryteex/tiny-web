@@ -39,3 +39,29 @@ pub fn fnv1a_64(text: &str) -> i64 {
     }
     unsafe { *(&hash as *const u64 as *const i64) }
 }
+
+/// Trait for types that can be hashed using the FNV-1a algorithm with a 64-bit hash.
+pub trait FNV1A64 {
+    fn to_i64(&self) -> i64;
+    fn to_string(&self) -> String;
+}
+
+impl FNV1A64 for i64 {
+    fn to_i64(&self) -> i64 {
+        *self
+    }
+
+    fn to_string(&self) -> String {
+        ToString::to_string(self)
+    }
+}
+
+impl FNV1A64 for &str {
+    fn to_i64(&self) -> i64 {
+        fnv1a_64(self)
+    }
+
+    fn to_string(&self) -> String {
+        ToString::to_string(self)
+    }
+}

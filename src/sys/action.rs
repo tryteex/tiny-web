@@ -14,7 +14,7 @@ use serde_json::Value;
 use sha3::{Digest, Sha3_512};
 use tokio::{fs::remove_file, sync::Mutex};
 
-use crate::fnv1a_64;
+use crate::{fnv1a_64, FNV1A64};
 
 use super::{
     cache::Cache,
@@ -478,10 +478,10 @@ impl Action {
     }
 
     /// Load internal controller
-    pub async fn load(&mut self, key: &str, module: &str, class: &str, action: &str, param: Option<String>) {
-        let res = self.start_route(fnv1a_64(module), fnv1a_64(class), fnv1a_64(action), param, true);
+    pub async fn load<T: FNV1A64>(&mut self, key: T, module: T, class: T, action: T, param: Option<String>) {
+        let res = self.start_route(module.to_i64(), class.to_i64(), action.to_i64(), param, true);
         if let Answer::String(value) = res.await {
-            self.data.insert(fnv1a_64(key), Data::String(value));
+            self.data.insert(key.to_i64(), Data::String(value));
         }
     }
 
@@ -521,14 +521,13 @@ impl Action {
     }
 
     /// Get translate
-    pub fn lang(&self, text: &str) -> String {
+    pub fn lang<T: FNV1A64>(&self, text: T) -> String {
         if let Some(l) = &self.lang {
-            let key = fnv1a_64(text);
-            if let Some(str) = l.get(&key) {
+            if let Some(str) = l.get(&text.to_i64()) {
                 return str.to_owned();
             }
         }
-        text.to_owned()
+        text.to_string()
     }
 
     /// Invoke found controller
@@ -861,8 +860,8 @@ impl Action {
     }
 
     /// Set value for the template
-    pub fn set(&mut self, key: &str, value: Data) {
-        self.data.insert(fnv1a_64(key), value);
+    pub fn set<T: FNV1A64>(&mut self, key: T, value: Data) {
+        self.data.insert(key.to_i64(), value);
     }
 
     /// Render template
@@ -870,11 +869,10 @@ impl Action {
     /// # Value
     ///
     /// * `template: &str` - Name of template
-    pub fn render(&self, template: &str) -> Answer {
+    pub fn render<T: FNV1A64>(&self, template: T) -> Answer {
         match &self.html {
             Some(h) => {
-                let key = fnv1a_64(template);
-                match h.get(&key) {
+                match h.get(&template.to_i64()) {
                     Some(vec) => Html::render(&self.data, vec),
                     None => Answer::None,
                 }
