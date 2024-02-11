@@ -20,13 +20,13 @@ use tokio::{
 
 use super::{
     action::ActMap,
-    cache::Cache,
+    cache::CacheSys,
+    db::DB,
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
     lang::{Lang, LangItem},
     log::Log,
     mail::Mail,
-    pool::DBPool,
     worker::{Worker, WorkerData},
 };
 
@@ -82,25 +82,15 @@ impl Go {
         let lang = Arc::new(init.conf.lang.clone());
         let bind_accept = Arc::new(init.conf.bind_accept.clone());
         let salt = Arc::new(init.conf.salt.clone());
-        let bind_addr = init.conf.bind.clone();
         let engine_data = func();
         let protocol = init.conf.protocol.clone();
-
+        let max = db.max;
+        let mut db = DB::new(max, db, init.conf.prepare.clone()).await?;
         let main = tokio::spawn(async move {
-            // Create pool database connector
-            let max = db.max;
-            let mut db = DBPool::new(max, db).await;
-            if max != db.size {
-                stop.store(true, Ordering::Relaxed);
-                Log::stop(610, None);
-                // send stop signal
-                Go::send_stop(&bind_addr).await;
-                return;
-            }
             let langs = Go::get_langs(&mut db).await;
             let lang = Arc::new(Lang::new(&root_path, &lang, langs));
             let html = Arc::new(Html::new(&root_path));
-            let cache = Cache::new().await;
+            let cache = CacheSys::new().await;
             let engine = Arc::new(engine_data);
 
             let db = Arc::new(db);
@@ -244,25 +234,33 @@ impl Go {
                     continue;
                 }
             };
-            if signal != conf.stop {
+            if signal == conf.stop {
+                // set stop
+                stop.store(true, Ordering::Relaxed);
+                // push current thread id
+                Log::info(207, None);
+                let pid = process::id() as u64;
+                if let Err(e) = stream.write_u64(pid).await {
+                    Log::warning(215, Some(e.to_string()));
+                }
+                // send stop signal
+                Go::send_stop(&conf.bind).await;
+                // wait all threads stop
+                if let Err(e) = main.await {
+                    Log::stop(220, Some(e.to_string()));
+                }
+                break;
+            } else if signal == conf.status {
+                Log::info(227, None);
+                let pid = process::id() as u64;
+                if let Err(e) = stream.write_u64(pid).await {
+                    Log::warning(215, Some(e.to_string()));
+                } else if let Err(e) = stream.write_all("Working...".as_bytes()).await {
+                    Log::warning(215, Some(e.to_string()));
+                }
+            } else {
                 Log::warning(206, Some(signal.to_string()));
-                continue;
             }
-            // set stop
-            stop.store(true, Ordering::Relaxed);
-            // push current thread id
-            Log::info(207, None);
-            let pid = process::id() as u64;
-            if let Err(e) = stream.write_u64(pid).await {
-                Log::warning(215, Some(e.to_string()));
-            }
-            // send stop signal
-            Go::send_stop(&conf.bind).await;
-            // wait all threads stop
-            if let Err(e) = main.await {
-                Log::stop(220, Some(e.to_string()));
-            }
-            break;
         }
     }
 
@@ -295,14 +293,14 @@ impl Go {
     }
 
     /// Get list of enabled langs from database
-    async fn get_langs(db: &mut DBPool) -> Vec<LangItem> {
+    async fn get_langs(db: &mut DB) -> Vec<LangItem> {
         let sql = "
             SELECT lang_id, lang, name
             FROM lang
             WHERE enable
             ORDER BY sort
         ";
-        let res = match db.query_raw(sql).await {
+        let res = match db.query_raw(sql, &[]).await {
             Some(res) => res,
             None => {
                 Log::warning(1150, None);

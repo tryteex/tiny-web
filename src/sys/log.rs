@@ -124,7 +124,7 @@ impl Log {
             None => format!("Text: {}", Log::number_to_text(log.number)),
         };
         let str = format!("ID: {} Time: {} Type: {:?} Number: {} {}\n", process::id(), time, log.view, log.number, text);
-        match OpenOptions::new().create(true).write(true).append(true).open(file) {
+        match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut file) => match file.write_all(str.as_bytes()) {
                 Ok(f) => f,
                 Err(e) => Log::panic(&e.to_string()),
@@ -150,7 +150,7 @@ impl Log {
                 "tiny.log"
             }
         };
-        match OpenOptions::new().create(true).write(true).append(true).open(file) {
+        match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
                     let str = format!(
@@ -221,7 +221,7 @@ impl Log {
             203 => "IP address for rpc control is not allowed",
             204 => "Reading from the rpc stream timed out",
             205 => "Error reading from the rpc",
-            206 => "Received signal is not the stop signal",
+            206 => "Received signal is not the stop or status signals",
             207 => "Stop signal received successfully",
             211 => "The app start successfully",
             212 => "Can't start the app",
@@ -236,6 +236,10 @@ impl Log {
             221 => "Unable to connect to server due to timeout",
             222 => "Can't connect to server",
             223 => "Can't set write_timeout",
+            224 => "Can't send 'status' signal to the server",
+            225 => "Can't read answer from stream",
+            226 => "Can't recognize answer from stream",
+            227 => "Status signal received successfully",
 
             500 => "Unable to open server port",
             501 => "IP address from which to accept connections is not allowed",
@@ -259,9 +263,9 @@ impl Log {
             612 => "Error close connection with database",
             613 => "Can't prepare statement",
             614 => "Unknown database type",
+            615 => "Key not found",
 
             700 => "Error parse html template",
-
 
             1100 => "Can't open root_dir/app",
             1101 => "Can't get dir entry",

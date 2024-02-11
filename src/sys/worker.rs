@@ -14,13 +14,13 @@ use crate::TINY_KEY;
 
 use super::{
     action::{ActMap, Action, ActionData, Answer, WebFile},
-    cache::Cache,
+    cache::CacheSys,
+    db::DB,
     file::TempFile,
     html::Html,
     lang::Lang,
     log::Log,
     mail::Mail,
-    pool::DBPool,
     workers::{fastcgi, grpc, http, scgi, uwsgi, websocket},
 };
 
@@ -70,7 +70,7 @@ pub enum WorkerType {
 /// * `lang: Arc<Lang>` - I18n system.
 /// * `html: Arc<Html>` - Template maker.
 /// * `cache: Arc<Mutex<Cache>>` - Cache system.
-/// * `db: Arc<DBPool>` - Database connections pool.
+/// * `db: Arc<DB>` - Database connections pool.
 /// * `salt: Arc<String>` - Salt for a crypto functions.
 #[derive(Debug)]
 pub struct WorkerData {
@@ -81,9 +81,9 @@ pub struct WorkerData {
     /// Template maker.
     pub html: Arc<Html>,
     /// Cache system.
-    pub cache: Arc<Mutex<Cache>>,
+    pub cache: Arc<Mutex<CacheSys>>,
     /// Database connections pool.
-    pub db: Arc<DBPool>,
+    pub db: Arc<DB>,
     /// Salt for a crypto functions.
     pub salt: Arc<String>,
     /// Mail provider.

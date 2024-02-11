@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     env,
     fs::read_to_string,
     io::ErrorKind,
@@ -8,7 +9,7 @@ use std::{
 
 use crate::fnv1a_64;
 
-use super::{log::Log, worker::WorkerType};
+use super::{db_one::DBPrepare, log::Log, worker::WorkerType};
 
 /// Responsible for the IP address that should be accepted.
 ///
@@ -90,6 +91,8 @@ pub struct DBConfig {
 /// * `salt: String` - Salt for a crypto functions.
 /// * `db: Option<DBConfig>` - Database configuration.
 /// * `stop: u64` - Stop signal.
+/// * `status: u64` - Status signal.
+/// * `protocol: WorkerType` - Protocol.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Name server from env!("CARGO_PKG_NAME") primary project.
@@ -118,8 +121,12 @@ pub struct Config {
     pub db: DBConfig,
     /// Stop signal
     pub stop: i64,
+    /// Status signal
+    pub status: i64,
     /// Protocol
     pub protocol: WorkerType,
+    /// Prepare sql queries
+    pub prepare: BTreeMap<i64, DBPrepare>,
 }
 
 /// Responsible for running mode of server.
@@ -410,7 +417,9 @@ impl Init {
                 zone: None,
             },
             stop: 0,
+            status: 0,
             protocol: WorkerType::FastCGI,
+            prepare: BTreeMap::new(),
         };
         if !text.is_empty() {
             for part in text.split('\n') {
@@ -532,7 +541,8 @@ impl Init {
                             }
                             "salt" => {
                                 conf.salt = val.to_owned();
-                                conf.stop = fnv1a_64(&format!("stop{}", &conf.salt));
+                                conf.stop = fnv1a_64(format!("stop{}", &conf.salt).as_bytes());
+                                conf.status = fnv1a_64(format!("status{}", &conf.salt).as_bytes());
                             }
                             "db_host" => {
                                 if !val.is_empty() {

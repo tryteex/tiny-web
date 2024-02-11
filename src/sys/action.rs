@@ -6,7 +6,7 @@ use std::{
     pin::Pin,
     sync::Arc,
 };
-use tiny_web_macro::fnv1a_64_m;
+use tiny_web_macro::fnv1a_64;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -14,15 +14,15 @@ use serde_json::Value;
 use sha3::{Digest, Sha3_512};
 use tokio::{fs::remove_file, sync::Mutex};
 
-use crate::{fnv1a_64, FNV1A64};
+use crate::{fnv1a_64, StrOrI64};
 
 use super::{
-    cache::Cache,
+    cache::CacheSys,
+    db::DB,
     html::{Html, Nodes},
     lang::Lang,
     log::Log,
     mail::{Mail, MailMessage, MailProvider},
-    pool::DBPool,
     worker::WorkerData,
 };
 
@@ -250,8 +250,8 @@ pub struct Response {
 pub struct Session {
     /// session_id from database
     id: i64,
-    /// lang_id from database
-    lang_id: i64,
+    /// Default lang_id for user
+    pub lang_id: i64,
     /// user_id from database
     pub user_id: i64,
     /// role_id from database
@@ -312,6 +312,12 @@ pub struct Route {
     lang_id: Option<i64>,
 }
 
+/// Cache struct
+#[derive(Debug)]
+pub struct Cache {
+    cache: Arc<Mutex<CacheSys>>,
+}
+
 /// Main struct to run web engine
 ///
 ///  # Values
@@ -336,7 +342,7 @@ pub struct Route {
 /// * `language: Arc<Lang>` - All translates.
 /// * `template: Arc<Html>` - All templates.
 /// * `cache: Arc<Mutex<Cache>>` - Cache.
-/// * `db: Arc<DBPool>` - Database pool.
+/// * `db: Arc<DB>` - Database pool.
 /// * `mail: Arc<Mail>` - Mail function.
 /// * `internal: bool` - Internal call of controller.
 #[derive(Debug)]
@@ -359,7 +365,7 @@ pub struct Action {
     /// Start action (controller) name
     pub action: String,
     /// Start param
-    param: Option<String>,
+    pub param: Option<String>,
     /// Module ID
     module_id: i64,
     /// Class ID
@@ -382,9 +388,9 @@ pub struct Action {
     /// All templates
     template: Arc<Html>,
     /// Cache
-    cache: Arc<Mutex<Cache>>,
+    pub cache: Cache,
     /// Database pool
-    pub db: Arc<DBPool>,
+    pub db: Arc<DB>,
     /// Mail function
     mail: Arc<Mutex<Mail>>,
 
@@ -465,7 +471,7 @@ impl Action {
             engine: data.data.engine,
             language: data.data.lang,
             template: data.data.html,
-            cache: data.data.cache,
+            cache: Cache::new(data.data.cache),
             db: data.data.db,
             mail: data.data.mail,
             internal: false,
@@ -478,9 +484,16 @@ impl Action {
     }
 
     /// Load internal controller
-    pub async fn load<T: FNV1A64>(&mut self, key: T, module: T, class: T, action: T, param: Option<String>) {
-        let res = self.start_route(module.to_i64(), class.to_i64(), action.to_i64(), param, true);
-        if let Answer::String(value) = res.await {
+    pub async fn load<'a>(
+        &mut self,
+        key: impl StrOrI64,
+        module: impl StrOrI64,
+        class: impl StrOrI64,
+        action: impl StrOrI64,
+        param: Option<String>,
+    ) {
+        let res = self.start_route(module.to_i64(), class.to_i64(), action.to_i64(), param, true).await;
+        if let Answer::String(value) = res {
             self.data.insert(key.to_i64(), Data::String(value));
         }
     }
@@ -502,7 +515,7 @@ impl Action {
             return Answer::None;
         }
         // If not /index/index/not_found - then redirect
-        if !(module_id == fnv1a_64_m!("index") && class_id == fnv1a_64_m!("index") && action_id == fnv1a_64_m!("not_found")) {
+        if !(module_id == fnv1a_64!("index") && class_id == fnv1a_64!("index") && action_id == fnv1a_64!("not_found")) {
             self.response.redirect = Some(Redirect {
                 url: self.not_found().await,
                 permanently: false,
@@ -521,13 +534,13 @@ impl Action {
     }
 
     /// Get translate
-    pub fn lang<T: FNV1A64>(&self, text: T) -> String {
+    pub fn lang(&self, text: impl StrOrI64) -> String {
         if let Some(l) = &self.lang {
             if let Some(str) = l.get(&text.to_i64()) {
                 return str.to_owned();
             }
         }
-        text.to_string()
+        text.to_str()
     }
 
     /// Invoke found controller
@@ -599,25 +612,32 @@ impl Action {
     }
 
     /// Get access to run controller
-    pub async fn get_access(&mut self, module_id: i64, class_id: i64, action_id: i64) -> bool {
+    pub async fn get_access(&mut self, module: impl StrOrI64, class: impl StrOrI64, action: impl StrOrI64) -> bool {
+        let module_id = module.to_i64();
+        let class_id = class.to_i64();
+        let action_id = action.to_i64();
         // Read from cache
-        let key = format!("auth:{}:{}:{}:{}", self.session.role_id, module_id, class_id, action_id);
-        if let Some(Data::Bool(a)) = Cache::get(Arc::clone(&self.cache), &key).await {
+        let key = vec![fnv1a_64!("auth"), self.session.role_id, module_id, class_id, action_id];
+        let key = key.as_slice();
+        if let Some(Data::Bool(a)) = self.cache.get(key).await {
             return a;
         };
         // Prepare sql query
         match self
             .db
-            .query_fast(5, &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id])
+            .query_raw(
+                fnv1a_64!("lib_get_auth"),
+                &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id],
+            )
             .await
         {
             Some(rows) => {
                 if rows.len() == 1 {
                     let access: bool = rows[0].get(0);
-                    Cache::set(Arc::clone(&self.cache), key, Data::Bool(access)).await;
+                    self.cache.set(key, Data::Bool(access)).await;
                     access
                 } else {
-                    Cache::set(Arc::clone(&self.cache), key, Data::Bool(false)).await;
+                    self.cache.set(key, Data::Bool(false)).await;
                     false
                 }
             }
@@ -626,24 +646,25 @@ impl Action {
     }
 
     /// Get not_found url
-    pub async fn not_found(&self) -> String {
-        let key = format!("404:{}", self.session.lang_id);
-        match Cache::get(Arc::clone(&self.cache), &key).await {
+    pub async fn not_found(&mut self) -> String {
+        let key = vec![fnv1a_64!("404"), self.session.lang_id];
+        let key = key.as_slice();
+        match self.cache.get(key).await {
             Some(d) => match d {
                 Data::String(url) => url,
                 _ => "/index/index/not_found".to_owned(),
             },
             None => {
                 // Load from database
-                match self.db.query_fast(6, &[&self.session.lang_id]).await {
+                match self.db.query_raw(fnv1a_64!("lib_get_not_found"), &[&self.session.lang_id]).await {
                     Some(v) => {
                         if v.is_empty() {
-                            Cache::set(Arc::clone(&self.cache), key, Data::None).await;
+                            self.cache.set(key, Data::None).await;
                             "/index/index/not_found".to_owned()
                         } else {
                             let row = unsafe { v.get_unchecked(0) };
                             let url: String = row.get(0);
-                            Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone())).await;
+                            self.cache.set(key, Data::String(url.clone())).await;
                             url
                         }
                     }
@@ -654,10 +675,10 @@ impl Action {
     }
 
     /// Extract route from url
-    async fn extract_route(request: &Request, cache: Arc<Mutex<Cache>>, db: Arc<DBPool>) -> Result<Route, Redirect> {
+    async fn extract_route(request: &Request, cache: Arc<Mutex<CacheSys>>, db: Arc<DB>) -> Result<Route, Redirect> {
         // Get redirect
-        let key = format!("redirect:{}", &request.url);
-        match Cache::get(Arc::clone(&cache), &key).await {
+        let key = vec![fnv1a_64!("redirect"), fnv1a_64(request.url.as_bytes())];
+        match CacheSys::get(Arc::clone(&cache), &key).await {
             Some(d) => match d {
                 Data::None => {}
                 Data::Redirect(r) => return Err(r),
@@ -667,17 +688,17 @@ impl Action {
             },
             None => {
                 // Load from database
-                match db.query_fast(3, &[&request.url]).await {
+                match db.query_raw(fnv1a_64!("lib_get_redirect"), &[&request.url]).await {
                     Some(v) => {
                         if v.is_empty() {
-                            Cache::set(Arc::clone(&cache), key, Data::None).await;
+                            CacheSys::set(Arc::clone(&cache), &key, Data::None).await;
                         } else {
                             let row = unsafe { v.get_unchecked(0) };
                             let r = Redirect {
                                 url: row.get(0),
                                 permanently: row.get(1),
                             };
-                            Cache::set(Arc::clone(&cache), key, Data::Redirect(r.clone())).await;
+                            CacheSys::set(Arc::clone(&cache), &key, Data::Redirect(r.clone())).await;
                             return Err(r);
                         }
                     }
@@ -686,9 +707,9 @@ impl Action {
                             module: "index".to_owned(),
                             class: "index".to_owned(),
                             action: "err".to_owned(),
-                            module_id: fnv1a_64_m!("index"),
-                            class_id: fnv1a_64_m!("index"),
-                            action_id: fnv1a_64_m!("err"),
+                            module_id: fnv1a_64!("index"),
+                            class_id: fnv1a_64!("index"),
+                            action_id: fnv1a_64!("err"),
                             param: None,
                             lang_id: None,
                         };
@@ -699,8 +720,8 @@ impl Action {
         }
 
         // Get route
-        let key = format!("route:{}", &request.url);
-        match Cache::get(Arc::clone(&cache), &key).await {
+        let key = vec![fnv1a_64!("route"), fnv1a_64(request.url.as_bytes())];
+        match CacheSys::get(Arc::clone(&cache), &key[..]).await {
             Some(d) => match d {
                 Data::None => {}
                 Data::Route(r) => return Ok(r),
@@ -710,10 +731,10 @@ impl Action {
             },
             None => {
                 // Load from database
-                match db.query_fast(4, &[&request.url]).await {
+                match db.query_raw(fnv1a_64!("lib_get_route"), &[&request.url]).await {
                     Some(v) => {
                         if v.is_empty() {
-                            Cache::set(Arc::clone(&cache), key, Data::None).await;
+                            CacheSys::set(Arc::clone(&cache), &key, Data::None).await;
                         } else {
                             let row = unsafe { v.get_unchecked(0) };
                             let r = Route {
@@ -726,7 +747,7 @@ impl Action {
                                 param: row.get(6),
                                 lang_id: row.get(7),
                             };
-                            Cache::set(Arc::clone(&cache), key, Data::Route(r.clone())).await;
+                            CacheSys::set(Arc::clone(&cache), &key, Data::Route(r.clone())).await;
                             return Ok(r);
                         }
                     }
@@ -735,9 +756,9 @@ impl Action {
                             module: "index".to_owned(),
                             class: "index".to_owned(),
                             action: "err".to_owned(),
-                            module_id: fnv1a_64_m!("index"),
-                            class_id: fnv1a_64_m!("index"),
-                            action_id: fnv1a_64_m!("err"),
+                            module_id: fnv1a_64!("index"),
+                            class_id: fnv1a_64!("index"),
+                            action_id: fnv1a_64!("err"),
                             param: None,
                             lang_id: None,
                         };
@@ -757,9 +778,9 @@ impl Action {
                         module: module.to_owned(),
                         class: "index".to_owned(),
                         action: "index".to_owned(),
-                        module_id: fnv1a_64(module),
-                        class_id: fnv1a_64_m!("index"),
-                        action_id: fnv1a_64_m!("index"),
+                        module_id: fnv1a_64(module.as_bytes()),
+                        class_id: fnv1a_64!("index"),
+                        action_id: fnv1a_64!("index"),
                         param: None,
                         lang_id: None,
                     }
@@ -771,9 +792,9 @@ impl Action {
                         module: module.to_owned(),
                         class: class.to_owned(),
                         action: "index".to_owned(),
-                        module_id: fnv1a_64(module),
-                        class_id: fnv1a_64(class),
-                        action_id: fnv1a_64_m!("index"),
+                        module_id: fnv1a_64(module.as_bytes()),
+                        class_id: fnv1a_64(class.as_bytes()),
+                        action_id: fnv1a_64!("index"),
                         param: None,
                         lang_id: None,
                     }
@@ -786,9 +807,9 @@ impl Action {
                         module: module.to_owned(),
                         class: class.to_owned(),
                         action: action.to_owned(),
-                        module_id: fnv1a_64(module),
-                        class_id: fnv1a_64(class),
-                        action_id: fnv1a_64(action),
+                        module_id: fnv1a_64(module.as_bytes()),
+                        class_id: fnv1a_64(class.as_bytes()),
+                        action_id: fnv1a_64(action.as_bytes()),
                         param: None,
                         lang_id: None,
                     }
@@ -802,9 +823,9 @@ impl Action {
                         module: module.to_owned(),
                         class: class.to_owned(),
                         action: action.to_owned(),
-                        module_id: fnv1a_64(module),
-                        class_id: fnv1a_64(class),
-                        action_id: fnv1a_64(action),
+                        module_id: fnv1a_64(module.as_bytes()),
+                        class_id: fnv1a_64(class.as_bytes()),
+                        action_id: fnv1a_64(action.as_bytes()),
                         param: Some(param.to_owned()),
                         lang_id: None,
                     }
@@ -813,9 +834,9 @@ impl Action {
                     module: "index".to_owned(),
                     class: "index".to_owned(),
                     action: "index".to_owned(),
-                    module_id: fnv1a_64_m!("index"),
-                    class_id: fnv1a_64_m!("index"),
-                    action_id: fnv1a_64_m!("index"),
+                    module_id: fnv1a_64!("index"),
+                    class_id: fnv1a_64!("index"),
+                    action_id: fnv1a_64!("index"),
                     param: None,
                     lang_id: None,
                 },
@@ -826,9 +847,9 @@ impl Action {
                 module: "index".to_owned(),
                 class: "index".to_owned(),
                 action: "index".to_owned(),
-                module_id: fnv1a_64_m!("index"),
-                class_id: fnv1a_64_m!("index"),
-                action_id: fnv1a_64_m!("index"),
+                module_id: fnv1a_64!("index"),
+                class_id: fnv1a_64!("index"),
+                action_id: fnv1a_64!("index"),
                 param: None,
                 lang_id: None,
             })
@@ -860,7 +881,7 @@ impl Action {
     }
 
     /// Set value for the template
-    pub fn set<T: FNV1A64>(&mut self, key: T, value: Data) {
+    pub fn set(&mut self, key: impl StrOrI64, value: Data) {
         self.data.insert(key.to_i64(), value);
     }
 
@@ -869,32 +890,54 @@ impl Action {
     /// # Value
     ///
     /// * `template: &str` - Name of template
-    pub fn render<T: FNV1A64>(&self, template: T) -> Answer {
+    pub fn render(&self, template: impl StrOrI64) -> Answer {
         match &self.html {
-            Some(h) => {
-                match h.get(&template.to_i64()) {
-                    Some(vec) => Html::render(&self.data, vec),
-                    None => Answer::None,
-                }
-            }
+            Some(h) => match h.get(&template.to_i64()) {
+                Some(vec) => Html::render(&self.data, vec),
+                None => Answer::None,
+            },
             None => Answer::None,
         }
     }
 
     /// Get route
     pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: i64) -> String {
-        let p = param.unwrap_or("");
         // Read from cache
-        let key = format!("route:{}:{}:{}:{}:{}", module, class, action, p, lang_id);
-        if let Some(Data::String(s)) = Cache::get(Arc::clone(&self.cache), &key).await {
+        let key = match param {
+            Some(p) => vec![
+                fnv1a_64!("route"),
+                fnv1a_64(module.as_bytes()),
+                fnv1a_64(class.as_bytes()),
+                fnv1a_64(action.as_bytes()),
+                fnv1a_64(p.as_bytes()),
+                lang_id,
+            ],
+            None => vec![
+                fnv1a_64!("route"),
+                fnv1a_64(module.as_bytes()),
+                fnv1a_64(class.as_bytes()),
+                fnv1a_64(action.as_bytes()),
+                0,
+                lang_id,
+            ],
+        };
+        let key = key.as_slice();
+        if let Some(Data::String(s)) = self.cache.get(key).await {
             return s;
         };
         // Prepare sql query
-        match self.db.query_fast(12, &[&fnv1a_64(module), &fnv1a_64(class), &fnv1a_64(action), &param, &lang_id]).await {
+        match self
+            .db
+            .query_raw(
+                fnv1a_64!("lib_get_url"),
+                &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
+            )
+            .await
+        {
             Some(rows) => {
                 if rows.len() == 1 {
                     let url: String = rows[0].get(0);
-                    Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone())).await;
+                    self.cache.set(key, Data::String(url.clone())).await;
                     url
                 } else {
                     let url = match param {
@@ -903,7 +946,7 @@ impl Action {
                         }
                         None => format!("/{}/{}/{}", module, class, action),
                     };
-                    Cache::set(Arc::clone(&self.cache), key, Data::String(url.clone())).await;
+                    self.cache.set(key, Data::String(url.clone())).await;
                     url
                 }
             }
@@ -945,8 +988,8 @@ impl Session {
     }
 
     /// Load session from database
-    async fn load_session(key: String, db: Arc<DBPool>, lang_id: i64) -> Session {
-        let res = match db.query_fast(0, &[&key]).await {
+    async fn load_session(key: String, db: Arc<DB>, lang_id: i64) -> Session {
+        let res = match db.query_raw(fnv1a_64!("lib_get_session"), &[&key]).await {
             Some(r) => r,
             None => return Session::with_key(lang_id, key),
         };
@@ -980,16 +1023,24 @@ impl Session {
     }
 
     /// Save session into database
-    async fn save_session(db: Arc<DBPool>, session: &Session, request: &Request) {
+    async fn save_session(db: Arc<DB>, session: &Session, request: &Request) {
         if session.change {
             let data = match bincode::serialize(&session.data) {
                 Ok(r) => r,
                 Err(_) => Vec::new(),
             };
             if session.id == 0 {
-                db.query_fast(1, &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id]).await;
+                db.query_raw(
+                    fnv1a_64!("lib_set_session"),
+                    &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
+                )
+                .await;
             } else {
-                db.query_fast(2, &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent]).await;
+                db.query_raw(
+                    fnv1a_64!("lib_add_session"),
+                    &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent],
+                )
+                .await;
             };
         }
     }
@@ -1002,5 +1053,38 @@ impl Session {
         let mut hasher = Sha3_512::new();
         hasher.update(cook.as_bytes());
         format!("{:#x}", hasher.finalize())
+    }
+}
+
+impl Cache {
+    /// Create new Cache instanse
+    pub fn new(cache: Arc<Mutex<CacheSys>>) -> Cache {
+        Cache { cache }
+    }
+
+    /// Get cache
+    pub async fn get(&mut self, keys: &[i64]) -> Option<Data> {
+        CacheSys::get(Arc::clone(&self.cache), keys).await
+    }
+
+    /// Set cache
+    pub async fn set(&mut self, keys: &[i64], data: Data) {
+        CacheSys::set(Arc::clone(&self.cache), keys, data).await
+    }
+
+    /// Removes a key from the Cache.
+    ///
+    /// If `key` ends with a `:` character, all data beginning with that `key` is deleted.
+    pub async fn del(&mut self, keys: &[i64]) {
+        CacheSys::del(Arc::clone(&self.cache), keys).await
+    }
+
+    /// Clear all cache
+    pub async fn clear(&mut self) {
+        CacheSys::clear(Arc::clone(&self.cache)).await
+    }
+
+    pub async fn show(&mut self) {
+        CacheSys::show(Arc::clone(&self.cache)).await
     }
 }

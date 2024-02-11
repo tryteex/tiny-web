@@ -10,9 +10,10 @@ use lettre::{
 };
 use serde::Serialize;
 use serde_json::Value;
+use tiny_web_macro::fnv1a_64;
 use tokio::fs::create_dir_all;
 
-use super::{log::Log, pool::DBPool};
+use super::{db::DB, log::Log};
 
 /// Add file to the message struct.
 ///
@@ -115,44 +116,40 @@ pub struct Mail {
 
 impl Mail {
     /// Create new provider
-    pub async fn new(db: Arc<DBPool>) -> Mail {
+    pub async fn new(db: Arc<DB>) -> Mail {
         Mail { provider: Mail::get_provider(db).await }
     }
 
     /// Get provider from database
-    async fn get_provider(db: Arc<DBPool>) -> MailProvider {
-        match db.query_fast(9, &[&1441962092377564137_i64]).await {
-            // mail:provider
+    async fn get_provider(db: Arc<DB>) -> MailProvider {
+        match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:provider")]).await {
             Some(res) => {
                 if !res.is_empty() {
                     let provider: String = unsafe { res.get_unchecked(0) }.get(0);
                     match provider.as_ref() {
-                        "Sendmail" => {
-                            match db.query_fast(9, &[&-3979813852156915759_i64]).await {
-                                // mail:sendmail
-                                Some(res) => {
-                                    if !res.is_empty() {
-                                        let path: String = unsafe { res.get_unchecked(0) }.get(0);
-                                        if !path.is_empty() {
-                                            MailProvider::File(path)
-                                        } else {
-                                            Log::warning(3011, Some("mail:sendmail".to_owned()));
-                                            MailProvider::None
-                                        }
+                        "Sendmail" => match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:sendmail")]).await {
+                            Some(res) => {
+                                if !res.is_empty() {
+                                    let path: String = unsafe { res.get_unchecked(0) }.get(0);
+                                    if !path.is_empty() {
+                                        MailProvider::File(path)
                                     } else {
                                         Log::warning(3011, Some("mail:sendmail".to_owned()));
                                         MailProvider::None
                                     }
-                                }
-                                None => {
+                                } else {
                                     Log::warning(3011, Some("mail:sendmail".to_owned()));
                                     MailProvider::None
                                 }
                             }
-                        }
+                            None => {
+                                Log::warning(3011, Some("mail:sendmail".to_owned()));
+                                MailProvider::None
+                            }
+                        },
                         "SMTP" => {
-                            let server = match db.query_fast(9, &[&-390595084051732771_i64]).await {
-                                // mail:smtp:server
+                            let server = match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:server")]).await
+                            {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let server: String = unsafe { res.get_unchecked(0) }.get(0);
@@ -172,8 +169,7 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let port = match db.query_fast(9, &[&-1521500012746197243_i64]).await {
-                                // mail:smtp:port
+                            let port = match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:port")]).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let port: String = unsafe { res.get_unchecked(0) }.get(0);
@@ -194,8 +190,7 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let tls = match db.query_fast(9, &[&4706107683829871299_i64]).await {
-                                // mail:smtp:tls
+                            let tls = match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:tls")]).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let tls: String = unsafe { res.get_unchecked(0) }.get(0);
@@ -249,8 +244,7 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let auth = match db.query_fast(9, &[&-8449193462972437408_i64]).await {
-                                // mail:smtp:auth
+                            let auth = match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:auth")]).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let auth: String = unsafe { res.get_unchecked(0) }.get(0);
@@ -279,8 +273,7 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let user = match db.query_fast(9, &[&1199393424318567565_i64]).await {
-                                // mail:smtp:user
+                            let user = match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:user")]).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let user: String = unsafe { res.get_unchecked(0) }.get(0);
@@ -294,8 +287,7 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let pwd = match db.query_fast(9, &[&2346365514808828621_i64]).await {
-                                // mail:smtp:pwd
+                            let pwd = match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:pwd")]).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let pwd: String = unsafe { res.get_unchecked(0) }.get(0);
@@ -318,35 +310,32 @@ impl Mail {
                                 credentials: cred,
                             })
                         }
-                        "File" => {
-                            match db.query_fast(9, &[&-4738603782623769110_i64]).await {
-                                // mail:file
-                                Some(res) => {
-                                    if !res.is_empty() {
-                                        let path: String = unsafe { res.get_unchecked(0) }.get(0);
-                                        if !path.is_empty() {
-                                            if !Path::new(&path).is_dir() {
-                                                if let Err(e) = create_dir_all(&path).await {
-                                                    Log::warning(3015, Some(e.to_string()));
-                                                    return MailProvider::None;
-                                                }
+                        "File" => match db.query_raw(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:file")]).await {
+                            Some(res) => {
+                                if !res.is_empty() {
+                                    let path: String = unsafe { res.get_unchecked(0) }.get(0);
+                                    if !path.is_empty() {
+                                        if !Path::new(&path).is_dir() {
+                                            if let Err(e) = create_dir_all(&path).await {
+                                                Log::warning(3015, Some(e.to_string()));
+                                                return MailProvider::None;
                                             }
-                                            MailProvider::File(path)
-                                        } else {
-                                            Log::warning(3011, Some("mail:file".to_owned()));
-                                            MailProvider::None
                                         }
+                                        MailProvider::File(path)
                                     } else {
                                         Log::warning(3011, Some("mail:file".to_owned()));
                                         MailProvider::None
                                     }
-                                }
-                                None => {
+                                } else {
                                     Log::warning(3011, Some("mail:file".to_owned()));
                                     MailProvider::None
                                 }
                             }
-                        }
+                            None => {
+                                Log::warning(3011, Some("mail:file".to_owned()));
+                                MailProvider::None
+                            }
+                        },
                         "None" => MailProvider::None,
                         _ => {
                             Log::warning(3011, Some("mail:provider".to_owned()));
@@ -366,7 +355,7 @@ impl Mail {
     }
 
     /// Send email
-    pub async fn send(provider: MailProvider, db: Arc<DBPool>, message: MailMessage, user_id: i64, host: String) -> bool {
+    pub async fn send(provider: MailProvider, db: Arc<DB>, message: MailMessage, user_id: i64, host: String) -> bool {
         let json = match serde_json::to_value(&message) {
             Ok(json) => json,
             Err(e) => {
@@ -382,19 +371,19 @@ impl Mail {
                         let sender = AsyncSendmailTransport::<Tokio1Executor>::new_with_command(path);
                         match sender.send(mes).await {
                             Ok(_) => {
-                                db.query_fast(11, &[&id]).await;
+                                db.query_raw(fnv1a_64!("lib_mail_ok"), &[&id]).await;
                                 true
                             }
                             Err(e) => {
                                 let e = Log::warning(3012, Some(format!("Error: {}", e)));
-                                db.query_fast(10, &[&e, &id]).await;
+                                db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                 false
                             }
                         }
                     }
                     Err(e) => {
                         if id > 0 {
-                            db.query_fast(10, &[&e, &id]).await;
+                            db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                         }
                         false
                     }
@@ -408,7 +397,7 @@ impl Mail {
                                 Ok(s) => s.port(smtp.port),
                                 Err(e) => {
                                     let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.query_fast(10, &[&e, &id]).await;
+                                    db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                     return false;
                                 }
                             },
@@ -416,7 +405,7 @@ impl Mail {
                                 Ok(s) => s.tls(smtp.tls).port(smtp.port),
                                 Err(e) => {
                                     let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.query_fast(10, &[&e, &id]).await;
+                                    db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                     return false;
                                 }
                             },
@@ -424,7 +413,7 @@ impl Mail {
                                 Ok(s) => s.tls(smtp.tls).port(smtp.port),
                                 Err(e) => {
                                     let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.query_fast(10, &[&e, &id]).await;
+                                    db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                     return false;
                                 }
                             },
@@ -432,7 +421,7 @@ impl Mail {
                                 Ok(s) => s.port(smtp.port),
                                 Err(e) => {
                                     let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.query_fast(10, &[&e, &id]).await;
+                                    db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                     return false;
                                 }
                             },
@@ -446,19 +435,19 @@ impl Mail {
 
                         match sender.build().send(mes).await {
                             Ok(_) => {
-                                db.query_fast(11, &[&id]).await;
+                                db.query_raw(fnv1a_64!("lib_mail_ok"), &[&id]).await;
                                 true
                             }
                             Err(e) => {
                                 let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                db.query_fast(10, &[&e, &id]).await;
+                                db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                 false
                             }
                         }
                     }
                     Err(e) => {
                         if id > 0 {
-                            db.query_fast(10, &[&e, &id]).await;
+                            db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                         }
                         false
                     }
@@ -470,31 +459,31 @@ impl Mail {
                         let sender = AsyncFileTransport::<Tokio1Executor>::new(path);
                         match sender.send(mes).await {
                             Ok(_) => {
-                                db.query_fast(11, &[&id]).await;
+                                db.query_raw(fnv1a_64!("lib_mail_ok"), &[&id]).await;
                                 true
                             }
                             Err(e) => {
                                 let e = Log::warning(3013, Some(format!("Error: {}", e)));
-                                db.query_fast(10, &[&e, &id]).await;
+                                db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                                 false
                             }
                         }
                     }
                     Err(e) => {
                         if id > 0 {
-                            db.query_fast(10, &[&e, &id]).await;
+                            db.query_raw(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
                         }
                         false
                     }
                 }
             }
-            MailProvider::None => db.query_fast(8, &[&user_id, &json]).await.is_some(),
+            MailProvider::None => db.query_raw(fnv1a_64!("lib_mail_add"), &[&user_id, &json]).await.is_some(),
         }
     }
 
     /// Create text email message from struct MailMessage
     async fn create_message(
-        db: Arc<DBPool>,
+        db: Arc<DB>,
         message: MailMessage,
         json: &Value,
         user_id: i64,
@@ -502,7 +491,7 @@ impl Mail {
         id: &mut i64,
         transport: &str,
     ) -> Result<Message, String> {
-        let message_id = match db.query_fast(7, &[&user_id, &json, &transport]).await {
+        let message_id = match db.query_raw(fnv1a_64!("lib_mail_new"), &[&user_id, &json, &transport]).await {
             Some(r) => {
                 if r.len() != 1 {
                     Log::warning(3003, Some(format!("Message: {:?}.", &json)));

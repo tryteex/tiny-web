@@ -25,7 +25,7 @@ impl TempFile {
             Ok(epoch) => format!("tiny_{}_{}.tmp", epoch.as_secs(), epoch.subsec_nanos()),
             Err(e) => {
                 Log::warning(2005, Some(e.to_string()));
-                format!("tiny_{}.tmp", fnv1a_64(&Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string()))
+                format!("tiny_{}.tmp", fnv1a_64(Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string().as_bytes()))
             }
         };
         temp_dir.push(file_name);

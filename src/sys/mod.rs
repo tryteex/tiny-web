@@ -7,7 +7,10 @@ pub mod app;
 /// Cache system.
 pub mod cache;
 
-/// Work with postgresql database.
+/// Work with one postgresql database.
+pub mod db_one;
+
+/// Database connection pool.
 pub mod db;
 
 /// Launching the application.
@@ -24,9 +27,6 @@ pub mod lang;
 
 /// Writing short messages about the system status in the message log.
 pub mod log;
-
-/// Database connection pool.
-pub mod pool;
 
 /// Main worker to run web engine.
 pub mod worker;

@@ -382,7 +382,7 @@ impl Html {
                             let view = &view[..view.len() - 5];
                             // Parse templates
                             match Html::parse(&html[..]) {
-                                Ok(v) => l.insert(fnv1a_64(view), v),
+                                Ok(v) => l.insert(fnv1a_64(view.as_bytes()), v),
                                 Err(e) => {
                                     Log::warning(700, Some(format!("{} ({})", e, path.display())));
                                     continue;
@@ -391,9 +391,9 @@ impl Html {
                         }
                     }
                 }
-                ls.insert(fnv1a_64(class), Arc::new(l));
+                ls.insert(fnv1a_64(class.as_bytes()), Arc::new(l));
             }
-            list.insert(fnv1a_64(module), ls);
+            list.insert(fnv1a_64(module.as_bytes()), ls);
         }
         Html { list }
     }
@@ -1209,18 +1209,21 @@ impl Html {
                             }
                         }
                         trim_end = false;
-                    } else if v.begin {
+                    }
+                    if v.begin {
                         let t = html.trim_end().len();
                         if t < html.len() {
                             unsafe {
                                 html.as_mut_vec().truncate(t);
                             }
                         }
+                        html.push_str(Html::print_echo(&v.val, data, tmp).trim_start())
+                    } else {
+                        html.push_str(&Html::print_echo(&v.val, data, tmp))
                     }
                     if v.end {
                         trim_end = true;
                     }
-                    html.push_str(&Html::print_echo(&v.val, data, tmp));
                 }
                 Node::For(f) => {
                     if trim_end {
@@ -1236,10 +1239,10 @@ impl Html {
                         Some(d) => {
                             if let Data::Vec(vec) = d {
                                 if !vec.is_empty() {
-                                    let key = fnv1a_64(&f.local);
-                                    let key_idx = fnv1a_64(&format!("{}|idx", f.local));
+                                    let key = fnv1a_64(f.local.as_bytes());
+                                    let key_idx = fnv1a_64(format!("{}|idx", f.local).as_bytes());
                                     for (idx, v) in vec.into_iter().enumerate() {
-                                        tmp.insert(key_idx, Data::Usize(idx));
+                                        tmp.insert(key_idx, Data::Usize(idx + 1));
                                         tmp.insert(key, v.clone());
                                         html.push_str(&Html::render_level(&f.nodes, data, tmp));
                                     }
@@ -1708,7 +1711,7 @@ impl Html {
                 if !name.is_empty() {
                     match filter {
                         Filter::None => {
-                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) });
+                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
                             let mut val = match data.get(&key) {
                                 Some(v) => v,
                                 None => match tmp.get(&key) {
@@ -1719,7 +1722,7 @@ impl Html {
                             let mut shift = 1;
                             while shift < name.len() {
                                 if let Data::Map(map) = val {
-                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) });
+                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
                                     val = match map.get(&key) {
                                         Some(v) => v,
                                         None => return None,
@@ -1732,7 +1735,7 @@ impl Html {
                             Some(val.clone())
                         }
                         Filter::Len => {
-                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) });
+                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
                             let mut val = match data.get(&key) {
                                 Some(v) => v,
                                 None => match tmp.get(&key) {
@@ -1743,7 +1746,7 @@ impl Html {
                             let mut shift = 1;
                             while shift < name.len() {
                                 if let Data::Map(map) = val {
-                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) });
+                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
                                     val = match map.get(&key) {
                                         Some(v) => v,
                                         None => return None,
@@ -1761,7 +1764,7 @@ impl Html {
                             }
                         }
                         Filter::Set => {
-                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) });
+                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
                             let mut val = match data.get(&key) {
                                 Some(v) => v,
                                 None => match tmp.get(&key) {
@@ -1772,7 +1775,7 @@ impl Html {
                             let mut shift = 1;
                             while shift < name.len() {
                                 if let Data::Map(map) = val {
-                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) });
+                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
                                     val = match map.get(&key) {
                                         Some(v) => v,
                                         None => return Some(Data::Bool(false)),
@@ -1785,7 +1788,7 @@ impl Html {
                             Some(Data::Bool(true))
                         }
                         Filter::Unset => {
-                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) });
+                            let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
                             let mut val = match data.get(&key) {
                                 Some(v) => v,
                                 None => match tmp.get(&key) {
@@ -1796,7 +1799,7 @@ impl Html {
                             let mut shift = 1;
                             while shift < name.len() {
                                 if let Data::Map(map) = val {
-                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) });
+                                    key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
                                     val = match map.get(&key) {
                                         Some(v) => v,
                                         None => return Some(Data::Bool(true)),
@@ -1821,7 +1824,7 @@ impl Html {
     fn get_for_data(val: &Value, data: &BTreeMap<i64, Data>, tmp: &BTreeMap<i64, Data>) -> Option<Data> {
         if let Value::Value { name, filter } = val {
             if *filter == Filter::None || !name.is_empty() {
-                let mut key = fnv1a_64(unsafe { name.get_unchecked(0) });
+                let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
                 let mut val = match data.get(&key) {
                     Some(v) => v,
                     None => match tmp.get(&key) {
@@ -1832,7 +1835,7 @@ impl Html {
                 let mut shift = 1;
                 while shift < name.len() {
                     if let Data::Map(map) = val {
-                        key = fnv1a_64(unsafe { name.get_unchecked(shift) });
+                        key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
                         val = match map.get(&key) {
                             Some(v) => v,
                             None => return None,
@@ -1872,7 +1875,7 @@ impl Html {
         if name.is_empty() {
             return "{{unknown}}".to_owned();
         }
-        let mut key = fnv1a_64(unsafe { name.get_unchecked(0) });
+        let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
         let mut val = match data.get(&key) {
             Some(v) => v,
             None => match tmp.get(&key) {
@@ -1883,7 +1886,7 @@ impl Html {
         let mut shift = 1;
         while shift < name.len() {
             if let Data::Map(map) = val {
-                key = fnv1a_64(unsafe { name.get_unchecked(shift) });
+                key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
                 val = match map.get(&key) {
                     Some(v) => v,
                     None => return format!("{{{{{}}}}}", name.join(".")),
@@ -1908,7 +1911,7 @@ impl Html {
             Data::F64(f) => f.to_string(),
             Data::Bool(b) => b.to_string(),
             Data::String(s) => s.to_owned(),
-            Data::Date(_) => todo!(),
+            Data::Date(d) => d.to_string(),
             Data::Json(j) => j.to_string(),
             Data::Vec(_) => "{{vec}}".to_owned(),
             Data::Raw(_) => "{{raw}}".to_owned(),
@@ -1922,7 +1925,7 @@ impl Html {
     /// Print index of loop
     fn data_to_index(name: &[String], tmp: &BTreeMap<i64, Data>) -> String {
         if name.len() == 1 {
-            let key = fnv1a_64(&format!("{}|idx", unsafe { name.get_unchecked(0) }));
+            let key = fnv1a_64(format!("{}|idx", unsafe { name.get_unchecked(0) }).as_bytes());
             match tmp.get(&key) {
                 Some(Data::Usize(i)) => i.to_string(),
                 _ => {

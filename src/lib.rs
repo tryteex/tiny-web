@@ -3,6 +3,8 @@ pub mod help;
 /// Web server
 pub mod sys;
 
+use std::mem::transmute;
+
 use sys::{action::ActMap, app::App, log::Log};
 
 /// Entry point
@@ -29,39 +31,44 @@ pub const TINY_KEY: &str = "tinysession";
 ///
 /// i64 hash
 #[inline]
-pub fn fnv1a_64(text: &str) -> i64 {
-    let mut hash: u64 = 0xcbf29ce484222325;
-    let prime: u64 = 0x100000001b3;
-
-    for c in text.bytes() {
-        hash ^= u64::from(c);
-        hash = hash.wrapping_mul(prime);
+pub fn fnv1a_64(bytes: &[u8]) -> i64 {
+    let mut hash = 0xcbf29ce484222325;
+    for c in bytes {
+        hash ^= u64::from(*c);
+        hash = hash.wrapping_mul(0x100000001b3);
     }
-    unsafe { *(&hash as *const u64 as *const i64) }
+    unsafe { transmute(hash) }
 }
 
-/// Trait for types that can be hashed using the FNV-1a algorithm with a 64-bit hash.
-pub trait FNV1A64 {
+/// Trait `StrOrI64` defines a method for converting different types to `i64`.
+pub trait StrOrI64 {
+    /// The `to_i64` method takes input data and returns an `i64`.
     fn to_i64(&self) -> i64;
-    fn to_string(&self) -> String;
+    /// The `to_string` method takes input data and returns an `String`.
+    fn to_str(&self) -> String;
 }
 
-impl FNV1A64 for i64 {
+impl StrOrI64 for i64 {
+    /// Implementation of the `to_i64` method for the `i64` type.  
+    /// Simply returns the input `i64`.
     fn to_i64(&self) -> i64 {
         *self
     }
-
-    fn to_string(&self) -> String {
-        ToString::to_string(self)
+    /// The `to_string` method takes input data and returns an `String`.
+    fn to_str(&self) -> String {
+        format!("key={}", self)
     }
 }
 
-impl FNV1A64 for &str {
+impl StrOrI64 for &str {
+    /// Implementation of the `to_i64` method for the `String` type.  
+    /// Computes the hash of the `&str` and returns it as an `i64`.
     fn to_i64(&self) -> i64 {
-        fnv1a_64(self)
+        fnv1a_64(self.as_bytes())
     }
-
-    fn to_string(&self) -> String {
-        ToString::to_string(self)
+    /// The `to_string` method takes input data and returns an `String`.
+    /// Simply returns the input `i64`.
+    fn to_str(&self) -> String {
+        (*self).to_owned()
     }
 }

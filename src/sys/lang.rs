@@ -211,16 +211,16 @@ impl Lang {
                                                     Entry::Occupied(o) => o.into_mut(),
                                                 };
                                                 // module
-                                                let l2 = match l1.entry(fnv1a_64(module)) {
+                                                let l2 = match l1.entry(fnv1a_64(module.as_bytes())) {
                                                     Entry::Vacant(v) => v.insert(BTreeMap::new()),
                                                     Entry::Occupied(o) => o.into_mut(),
                                                 };
                                                 // class
-                                                let l3 = match l2.entry(fnv1a_64(class)) {
+                                                let l3 = match l2.entry(fnv1a_64(class.as_bytes())) {
                                                     Entry::Vacant(v) => v.insert(BTreeMap::new()),
                                                     Entry::Occupied(o) => o.into_mut(),
                                                 };
-                                                l3.insert(fnv1a_64(key), val.to_owned());
+                                                l3.insert(fnv1a_64(key.as_bytes()), val.to_owned());
                                             }
                                         }
                                     }
