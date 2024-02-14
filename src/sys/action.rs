@@ -17,7 +17,7 @@ use tokio::{fs::remove_file, sync::Mutex};
 use crate::{fnv1a_64, StrOrI64};
 
 use super::{
-    cache::CacheSys,
+    cache::{CacheSys, StrOrArrI64},
     db::DB,
     html::{Html, Nodes},
     lang::Lang,
@@ -540,7 +540,7 @@ impl Action {
                 return str.to_owned();
             }
         }
-        text.to_str()
+        text.to_str().to_owned()
     }
 
     /// Invoke found controller
@@ -618,8 +618,8 @@ impl Action {
         let action_id = action.to_i64();
         // Read from cache
         let key = vec![fnv1a_64!("auth"), self.session.role_id, module_id, class_id, action_id];
-        let key = key.as_slice();
-        if let Some(Data::Bool(a)) = self.cache.get(key).await {
+        let (data, key) = self.cache.get(key).await;
+        if let Some(Data::Bool(a)) = data {
             return a;
         };
         // Prepare sql query
@@ -648,8 +648,8 @@ impl Action {
     /// Get not_found url
     pub async fn not_found(&mut self) -> String {
         let key = vec![fnv1a_64!("404"), self.session.lang_id];
-        let key = key.as_slice();
-        match self.cache.get(key).await {
+        let (data, key) = self.cache.get(key).await;
+        match data {
             Some(d) => match d {
                 Data::String(url) => url,
                 _ => "/index/index/not_found".to_owned(),
@@ -921,8 +921,8 @@ impl Action {
                 lang_id,
             ],
         };
-        let key = key.as_slice();
-        if let Some(Data::String(s)) = self.cache.get(key).await {
+        let (data, key) = self.cache.get(key).await;
+        if let Some(Data::String(s)) = data {
             return s;
         };
         // Prepare sql query
@@ -1063,20 +1063,30 @@ impl Cache {
     }
 
     /// Get cache
-    pub async fn get(&mut self, keys: &[i64]) -> Option<Data> {
-        CacheSys::get(Arc::clone(&self.cache), keys).await
+    pub async fn get<T>(&mut self, keys: T) -> (Option<Data>, Vec<i64>)
+    where
+        T: StrOrArrI64,
+    {
+        let key = keys.to_arr();
+        (CacheSys::get(Arc::clone(&self.cache), &key).await, key)
     }
 
     /// Set cache
-    pub async fn set(&mut self, keys: &[i64], data: Data) {
-        CacheSys::set(Arc::clone(&self.cache), keys, data).await
+    pub async fn set<T>(&mut self, keys: T, data: Data)
+    where
+        T: StrOrArrI64,
+    {
+        CacheSys::set(Arc::clone(&self.cache), &keys.to_arr(), data).await
     }
 
     /// Removes a key from the Cache.
     ///
     /// If `key` ends with a `:` character, all data beginning with that `key` is deleted.
-    pub async fn del(&mut self, keys: &[i64]) {
-        CacheSys::del(Arc::clone(&self.cache), keys).await
+    pub async fn del<T>(&mut self, keys: T)
+    where
+        T: StrOrArrI64,
+    {
+        CacheSys::del(Arc::clone(&self.cache), &keys.to_arr()).await
     }
 
     /// Clear all cache

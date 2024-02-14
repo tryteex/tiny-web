@@ -1,11 +1,14 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    sync::Arc,
+};
 
 use chrono::{DateTime, Utc};
 use native_tls::Protocol;
 use postgres::{types::ToSql, NoTls, Row, Statement, ToStatement};
 use postgres_native_tls::MakeTlsConnector;
 use serde_json::Value;
-use tokio_postgres::types::Type;
+use tokio_postgres::{types::Type, Column};
 
 use tiny_web_macro::fnv1a_64;
 
@@ -19,6 +22,7 @@ use super::{action::Data, init::DBConfig, log::Log};
 /// * `NoClient` - Connection is empty;
 /// * `ErrQuery(String)` - Query execution error;
 /// * `ErrConnect(String)` - Connection is lost.
+#[derive(Debug)]
 enum DBResult {
     /// The request was completed successfully.
     Ok(Vec<Row>),
@@ -28,6 +32,8 @@ enum DBResult {
     ErrQuery(String),
     /// Connection is lost.
     ErrConnect(String),
+    /// No prepare query
+    ErrPrepare,
 }
 
 /// Responsible for working with postgresql database:
@@ -78,10 +84,12 @@ pub struct DBStatement {
 
 /// Search correct type to query
 pub enum KeyStatement<'a> {
-    None,
     Key(&'a DBStatement),
     Query(&'a str),
 }
+
+/// Names of columns
+type ColumnName = (usize, fn(&Row, usize) -> Data);
 
 impl DBOne {
     /// Initializes a new object `DBOne`
@@ -226,7 +234,7 @@ impl DBOne {
         }
         if let Some(z) = &self.zone {
             let query = format!("SET timezone TO '{}';", z);
-            match DBOne::exec(&mut self.client, &query, &[]).await {
+            match DBOne::exec(&self.client, &query, &[]).await {
                 DBResult::Ok(_) => (),
                 _ => {
                     Log::warning(602, Some(query));
@@ -244,6 +252,7 @@ impl DBOne {
     /// * `true` - the operation was successful;
     /// * `false` - the operation was fail.
     async fn prepare(&mut self) -> bool {
+        self.prepare.clear();
         match &self.client {
             Some(client) => {
                 let mut map = BTreeMap::new();
@@ -434,11 +443,11 @@ impl DBOne {
     /// # Return
     ///
     /// * `DBResult` - Results of query.
-    async fn exec<T>(client: &mut Option<tokio_postgres::Client>, query: &T, params: &[&(dyn ToSql + Sync)]) -> DBResult
+    async fn exec<T>(client: &Option<tokio_postgres::Client>, query: &T, params: &[&(dyn ToSql + Sync)]) -> DBResult
     where
         T: ?Sized + ToStatement,
     {
-        match client.as_mut() {
+        match client {
             Some(sql) => match sql.query(query, params).await {
                 Ok(res) => DBResult::Ok(res),
                 Err(e) => {
@@ -450,6 +459,19 @@ impl DBOne {
                 }
             },
             None => DBResult::NoClient,
+        }
+    }
+
+    /// Execute one query to the database
+    async fn query_db(&self, query: &impl KeyOrQuery, params: &[&(dyn ToSql + Sync)]) -> DBResult {
+        if query.is_key() {
+            let stat = match self.prepare.get(&query.to_i64()) {
+                Some(s) => s,
+                None => return DBResult::ErrPrepare,
+            };
+            DBOne::exec(&self.client, &stat.statement, params).await
+        } else {
+            DBOne::exec(&self.client, query.to_str(), params).await
         }
     }
 
@@ -465,45 +487,30 @@ impl DBOne {
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Row>)` - Results.
-    pub async fn query_raw<T>(&mut self, query: &T, params: &[&(dyn ToSql + Sync)]) -> Option<Vec<Row>>
-    where
-        T: for<'a> KeyOrQuery<'a>,
-    {
-        let query_str: &str;
-        let stat = &query.to_query::<T>(&self.prepare);
-        let res = match stat {
-            KeyStatement::None => {
+    pub async fn query_raw(&mut self, query: impl KeyOrQuery, params: &[&(dyn ToSql + Sync)]) -> Option<Vec<Row>> {
+        match self.query_db(&query, params).await {
+            DBResult::Ok(r) => return Some(r),
+            DBResult::ErrQuery(e) => {
+                if query.is_key() {
+                    Log::warning(602, Some(format!("Statement key={} error={}", query.to_i64(), e)));
+                } else {
+                    Log::warning(602, Some(format!("{} error={}", query.to_str(), e)));
+                }
+                return None;
+            }
+            DBResult::ErrPrepare => {
                 Log::warning(615, Some(format!("{:?}", query.to_i64())));
                 return None;
             }
-            KeyStatement::Key(statement) => {
-                query_str = &statement.sql;
-                DBOne::exec(&mut self.client, &statement.statement, params).await
-            }
-            KeyStatement::Query(q) => {
-                query_str = q;
-                DBOne::exec(&mut self.client, *q, params).await
-            }
+            DBResult::NoClient => Log::warning(604, None),
+            DBResult::ErrConnect(e) => Log::warning(603, Some(e)),
         };
-        match res {
-            DBResult::Ok(r) => return Some(r),
-            DBResult::ErrQuery(e) => {
-                Log::warning(602, Some(format!("{} error={}", query_str, e)));
-                return None;
-            }
-            DBResult::ErrConnect(e) => {
-                Log::warning(603, Some(e));
-            }
-            DBResult::NoClient => {
-                Log::warning(604, None);
+        self.client = None;
+        if self.try_connect().await {
+            if let DBResult::Ok(r) = self.query_db(&query, params).await {
+                return Some(r);
             }
         }
-        self.client = None;
-        // if self.try_connect().await {
-        //     if let DBResult::Ok(r) = DBOne::exec(&mut self.client, query_str, &[]).await {
-        //         return Some(r);
-        //     }
-        // }
         None
     }
 
@@ -521,27 +528,312 @@ impl DBOne {
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Data::Map>)` - Results, if assoc = true.
     /// * `Option::Some(Vec<Data::Vec>)` - Results, if assoc = false.
-    pub async fn query<T>(&mut self, query: &T, params: &[&(dyn ToSql + Sync)], assoc: bool) -> Option<Vec<Data>>
-    where
-        T: for<'a> KeyOrQuery<'a>,
-    {
+    pub async fn query(&mut self, query: impl KeyOrQuery, params: &[&(dyn ToSql + Sync)], assoc: bool) -> Option<Vec<Data>> {
         let rows = self.query_raw(query, params).await?;
         if rows.is_empty() {
             return Some(Vec::new());
         };
 
-        Some(self.convert(rows, assoc, query))
+        Some(self.convert(rows, assoc))
     }
 
-    /// Convert Vec<Data> to Vec<Data>
-    fn convert<T>(&self, rows: Vec<Row>, assoc: bool, query: &T) -> Vec<Data>
-    where
-        for<'a> T: KeyOrQuery<'a>,
-    {
-        let mut vec = Vec::with_capacity(rows.len());
-        // Detect columns
+    /// Execute query to database and return a result,  
+    /// and grouping tabular data according to specified conditions.
+    ///
+    /// # Parmeters
+    ///
+    /// * `text: &str` - SQL query;
+    /// * `text: i64` - Key of Statement;
+    /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
+    /// * `assoc: bool` - Return columns as associate array if True or Vecor id False.
+    /// * `conds: Vec<Vec<&str>>` - Grouping condition.  
+    ///
+    /// Grouping condition:
+    /// * The number of elements in the first-level array corresponds to the hierarchy levels in the group.
+    /// * The number of elements in the second-level array corresponds to the number of items in one hierarchy. The first element of the group (index=0) is considered unique.
+    /// * &str - field names for ```Data::Vec<Data::Map<...>>```.
+    /// The first value in the second-level array must be of type ```Data::I64```.
+    ///
+    /// For each group, a new field with the name ```sub``` (encoded using ```fnv1a_64```) will be created, where child groups will be located.
+    ///
+    /// If the data does not match the format ```Data::Vec<Data::Map<...>>```, grouping will not occur, ```Option::None``` will be returned.  
+    /// If the data does not match the tabular format, grouping will not occur, ```Option::None``` will be returned.
+    ///
+    /// Fields that are not included in the group will be excluded.
+    ///
+    /// # Return
+    /// * Option::None - If the fields failed to group.  
+    /// ## if assoc = true  
+    /// * ```Some(Data::Map<cond[0][0], Data::Map<...>>)``` in hierarchical structure.  
+    /// ```struct
+    /// value=Data::Map
+    /// ├── [value1 from column_name=cond[0][0]] => [value=Data::Map]  : The unique value of the grouping field
+    /// │   ├── [key=cond[0][0]] => [value1 from column_name=cond[0][0]] : The unique value of the grouping field
+    /// │   ├── [key=cond[0][1]] => [value from column_name=cond[0][1]]
+    /// │   │   ...  
+    /// │   ├── [key=cond[0][last]] => [value from column_name=cond[0][last]]
+    /// │   └── [key="sub"] => [value=Data::Map] : (encoded using fnv1a_64)
+    /// │       ├── [value1 from column_name=cond[1][0]] => [value=Data::Map]  : The unique value of the grouping field
+    /// │       │   ├── [cond[1][0]] => [value1 from column_name=cond[1][0]] : The unique value of the grouping field
+    /// │       │   ├── [cond[1][1]] => [value from column_name=cond[1][1]]  
+    /// │       │   │   ...
+    /// │       │   ├── [cond[0][last]] => [value from column_name=cond[1][last]]  
+    /// │       │   └── [key="sub"] => [value Data::Map] : (encoded using fnv1a_64)
+    /// │       └── [value2 from column_name=cond[1][0]] => [value=Data::Map]  : The unique value of the grouping field
+    /// │           │    ...
+    /// ├── [value2 from column_name=cond[0][0]] => [value=Data::Map]  : The unique value of the grouping field
+    /// │   ├── [key=cond[0][0]] => [value2 from column_name=cond[0][0]] : The unique value of the grouping field
+    /// │   ├── [key=cond[0][1]] => [value from column_name=cond[0][1]]
+    /// │   │   ...  
+    /// │   ├── [key=cond[0][last]] => [value from column_name=cond[0][last]]
+    /// │   ├── [key="sub"] => [value Data::Map] : (encoded using fnv1a_64)
+    /// ...
+    /// ```
+    /// ## if assoc = false  
+    /// * ```Some(Data::Map<cond[0][0], Data::Vec<...>>)``` in hierarchical structure.  
+    /// ```struct
+    /// value=Data::Map
+    /// ├── [value1 from column_name=cond[0][0]] => [value=Data::Vec]  : The unique value of the grouping field
+    /// │   ├── [0] => [value1 from column_name=cond[0][0]] : The unique value of the grouping field
+    /// │   ├── [1] => [value from column_name=cond[0][1]]
+    /// │   │   ...  
+    /// │   ├── [last] => [value from column_name=cond[0][last]]
+    /// │   └── [last + 1] => [value=Data::Map] : (encoded using fnv1a_64)
+    /// │       ├── [value1 from column_name=cond[1][0]] => [value=Data::Vec]  : The unique value of the grouping field
+    /// │       │   ├── [0] => [value1 from column_name=cond[1][0]] : The unique value of the grouping field
+    /// │       │   ├── [1] => [value from column_name=cond[1][1]]  
+    /// │       │   │   ...
+    /// │       │   ├── [last] => [value from column_name=cond[1][last]]  
+    /// │       │   └── [last+1] => [value Data::Map] : (encoded using fnv1a_64)
+    /// │       └── [value2 from column_name=cond[1][0]] => [value=Data::Vec]  : The unique value of the grouping field
+    /// │           │    ...
+    /// ├── [value2 from column_name=cond[0][0]] => [value=Data::Vec]  : The unique value of the grouping field
+    /// │   ├── [0] => [value2 from column_name=cond[0][0]] : The unique value of the grouping field
+    /// │   ├── [1] => [value from column_name=cond[0][1]]
+    /// │   │   ...  
+    /// │   ├── [last] => [value from column_name=cond[0][last]]
+    /// │   ├── [last + 1] => [value Data::Map] : (encoded using fnv1a_64)
+    /// ...
+    /// ```
+    pub async fn query_group(
+        &mut self,
+        query: impl KeyOrQuery,
+        params: &[&(dyn ToSql + Sync)],
+        assoc: bool,
+        conds: &[&[impl StrOrI64OrUSize]],
+    ) -> Option<Data> {
+        if conds.is_empty() {
+            return None;
+        }
+        let rows = self.query_raw(query, params).await?;
+        if rows.is_empty() {
+            return Some(Data::Map(BTreeMap::new()));
+        }
+        if assoc {
+            Some(self.convert_map(rows, conds))
+        } else {
+            Some(self.convert_vec(rows, conds))
+        }
+    }
+
+    /// Convert Vec<Row> to Data::Map<Data::Map<...>>
+    fn convert_map(&self, rows: Vec<Row>, conds: &[&[impl StrOrI64OrUSize]]) -> Data {
+        let mut map = BTreeMap::new();
         let cols = unsafe { rows.get_unchecked(0) }.columns();
+        let columns = self.get_column_type_name(cols);
+        for row in &rows {
+            let mut item = &mut map;
+            for row_conds in conds {
+                if row_conds.is_empty() {
+                    break;
+                }
+                item = match self.fill_map(row, &columns, row_conds, item) {
+                    Some(i) => i,
+                    None => break,
+                };
+            }
+        }
+        Data::Map(map)
+    }
+
+    /// Convert Vec<Row> to Data::Map<Data::Vec<...>>
+    fn convert_vec(&self, rows: Vec<Row>, conds: &[&[impl StrOrI64OrUSize]]) -> Data {
+        let mut map = BTreeMap::new();
+        let cols = unsafe { rows.get_unchecked(0) }.columns();
+        let columns = self.get_column_type(cols);
+        for row in &rows {
+            let mut item = &mut map;
+            for row_conds in conds {
+                if row_conds.is_empty() {
+                    break;
+                }
+                item = match self.fill_vec(row, &columns, row_conds, item) {
+                    Some(i) => i,
+                    None => break,
+                };
+            }
+        }
+        Data::Map(map)
+    }
+
+    /// Fill tree items in map
+    fn fill_map<'a>(
+        &self,
+        row: &Row,
+        columns: &BTreeMap<i64, ColumnName>,
+        conds: &[impl StrOrI64OrUSize],
+        map: &'a mut BTreeMap<i64, Data>,
+    ) -> Option<&'a mut BTreeMap<i64, Data>> {
+        let mut index = unsafe { conds.get_unchecked(0) }.to_i64();
+        if index == 0 {
+            return None;
+        }
+        let (idx, func) = match columns.get(&index) {
+            Some(f) => f,
+            None => return None,
+        };
+        let val = if let Data::I64(val) = func(row, *idx) {
+            val
+        } else {
+            return None;
+        };
+        let res_map = match map.entry(val) {
+            Entry::Vacant(v) => {
+                let mut new_map = BTreeMap::new();
+                new_map.insert(index, Data::I64(val));
+                let mut turple;
+                for item in &conds[1..] {
+                    index = item.to_i64();
+                    if index == 0 {
+                        return None;
+                    }
+                    turple = match columns.get(&index) {
+                        Some(f) => f,
+                        None => return None,
+                    };
+                    new_map.insert(index, turple.1(row, turple.0));
+                }
+                new_map.insert(fnv1a_64!("sub"), Data::Map(BTreeMap::new()));
+                v.insert(Data::Map(new_map))
+            }
+            Entry::Occupied(o) => o.into_mut(),
+        };
+        if let Data::Map(found_map) = res_map {
+            if let Data::Map(submap) = found_map.get_mut(&fnv1a_64!("sub"))? {
+                Some(submap)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Fill tree items in vec
+    fn fill_vec<'a>(
+        &self,
+        row: &Row,
+        columns: &[fn(&Row, usize) -> Data],
+        conds: &[impl StrOrI64OrUSize],
+        map: &'a mut BTreeMap<i64, Data>,
+    ) -> Option<&'a mut BTreeMap<i64, Data>> {
+        let mut index = unsafe { conds.get_unchecked(0) }.to_usize();
+        if index == usize::MAX {
+            return None;
+        }
+        let mut func = unsafe { columns.get_unchecked(index) };
+        let val = if let Data::I64(val) = func(row, index) {
+            val
+        } else {
+            return None;
+        };
+        let res_map = match map.entry(val) {
+            Entry::Vacant(v) => {
+                let mut new_vec = Vec::with_capacity(conds.len() + 1);
+                new_vec.push(Data::I64(val));
+                for item in &conds[1..] {
+                    index = item.to_usize();
+                    if index == usize::MAX {
+                        return None;
+                    }
+                    func = unsafe { columns.get_unchecked(index) };
+                    new_vec.push(func(row, index));
+                }
+                new_vec.push(Data::Map(BTreeMap::new()));
+                v.insert(Data::Vec(new_vec))
+            }
+            Entry::Occupied(o) => o.into_mut(),
+        };
+        if let Data::Vec(found_vec) = res_map {
+            if let Data::Map(submap) = found_vec.last_mut()? {
+                Some(submap)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Convert Vec<Row> to Vec<Data>
+    fn convert(&self, rows: Vec<Row>, assoc: bool) -> Vec<Data> {
+        let mut vec = Vec::with_capacity(rows.len());
+        let cols = unsafe { rows.get_unchecked(0) }.columns();
+        if !assoc {
+            let columns = self.get_column_type(cols);
+            let mut func;
+            for row in &rows {
+                let mut v = Vec::with_capacity(columns.len());
+                for idx in 0..columns.len() {
+                    func = unsafe { columns.get_unchecked(idx) };
+                    v.push(func(row, idx))
+                }
+                vec.push(Data::Vec(v));
+            }
+        } else {
+            let columns = self.get_column_type_name(cols);
+            for row in &rows {
+                let mut t = BTreeMap::new();
+                for (name, turple) in &columns {
+                    t.insert(*name, turple.1(row, turple.0));
+                }
+                vec.push(Data::Map(t));
+            }
+        }
+        vec
+    }
+
+    /// Detect columns' type with columns' name
+    fn get_column_type<'a>(&self, cols: &'a [Column]) -> Vec<fn(&Row, usize) -> Data> {
         let mut columns = Vec::with_capacity(cols.len());
+        for col in cols {
+            let func = match col.type_() {
+                &Type::BOOL => Self::get_bool,
+                &Type::BYTEA => Self::get_bytea,
+                &Type::TEXT => Self::get_string,
+                &Type::JSON => Self::get_json,
+                &Type::JSONB => Self::get_json,
+                &Type::UUID => Self::get_uuid,
+                &Type::VARCHAR => Self::get_string,
+                &Type::INT8 => Self::get_i64,
+                &Type::INT2 => Self::get_i16,
+                &Type::INT4 => Self::get_i32,
+                &Type::FLOAT4 => Self::get_f32,
+                &Type::FLOAT8 => Self::get_f64,
+                &Type::TIMESTAMPTZ => Self::get_date,
+                u => {
+                    Log::warning(614, Some(format!("Type: {}", u)));
+                    Self::get_unknown
+                }
+            };
+            columns.push(func);
+        }
+        columns
+    }
+
+    /// Detect columns' type with columns' name
+    fn get_column_type_name(&self, cols: &[Column]) -> BTreeMap<i64, ColumnName> {
+        let mut columns = BTreeMap::new();
         for (idx, col) in cols.iter().enumerate() {
             let func = match col.type_() {
                 &Type::BOOL => Self::get_bool,
@@ -558,29 +850,13 @@ impl DBOne {
                 &Type::FLOAT8 => Self::get_f64,
                 &Type::TIMESTAMPTZ => Self::get_date,
                 u => {
-                    Log::warning(614, Some(format!("Type={}. sql={}", u, query.to_str())));
+                    Log::warning(614, Some(format!("Type: {}", u)));
                     Self::get_unknown
                 }
             };
-            columns.push((idx, col.name(), func));
+            columns.insert(crate::fnv1a_64(col.name().as_bytes()), (idx, func));
         }
-        // Read data
-        for row in &rows {
-            if !assoc {
-                let mut v = Vec::with_capacity(columns.len());
-                for (idx, _, func) in &columns {
-                    v.push(func(row, *idx));
-                }
-                vec.push(Data::Vec(v));
-            } else {
-                let mut t = BTreeMap::new();
-                for (idx, name, func) in &columns {
-                    t.insert(crate::fnv1a_64(name.as_bytes()), func(row, *idx));
-                }
-                vec.push(Data::Map(t));
-            };
-        }
-        vec
+        columns
     }
 
     /// Unknown Row type to Data::None
@@ -736,48 +1012,88 @@ impl std::fmt::Debug for DBStatement {
 }
 
 /// Trait representing types that can be converted to a query or a key statement.
-pub trait KeyOrQuery<'a> {
-    /// Converts `self` into a `KeyStatement`.
-    fn to_query<T>(&'a self, prepare: &'a BTreeMap<i64, DBStatement>) -> KeyStatement<'a>;
+pub trait KeyOrQuery {
     /// Return key
     fn to_i64(&self) -> i64;
     /// Return text of query
-    fn to_str(&self) -> String;
+    fn to_str(&self) -> &str;
+    /// If value is key
+    fn is_key(&self) -> bool;
 }
 
-impl<'a> KeyOrQuery<'a> for i64 {
-    /// Returns a `KeyStatement` representing the conversion result.
-    fn to_query<T>(&'a self, prepare: &'a BTreeMap<i64, DBStatement>) -> KeyStatement<'a> {
-        match prepare.get(self) {
-            Some(s) => KeyStatement::Key(s),
-            None => KeyStatement::None,
-        }
-    }
-
+impl KeyOrQuery for i64 {
     /// Return key
     fn to_i64(&self) -> i64 {
         *self
     }
 
     /// Return text of query
-    fn to_str(&self) -> String {
-        format!("Statement key={}", self)
+    fn to_str(&self) -> &str {
+        "key_statement"
+    }
+
+    fn is_key(&self) -> bool {
+        true
     }
 }
 
-impl<'a> KeyOrQuery<'a> for &str {
-    /// Returns a `KeyStatement` representing the conversion result.
-    fn to_query<T>(&'a self, _: &BTreeMap<i64, DBStatement>) -> KeyStatement<'a> {
-        KeyStatement::Query(self)
-    }
-
+impl KeyOrQuery for &str {
     /// Return key
     fn to_i64(&self) -> i64 {
         0
     }
 
     /// Return text of query
-    fn to_str(&self) -> String {
-        (*self).to_owned()
+    fn to_str(&self) -> &str {
+        self
+    }
+
+    fn is_key(&self) -> bool {
+        false
+    }
+}
+
+/// A trait representing types that can be converted to either `i64` or `usize`.
+pub trait StrOrI64OrUSize {
+    /// Converts the implementor to an `i64`.
+    fn to_i64(&self) -> i64;
+
+    /// Converts the implementor to a `usize`.
+    fn to_usize(&self) -> usize;
+}
+
+impl StrOrI64OrUSize for i64 {
+    /// Converts `i64` to itself.
+    fn to_i64(&self) -> i64 {
+        *self
+    }
+
+    /// Converts `i64` to `usize`, always returning `0`.
+    fn to_usize(&self) -> usize {
+        usize::MAX
+    }
+}
+
+impl StrOrI64OrUSize for &str {
+    /// Converts `&str` to an `i64` using the FNV1a hash algorithm.
+    fn to_i64(&self) -> i64 {
+        crate::fnv1a_64(self.as_bytes())
+    }
+
+    /// Converts `&str` to `usize`, always returning `0`.
+    fn to_usize(&self) -> usize {
+        usize::MAX
+    }
+}
+
+impl StrOrI64OrUSize for usize {
+    /// Converts `usize` to `i64`, always returning `0`.
+    fn to_i64(&self) -> i64 {
+        0
+    }
+
+    /// Converts `usize` to itself.
+    fn to_usize(&self) -> usize {
+        *self
     }
 }

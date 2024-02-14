@@ -193,3 +193,18 @@ impl CacheSys {
         println!("show all {:?}", c.data)
     }
 }
+
+pub trait StrOrArrI64 {
+    fn to_arr(self) -> Vec<i64>;
+}
+
+impl StrOrArrI64 for &str {
+    fn to_arr(self) -> Vec<i64> {
+        CacheSys::get_hash(self)
+    }
+}
+impl StrOrArrI64 for Vec<i64> {
+    fn to_arr(self) -> Vec<i64> {
+        self
+    }
+}

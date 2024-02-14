@@ -112,6 +112,15 @@ impl Log {
     /// * `log: LogText` - Description log message.
     fn save(log: LogText) -> String {
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string();
+        let text = match log.text {
+            Some(s) => format!("Text: {} -> {}", Log::number_to_text(log.number), s),
+            None => format!("Text: {}", Log::number_to_text(log.number)),
+        };
+        let str = format!("ID: {} Time: {} Type: {:?} Number: {} {}\n", process::id(), time, log.view, log.number, text);
+
+        #[cfg(debug_assertions)]
+        eprintln!("{}", str.trim_end());
+
         let file = match LOG_FILE.get() {
             Some(path) => path.as_str(),
             None => {
@@ -119,11 +128,6 @@ impl Log {
                 "tiny.log"
             }
         };
-        let text = match log.text {
-            Some(s) => format!("Text: {} -> {}", Log::number_to_text(log.number), s),
-            None => format!("Text: {}", Log::number_to_text(log.number)),
-        };
-        let str = format!("ID: {} Time: {} Type: {:?} Number: {} {}\n", process::id(), time, log.view, log.number, text);
         match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut file) => match file.write_all(str.as_bytes()) {
                 Ok(f) => f,

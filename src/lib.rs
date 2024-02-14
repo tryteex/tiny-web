@@ -44,8 +44,8 @@ pub fn fnv1a_64(bytes: &[u8]) -> i64 {
 pub trait StrOrI64 {
     /// The `to_i64` method takes input data and returns an `i64`.
     fn to_i64(&self) -> i64;
-    /// The `to_string` method takes input data and returns an `String`.
-    fn to_str(&self) -> String;
+    /// The `to_str` method takes input data and returns an `&str`.
+    fn to_str(&self) -> &str;
 }
 
 impl StrOrI64 for i64 {
@@ -54,21 +54,21 @@ impl StrOrI64 for i64 {
     fn to_i64(&self) -> i64 {
         *self
     }
-    /// The `to_string` method takes input data and returns an `String`.
-    fn to_str(&self) -> String {
-        format!("key={}", self)
+    /// The `to_str` method takes input data and returns an `&str`.
+    fn to_str(&self) -> &str {
+        ""
     }
 }
 
 impl StrOrI64 for &str {
-    /// Implementation of the `to_i64` method for the `String` type.  
+    /// Implementation of the `to_i64` method for the `&str` type.  
     /// Computes the hash of the `&str` and returns it as an `i64`.
     fn to_i64(&self) -> i64 {
         fnv1a_64(self.as_bytes())
     }
-    /// The `to_string` method takes input data and returns an `String`.
+    /// The `to_str` method takes input data and returns an `&str`.
     /// Simply returns the input `i64`.
-    fn to_str(&self) -> String {
-        (*self).to_owned()
+    fn to_str(&self) -> &str {
+        self
     }
 }
