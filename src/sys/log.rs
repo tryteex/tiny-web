@@ -116,7 +116,7 @@ impl Log {
             Some(s) => format!("Text: {} -> {}", Log::number_to_text(log.number), s),
             None => format!("Text: {}", Log::number_to_text(log.number)),
         };
-        let str = format!("ID: {} Time: {} Type: {:?} Number: {} {}\n", process::id(), time, log.view, log.number, text);
+        let str = format!("ID: {} Time: {} Type: {:?}. Number: {} {}\n", process::id(), time, log.view, log.number, text);
 
         #[cfg(debug_assertions)]
         eprintln!("{}", str.trim_end());
@@ -145,8 +145,13 @@ impl Log {
     /// * `text: &str` - Panic message.
     fn panic(text: &str) -> ! {
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string();
-        let str =
-            format!("ID: {} Time: {} Type: {:?} Number: Text: Panic error -> {}\n", process::id(), time, LogView::Critical, text);
+        let str = format!(
+            "ID: {} Time: {} Type: {:?}. Number: Text: Panic error -> {}\n",
+            process::id(),
+            time,
+            LogView::Critical,
+            text
+        );
         let file = match LOG_FILE.get() {
             Some(path) => path.as_str(),
             None => {
@@ -158,7 +163,7 @@ impl Log {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
                     let str = format!(
-                        r#"ID: {} Time: {} Type: {:?} Number: Text: Can't write log file "{}" - {}\n"#,
+                        r#"ID: {} Time: {} Type: {:?}. Number: Text: Can't write log file "{}" - {}\n"#,
                         process::id(),
                         time,
                         LogView::Critical,
@@ -170,7 +175,7 @@ impl Log {
             }
             Err(e) => {
                 let str = format!(
-                    r#"ID: {} Time: {} Type: {:?} Number: Text: Can't open log file "{}" - {}\n"#,
+                    r#"ID: {} Time: {} Type: {:?}. Number: Text: Can't open log file "{}" - {}\n"#,
                     process::id(),
                     time,
                     LogView::Critical,
@@ -206,18 +211,30 @@ impl Log {
             15 => "The config file is not found",
             16 => "Can't detect the app path",
             17 => "Init mode",
+            18 => "The config file 'tine.toml' is not a TOML https://toml.io/ format",
+            19 => "The lang file is not a TOML https://toml.io/ format",
 
             50 => "The 'salt' parameter in configuration file must be set",
-            51 => "The 'lang' parameter in configuration file must consist of two characters according to ISO 639-1",
-            52 => "The 'max' parameter in configuration file must be usize and greater than 0",
-            53 => "The 'bind_from' parameter in configuration file must be IP address in format xxx.xxx.xxx.xxx",
+            51 => "The 'lang' parameter in configuration file must be a string and consist of two characters according to ISO 639-1",
+            52 => "The 'max' parameter in configuration file must be usize and greater than 0 or \"auto\"",
+            53 => "The 'bind_from' parameter in configuration file must be IP address in format xxx.xxx.xxx.xxx or \"any\" or empty for Unix domain socket",
             54 => "The 'bind' parameter in configuration file must be IP:PORT address in format xxx.xxx.xxx.xxx:yyyy or Unix domain socket",
-            55 => "The 'rpc_from' parameter in configuration file must be IP address in format xxx.xxx.xxx.xxx",
+            55 => "The 'rpc_from' parameter in configuration file must be IP address in format xxx.xxx.xxx.xxx or \"any\" or empty for Unix domain socket",
             56 => "The 'rpc' parameter in configuration file must be IP:PORT address in format xxx.xxx.xxx.xxx:yyyy or Unix domain socket",
-            57 => "The 'db_port' parameter in configuration file must be u16 and greater than 0",
-            58 => "The 'db_max' parameter in configuration file must be usize and greater than 0",
+            57 => "The 'db_port' parameter in configuration file must be bool. If true sslmode is requeres",
+            58 => "The 'db_max' parameter in configuration file must be usize and greater than 0 or \"auto\"",
             59 => "The 'db_host' parameter in configuration file can't be empty",
-            60 => "The 'protokol' parameter in configuration file must be only: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
+            60 => "The 'protokol' parameter in configuration file must be only string: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
+            61 => "The 'log' parameter in configuration file must be a string",
+            62 => "The 'salt' parameter in configuration file must be a string",
+            63 => "The 'db_host' parameter in configuration file must be a string",
+            64 => "The 'db_name' parameter in configuration file must be a string",
+            65 => "The 'db_user' parameter in configuration file must be a string",
+            66 => "The 'db_pwd' parameter in configuration file must be a string",
+            67 => "The 'sslmode' parameter in configuration file can be a \"require\"",
+            68 => "The 'zone' parameter in configuration file must be a string and not empty",
+            69 => "The 'prepare' parameter in configuration file must be a group",
+            70 => "The Key parameter in the 'prepare' group in configuration file must consist from two items: \"query\" and \"types\". \"Types\" ia array of string: BOOL, INT8, INT2, INT4, TEXT, VARCHAR, FLOAT4, FLOAT8, JSON, TIMESTAMPTZ, UUID, BYTEA",
 
             200 => "Start",
             201 => "Stop",

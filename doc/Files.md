@@ -7,7 +7,7 @@ For __Development__, each project should be structured as follows:
 ```bash
 ├── tiny-shop/
 │    ├── Cargo.toml
-│    ├── tiny.conf
+│    ├── tiny.toml
 │    ├── app/
 │    │    ├── module___/
 │    │    │    ├── class___/
@@ -28,7 +28,7 @@ For __Production__, each project should be structured as follows:
 ├── tiny-shop/
 │    ├── bin/
 │    │    ├── tiny-shop.exe
-│    │    ├── tiny.conf
+│    │    ├── tiny.toml
 │    │    ├── app/
 │    │    │    ├── module___/
 │    │    │    │    ├── class___/
@@ -39,7 +39,7 @@ For __Production__, each project should be structured as follows:
 
 "___" means that there may be several files/directories.
 
-Translation files (lang.___) ".___" means that the files have an ending depending on the language. The ending itself is set according to ISO 639-1: ```lang.uk``` - Ukrainian, ```lang.en``` - English.
+Translation files (lang.___) ".___" means that the files have an ending depending on the language. The ending itself is set according to ISO 639-1: `lang.uk` - Ukrainian, `lang.en` - English. This files must be in [TOML](https://toml.io/) format.
 
 The directort ```www``` contains multimedia files for your site, such as ```css```, ```images```, ```fonts```, etc
 

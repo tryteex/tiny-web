@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+use toml::{Table, Value};
+
 use crate::fnv1a_64;
 
 use super::log::Log;
@@ -198,30 +200,33 @@ impl Lang {
                         if let Some(id) = codes.get(code) {
                             if let Ok(text) = read_to_string(&path) {
                                 if !text.is_empty() {
-                                    for part in text.split('\n') {
-                                        let line = part.trim();
-                                        if !line.is_empty() && line.contains('=') {
-                                            let vals: Vec<&str> = line.splitn(2, '=').collect();
-                                            if vals.len() == 2 {
-                                                let key = vals[0].trim();
-                                                let val = vals[1].trim();
-                                                // lang_id
-                                                let l1 = match list.entry(*id) {
-                                                    Entry::Vacant(v) => v.insert(BTreeMap::new()),
-                                                    Entry::Occupied(o) => o.into_mut(),
-                                                };
-                                                // module
-                                                let l2 = match l1.entry(fnv1a_64(module.as_bytes())) {
-                                                    Entry::Vacant(v) => v.insert(BTreeMap::new()),
-                                                    Entry::Occupied(o) => o.into_mut(),
-                                                };
-                                                // class
-                                                let l3 = match l2.entry(fnv1a_64(class.as_bytes())) {
-                                                    Entry::Vacant(v) => v.insert(BTreeMap::new()),
-                                                    Entry::Occupied(o) => o.into_mut(),
-                                                };
-                                                l3.insert(fnv1a_64(key.as_bytes()), val.to_owned());
-                                            }
+                                    let text = match text.parse::<Table>() {
+                                        Ok(v) => v,
+                                        Err(e) => {
+                                            Log::warning(19, Some(format!("{:?} {} ", path.to_str(), e)));
+                                            continue;
+                                        }
+                                    };
+                                    for (key, value) in text {
+                                        if let Value::String(val) = value {
+                                            let l1 = match list.entry(*id) {
+                                                Entry::Vacant(v) => v.insert(BTreeMap::new()),
+                                                Entry::Occupied(o) => o.into_mut(),
+                                            };
+                                            // module
+                                            let l2 = match l1.entry(fnv1a_64(module.as_bytes())) {
+                                                Entry::Vacant(v) => v.insert(BTreeMap::new()),
+                                                Entry::Occupied(o) => o.into_mut(),
+                                            };
+                                            // class
+                                            let l3 = match l2.entry(fnv1a_64(class.as_bytes())) {
+                                                Entry::Vacant(v) => v.insert(BTreeMap::new()),
+                                                Entry::Occupied(o) => o.into_mut(),
+                                            };
+                                            l3.insert(fnv1a_64(key.as_bytes()), val);
+                                        } else {
+                                            Log::warning(20, Some(format!("{:?} {} ", path.to_str(), value)));
+                                            continue;
                                         }
                                     }
                                 }

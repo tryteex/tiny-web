@@ -484,7 +484,7 @@ impl Action {
     }
 
     /// Load internal controller
-    pub async fn load<'a>(
+    pub async fn load(
         &mut self,
         key: impl StrOrI64,
         module: impl StrOrI64,

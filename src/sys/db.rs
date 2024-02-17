@@ -94,8 +94,8 @@ impl DB {
     ///
     /// # Parmeters
     ///
-    /// * `text: &str` - SQL query;
-    /// * `text: i64` - Key of Statement;
+    /// * `query: &str` - SQL query;
+    /// * `query: i64` - Key of Statement;
     /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
     /// * `assoc: bool` - Return columns as associate array if True or Vecor id False.
     ///
@@ -130,8 +130,8 @@ impl DB {
     ///
     /// # Parmeters
     ///
-    /// * `text: &str` - SQL query;
-    /// * `text: i64` - Key of Statement;
+    /// * `query: &str` - SQL query;
+    /// * `query: i64` - Key of Statement;
     /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
     /// * `assoc: bool` - Return columns as associate array if True or Vecor id False.
     /// * `conds: Vec<Vec<&str>>` - Grouping condition.  
@@ -139,21 +139,21 @@ impl DB {
     /// Grouping condition:
     /// * The number of elements in the first-level array corresponds to the hierarchy levels in the group.
     /// * The number of elements in the second-level array corresponds to the number of items in one hierarchy. The first element of the group (index=0) is considered unique.
-    /// * &str - field names for ```Data::Vec<Data::Map<...>>```.
-    /// The first value in the second-level array must be of type ```Data::I64```.
+    /// * &str - field names for `Data::Vec<Data::Map<...>>`.
+    /// The first value in the second-level array must be of type `Data::I64`.
     ///
-    /// For each group, a new field with the name ```sub``` (encoded using ```fnv1a_64```) will be created, where child groups will be located.
+    /// For each group, a new field with the name `sub` (encoded using `fnv1a_64`) will be created, where child groups will be located.
     ///
-    /// If the data does not match the format ```Data::Vec<Data::Map<...>>```, grouping will not occur, ```Option::None``` will be returned.  
-    /// If the data does not match the tabular format, grouping will not occur, ```Option::None``` will be returned.
+    /// If the data does not match the format `Data::Vec<Data::Map<...>>`, grouping will not occur, `Option::None` will be returned.  
+    /// If the data does not match the tabular format, grouping will not occur, `Option::None` will be returned.
     ///
     /// Fields that are not included in the group will be excluded.
     ///
     /// # Return
     /// * Option::None - If the fields failed to group.  
     /// ## if assoc = true  
-    /// * ```Some(Data::Map<cond[0][0], Data::Map<...>>)``` in hierarchical structure.  
-    /// ```struct
+    /// * `Some(Data::Map<cond[0][0], Data::Map<...>>)` in hierarchical structure.  
+    /// `struct
     /// value=Data::Map
     /// ├── [value1 from column_name=cond[0][0]] => [value=Data::Map]  : The unique value of the grouping field
     /// │   ├── [key=cond[0][0]] => [value1 from column_name=cond[0][0]] : The unique value of the grouping field
@@ -176,10 +176,10 @@ impl DB {
     /// │   ├── [key=cond[0][last]] => [value from column_name=cond[0][last]]
     /// │   ├── [key="sub"] => [value Data::Map] : (encoded using fnv1a_64)
     /// ...
-    /// ```
+    /// `
     /// ## if assoc = false  
-    /// * ```Some(Data::Map<cond[0][0], Data::Map<...>>)``` in hierarchical structure.  
-    /// ```struct
+    /// * `Some(Data::Map<cond[0][0], Data::Map<...>>)` in hierarchical structure.  
+    /// `struct
     /// value=Data::Map
     /// ├── [value1 from column_name=cond[0][0]] => [value=Data::Vec]  : The unique value of the grouping field
     /// │   ├── [0] => [value1 from column_name=cond[0][0]] : The unique value of the grouping field
@@ -202,7 +202,7 @@ impl DB {
     /// │   ├── [last] => [value from column_name=cond[0][last]]
     /// │   ├── [last + 1] => [value Data::Map] : (encoded using fnv1a_64)
     /// ...
-    /// ```
+    /// `
     pub async fn query_group(
         &self,
         query: impl KeyOrQuery,

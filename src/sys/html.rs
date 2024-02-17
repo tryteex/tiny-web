@@ -21,6 +21,7 @@ use super::{
 /// * `Set` - Values is set.
 /// * `Unset` - Values is unset.
 /// * `Index` - Index of loop.
+/// * `Dump` - Dump of value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Filter {
     /// None filter
@@ -35,6 +36,8 @@ pub enum Filter {
     Unset,
     /// Index of loop
     Index,
+    /// Dump of value
+    Dump,
 }
 
 /// The value of the variable
@@ -276,6 +279,7 @@ impl Html {
     /// {{ name.title }} htmlspecialchar
     /// {{ name.title.title_ua }} htmlspecialchar
     /// {{ name|raw }}
+    /// {{ name|dump }}
     /// {# comment #}
     ///
     /// {% if bool %}
@@ -543,7 +547,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = "".to_owned();
+                        i.text = String::new();
                     }
                     "endif" => {
                         i.level = level;
@@ -555,7 +559,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = "".to_owned();
+                        i.text = String::new();
                     }
                     "for" => {
                         level += 1;
@@ -578,7 +582,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = "".to_owned();
+                        i.text = String::new();
                     }
                     "endfor" => {
                         i.level = level;
@@ -590,7 +594,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = "".to_owned();
+                        i.text = String::new();
                     }
                     _ => {
                         return Err(format!(r#"Unrecognized operator in "{}""#, Html::get_err_msg(i.begin, i.end, &html)));
@@ -724,7 +728,17 @@ impl Html {
                                     None
                                 }
                             }
-                            "idx" => {
+                            "dump" => {
+                                if exp.is_none() {
+                                    Some(Value::Value {
+                                        name: vl.iter().map(|s| s.to_string()).collect(),
+                                        filter: Filter::Dump,
+                                    })
+                                } else {
+                                    None
+                                }
+                            }
+                            "key" => {
                                 if exp.is_none() {
                                     Some(Value::Value {
                                         name: vl.iter().map(|s| s.to_string()).collect(),
@@ -1236,11 +1250,11 @@ impl Html {
                         trim_end = false;
                     }
                     match Html::get_for_data(&f.name, data, tmp) {
-                        Some(d) => {
-                            if let Data::Vec(vec) = d {
+                        Some(d) => match d {
+                            Data::Vec(vec) => {
                                 if !vec.is_empty() {
                                     let key = fnv1a_64(f.local.as_bytes());
-                                    let key_idx = fnv1a_64(format!("{}|idx", f.local).as_bytes());
+                                    let key_idx = fnv1a_64(format!("{}|key", f.local).as_bytes());
                                     for (idx, v) in vec.into_iter().enumerate() {
                                         tmp.insert(key_idx, Data::Usize(idx + 1));
                                         tmp.insert(key, v.clone());
@@ -1250,7 +1264,21 @@ impl Html {
                                     tmp.remove(&key);
                                 }
                             }
-                        }
+                            Data::Map(map) => {
+                                if !map.is_empty() {
+                                    let key_idx = fnv1a_64(format!("{}|key", f.local).as_bytes());
+                                    let key = fnv1a_64(f.local.as_bytes());
+                                    for (key, v) in map {
+                                        tmp.insert(key_idx, Data::I64(key));
+                                        tmp.insert(key, v.clone());
+                                        html.push_str(&Html::render_level(&f.nodes, data, tmp));
+                                    }
+                                    tmp.remove(&key_idx);
+                                    tmp.remove(&key);
+                                }
+                            }
+                            _ => {}
+                        },
                         None => {
                             if let Some(v) = &f.empty {
                                 html.push_str(&Html::render_level(v, data, tmp));
@@ -1865,6 +1893,7 @@ impl Html {
                 Filter::Len => "{{err::Len}}".to_owned(),
                 Filter::Set => "{{err::Set}}".to_owned(),
                 Filter::Unset => "{{err::Unset}}".to_owned(),
+                Filter::Dump => format!("{:?}", data),
             },
         }
     }
@@ -1902,7 +1931,7 @@ impl Html {
     /// Data to String
     fn print_data(val: &Data) -> String {
         match val {
-            Data::None => "".to_owned(),
+            Data::None => String::new(),
             Data::Usize(i) => i.to_string(),
             Data::I16(i) => i.to_string(),
             Data::I32(i) => i.to_string(),

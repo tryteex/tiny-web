@@ -7,6 +7,9 @@ use std::{
     str::FromStr,
 };
 
+use tokio_postgres::types::Type;
+use toml::{Table, Value};
+
 use crate::fnv1a_64;
 
 use super::{db_one::DBPrepare, log::Log, worker::WorkerType};
@@ -226,7 +229,7 @@ impl Init {
                             if c.as_str() == "-r" {
                                 match args.next() {
                                     Some(p) => {
-                                        let file = format!("{}/tiny.conf", p);
+                                        let file = format!("{}/tiny.toml", p);
                                         match read_to_string(&file) {
                                             Ok(s) => {
                                                 conf_file = file;
@@ -258,9 +261,9 @@ impl Init {
                         None => (conf_file, conf, root_path) = Init::check_path(&exe_path)?,
                     };
                 } else {
-                    conf = "".to_owned();
-                    conf_file = "".to_owned();
-                    root_path = "".to_owned();
+                    conf = String::new();
+                    conf_file = String::new();
+                    root_path = String::new();
                 }
             }
         };
@@ -322,7 +325,7 @@ impl Init {
     fn check_path(path: &str) -> Option<(String, String, String)> {
         // configuration file was not found,
         // so we look for it in the folder with the current program
-        let file = format!("{}/tiny.conf", path);
+        let file = format!("{}/tiny.toml", path);
         match read_to_string(&file) {
             Ok(s) => {
                 let root = match file.rfind('/') {
@@ -340,7 +343,7 @@ impl Init {
                     // so we look for it in env::current_dir()
                     let file = match env::current_dir() {
                         Ok(f) => match f.to_str() {
-                            Some(s) => format!("{}/tiny.conf", s.replace('\\', "/")),
+                            Some(s) => format!("{}/tiny.toml", s.replace('\\', "/")),
                             None => {
                                 Log::stop(15, None);
                                 return None;
@@ -392,6 +395,14 @@ impl Init {
     ///   * `None` - Configuration contains errors;
     ///   * `Some(Config)` - is ok.
     fn load_conf(text: String, check_salt: bool, name: &str, version: &str, desc: &str) -> Option<Config> {
+        let text = match text.parse::<Table>() {
+            Ok(v) => v,
+            Err(e) => {
+                Log::stop(18, Some(e.to_string()));
+                return None;
+            }
+        };
+
         let num_cpus = num_cpus::get();
         let mut num_connections = num_cpus * 3;
         let mut conf = Config {
@@ -405,11 +416,11 @@ impl Init {
             bind: Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500)),
             rpc_accept: AcceptAddr::IpAddr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
             rpc: Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12501)),
-            salt: "".to_owned(),
+            salt: String::new(),
             db: DBConfig {
-                host: "".to_owned(),
+                host: String::new(),
                 port: None,
-                name: "".to_owned(),
+                name: String::new(),
                 user: None,
                 pwd: None,
                 sslmode: false,
@@ -422,193 +433,325 @@ impl Init {
             prepare: BTreeMap::new(),
         };
         if !text.is_empty() {
-            for part in text.split('\n') {
-                let line = part.trim();
-                if !line.is_empty() && &line[..1] != "#" && line.contains('=') {
-                    let vals: Vec<&str> = line.splitn(2, '=').collect();
-                    if vals.len() == 2 {
-                        let param = vals[0].trim();
-                        let val = vals[1].trim();
-                        match param {
-                            "lang" => {
-                                if val.len() != 2 {
-                                    Log::warning(51, Some(val.to_owned()));
+            for (key, value) in text {
+                match &key[..] {
+                    "lang" => {
+                        if let Value::String(val) = value {
+                            if val.len() != 2 {
+                                Log::warning(51, Some(val));
+                            } else {
+                                conf.lang = val;
+                            }
+                        } else {
+                            Log::warning(51, Some(value.to_string()));
+                        }
+                    }
+                    "log" => {
+                        if let Value::String(val) = value {
+                            conf.log = val
+                        } else {
+                            Log::warning(61, Some(value.to_string()));
+                        }
+                    }
+                    "max" => match value {
+                        Value::String(s) => {
+                            if &s != "auto" {
+                                Log::warning(52, Some(s));
+                            }
+                        }
+                        Value::Integer(i) => match usize::try_from(i) {
+                            Ok(v) => {
+                                if v > 0 {
+                                    conf.max = v;
+                                    num_connections = v * 3;
                                 } else {
-                                    conf.lang = val.to_owned();
+                                    Log::warning(52, Some(v.to_string()));
                                 }
                             }
-                            "log" => conf.log = val.to_owned(),
-                            "max" => {
-                                if val != "auto" {
-                                    match val.parse::<usize>() {
-                                        Ok(v) => {
-                                            if v > 0 {
-                                                conf.max = v;
-                                                num_connections = v * 3;
-                                            } else {
-                                                Log::warning(52, Some(val.to_owned()));
-                                            }
-                                        }
-                                        Err(e) => {
-                                            Log::warning(52, Some(format!("{} ({})", e, val)));
-                                        }
+                            Err(e) => {
+                                Log::warning(52, Some(format!("{} {}", i, e)));
+                            }
+                        },
+                        _ => {
+                            Log::warning(52, Some(value.to_string()));
+                        }
+                    },
+                    "bind_from" => {
+                        if let Value::String(val) = value {
+                            if val.is_empty() {
+                                #[cfg(not(target_family = "windows"))]
+                                {
+                                    conf.bind_accept = AcceptAddr::UDS;
+                                }
+                                #[cfg(target_family = "windows")]
+                                {
+                                    Log::warning(53, None);
+                                }
+                            } else if val == "any" {
+                                conf.bind_accept = AcceptAddr::Any;
+                            } else {
+                                match IpAddr::from_str(&val) {
+                                    Ok(ip) => conf.bind_accept = AcceptAddr::IpAddr(ip),
+                                    Err(e) => {
+                                        Log::warning(53, Some(format!("{} ({})", e, val)));
+                                    }
+                                };
+                            }
+                        } else {
+                            Log::warning(53, Some(value.to_string()));
+                        }
+                    }
+                    "bind" => {
+                        if let Value::String(val) = value {
+                            if val.contains(':') {
+                                match SocketAddr::from_str(&val) {
+                                    Ok(s) => conf.bind = Addr::SocketAddr(s),
+                                    Err(e) => {
+                                        Log::warning(54, Some(format!("{} ({})", e, val)));
                                     }
                                 }
-                            }
-                            "bind_from" => {
-                                if val.is_empty() {
-                                    #[cfg(not(target_family = "windows"))]
-                                    {
-                                        conf.bind_accept = AcceptAddr::UDS;
-                                    }
-                                    #[cfg(target_family = "windows")]
-                                    {
-                                        conf.bind_accept = AcceptAddr::Any;
-                                    }
-                                } else if val == "any" {
-                                    conf.bind_accept = AcceptAddr::Any;
+                            } else {
+                                #[cfg(target_family = "windows")]
+                                {
+                                    Log::warning(54, Some(val));
+                                }
+                                #[cfg(not(target_family = "windows"))]
+                                if val.is_empty() || &val[..1] != "/" {
+                                    Log::warning(54, None);
                                 } else {
-                                    match IpAddr::from_str(val) {
-                                        Ok(ip) => conf.bind_accept = AcceptAddr::IpAddr(ip),
-                                        Err(e) => {
-                                            Log::warning(53, Some(format!("{} ({})", e, val)));
-                                        }
-                                    };
+                                    conf.bind = Addr::UDS(val);
                                 }
                             }
-                            "bind" => {
-                                if val.contains(':') {
-                                    match SocketAddr::from_str(val) {
-                                        Ok(s) => conf.bind = Addr::SocketAddr(s),
-                                        Err(e) => {
-                                            Log::warning(54, Some(format!("{} ({})", e, val)));
-                                        }
+                        } else {
+                            Log::warning(54, Some(value.to_string()));
+                        }
+                    }
+                    "rpc_from" => {
+                        if let Value::String(val) = value {
+                            if val.is_empty() {
+                                #[cfg(not(target_family = "windows"))]
+                                {
+                                    conf.rpc_accept = AcceptAddr::UDS;
+                                }
+                                #[cfg(target_family = "windows")]
+                                {
+                                    Log::warning(53, None);
+                                }
+                            } else if val == "any" {
+                                conf.rpc_accept = AcceptAddr::Any;
+                            } else {
+                                match IpAddr::from_str(&val) {
+                                    Ok(ip) => conf.rpc_accept = AcceptAddr::IpAddr(ip),
+                                    Err(e) => {
+                                        Log::warning(55, Some(format!("{} ({})", e, val)));
                                     }
+                                };
+                            }
+                        } else {
+                            Log::warning(55, Some(value.to_string()));
+                        }
+                    }
+                    "rpc" => {
+                        if let Value::String(val) = value {
+                            if val.contains(':') {
+                                match SocketAddr::from_str(&val) {
+                                    Ok(s) => conf.rpc = Addr::SocketAddr(s),
+                                    Err(e) => {
+                                        Log::warning(56, Some(format!("{} ({})", e, val)));
+                                    }
+                                }
+                            } else {
+                                #[cfg(target_family = "windows")]
+                                {
+                                    Log::warning(56, Some(val));
+                                }
+                                #[cfg(not(target_family = "windows"))]
+                                if val.is_empty() || &val[..1] != "/" {
+                                    Log::warning(56, None);
                                 } else {
-                                    #[cfg(target_family = "windows")]
-                                    {
-                                        Log::warning(54, Some(val.to_owned()));
-                                    }
-                                    #[cfg(not(target_family = "windows"))]
-                                    if val.is_empty() || &val[..1] != "/" {
-                                        Log::warning(54, None);
-                                    } else {
-                                        conf.bind = Addr::UDS(val.to_owned());
-                                    }
+                                    conf.rpc = Addr::UDS(val);
                                 }
                             }
-                            "rpc_from" => {
-                                if val.is_empty() {
-                                    #[cfg(not(target_family = "windows"))]
-                                    {
-                                        conf.rpc_accept = AcceptAddr::UDS;
-                                    }
-                                    #[cfg(target_family = "windows")]
-                                    {
-                                        conf.rpc_accept = AcceptAddr::Any;
-                                    }
-                                } else if val == "any" {
-                                    conf.rpc_accept = AcceptAddr::Any;
-                                } else {
-                                    match IpAddr::from_str(val) {
-                                        Ok(ip) => conf.rpc_accept = AcceptAddr::IpAddr(ip),
-                                        Err(e) => {
-                                            Log::warning(55, Some(format!("{} ({})", e, val)));
-                                        }
-                                    };
-                                }
+                        } else {
+                            Log::warning(56, Some(value.to_string()));
+                        }
+                    }
+                    "salt" => {
+                        if let Value::String(val) = value {
+                            conf.salt = val;
+                            conf.stop = fnv1a_64(format!("stop{}", &conf.salt).as_bytes());
+                            conf.status = fnv1a_64(format!("status{}", &conf.salt).as_bytes());
+                        } else {
+                            Log::warning(62, Some(value.to_string()));
+                        }
+                    }
+                    "db_host" => {
+                        if let Value::String(val) = value {
+                            if !val.is_empty() {
+                                conf.db.host = val;
                             }
-                            "rpc" => {
-                                if val.contains(':') {
-                                    match SocketAddr::from_str(val) {
-                                        Ok(s) => conf.rpc = Addr::SocketAddr(s),
-                                        Err(e) => {
-                                            Log::warning(56, Some(format!("{} ({})", e, val)));
-                                        }
-                                    }
-                                } else {
-                                    #[cfg(target_family = "windows")]
-                                    {
-                                        Log::warning(56, Some(val.to_owned()));
-                                    }
-                                    #[cfg(not(target_family = "windows"))]
-                                    if val.is_empty() || &val[..1] != "/" {
-                                        Log::warning(56, None);
-                                    } else {
-                                        conf.rpc = Addr::UDS(val.to_owned());
-                                    }
-                                }
-                            }
-                            "salt" => {
-                                conf.salt = val.to_owned();
-                                conf.stop = fnv1a_64(format!("stop{}", &conf.salt).as_bytes());
-                                conf.status = fnv1a_64(format!("status{}", &conf.salt).as_bytes());
-                            }
-                            "db_host" => {
-                                if !val.is_empty() {
-                                    conf.db.host = val.to_owned();
-                                }
-                            }
-                            "db_port" => match val.parse::<u16>() {
+                        } else {
+                            Log::warning(63, Some(value.to_string()));
+                        }
+                    }
+                    "db_port" => {
+                        if let Value::Integer(i) = value {
+                            match u16::try_from(i) {
                                 Ok(v) => {
                                     if v > 0 {
                                         conf.db.port = Some(v);
                                     } else {
-                                        Log::warning(57, Some(val.to_owned()));
+                                        Log::warning(57, Some(v.to_string()));
                                     }
                                 }
                                 Err(e) => {
-                                    Log::warning(57, Some(format!("{} ({})", e, val)));
-                                }
-                            },
-                            "db_name" => conf.db.name = val.to_owned(),
-                            "db_user" => conf.db.user = Some(val.to_owned()),
-                            "db_pwd" => conf.db.pwd = Some(val.to_owned()),
-                            "sslmode" => {
-                                if val == "require" {
-                                    conf.db.sslmode = true;
+                                    Log::warning(57, Some(format!("{} ({})", e, i)));
                                 }
                             }
-                            "max_db" => {
-                                if val == "auto" {
-                                    conf.db.max = num_connections;
-                                } else {
-                                    match val.parse::<usize>() {
-                                        Ok(v) => {
-                                            if v > 0 {
-                                                conf.db.max = v;
-                                            } else {
-                                                Log::warning(58, Some(val.to_owned()));
-                                            }
-                                        }
-                                        Err(e) => {
-                                            Log::warning(58, Some(format!("{} ({})", e, val)));
-                                        }
-                                    }
-                                }
-                            }
-                            "zone" => {
-                                if !val.is_empty() {
-                                    conf.db.zone = Some(val.to_owned())
-                                }
-                            }
-                            "protokol" => {
-                                conf.protocol = match val {
-                                    "FastCGI" => WorkerType::FastCGI,
-                                    "SCGI" => WorkerType::Scgi,
-                                    "uWSGI" => WorkerType::Uwsgi,
-                                    "FastgRPCCGI" => WorkerType::Grpc,
-                                    "HTTP" => WorkerType::Http,
-                                    "WebSocket" => WorkerType::WebSocket,
-                                    _ => {
-                                        Log::warning(60, Some(val.to_owned()));
-                                        WorkerType::FastCGI
-                                    }
-                                }
-                            }
-                            _ => {}
-                        };
+                        } else {
+                            Log::warning(57, Some(value.to_string()));
+                        }
                     }
+                    "db_name" => {
+                        if let Value::String(val) = value {
+                            conf.db.name = val;
+                        } else {
+                            Log::warning(64, Some(value.to_string()));
+                        }
+                    }
+                    "db_user" => {
+                        if let Value::String(val) = value {
+                            conf.db.user = Some(val);
+                        } else {
+                            Log::warning(65, Some(value.to_string()));
+                        }
+                    }
+                    "db_pwd" => {
+                        if let Value::String(val) = value {
+                            conf.db.pwd = Some(val);
+                        } else {
+                            Log::warning(66, Some(value.to_string()));
+                        }
+                    }
+                    "sslmode" => {
+                        if let Value::Boolean(val) = value {
+                            conf.db.sslmode = val;
+                        } else {
+                            Log::warning(67, Some(value.to_string()));
+                        }
+                    }
+                    "max_db" => match value {
+                        Value::String(s) => {
+                            if &s == "auto" {
+                                conf.db.max = num_connections;
+                            } else {
+                                Log::warning(58, Some(s));
+                            }
+                        }
+                        Value::Integer(i) => match usize::try_from(i) {
+                            Ok(v) => {
+                                if v > 0 {
+                                    conf.db.max = v;
+                                } else {
+                                    Log::warning(58, Some(v.to_string()));
+                                }
+                            }
+                            Err(e) => {
+                                Log::warning(58, Some(format!("{} {}", i, e)));
+                            }
+                        },
+                        _ => {
+                            Log::warning(58, Some(value.to_string()));
+                        }
+                    },
+                    "zone" => {
+                        if let Value::String(val) = value {
+                            if !val.is_empty() {
+                                conf.db.zone = Some(val)
+                            } else {
+                                Log::warning(68, Some(val));
+                            }
+                        } else {
+                            Log::warning(68, Some(value.to_string()));
+                        }
+                    }
+                    "protokol" => {
+                        if let Value::String(val) = value {
+                            conf.protocol = match &val[..] {
+                                "FastCGI" => WorkerType::FastCGI,
+                                "SCGI" => WorkerType::Scgi,
+                                "uWSGI" => WorkerType::Uwsgi,
+                                "FastgRPCCGI" => WorkerType::Grpc,
+                                "HTTP" => WorkerType::Http,
+                                "WebSocket" => WorkerType::WebSocket,
+                                _ => {
+                                    Log::warning(60, Some(val.to_owned()));
+                                    WorkerType::FastCGI
+                                }
+                            }
+                        } else {
+                            Log::warning(68, Some(value.to_string()));
+                        }
+                    }
+                    "prepare" => {
+                        if let Value::Table(list) = &value {
+                            for (key, val) in list {
+                                if let Value::Table(item) = val {
+                                    if let Some(sql) = item.get("query") {
+                                        let query = if let Value::String(q) = sql {
+                                            q
+                                        } else {
+                                            Log::warning(70, Some(value.to_string()));
+                                            continue;
+                                        };
+                                        let types = if let Some(types) = item.get("types") {
+                                            if let Value::Array(types) = types {
+                                                let mut vec = Vec::with_capacity(types.len());
+                                                for t in types {
+                                                    if let Value::String(v) = t {
+                                                        match v.as_str() {
+                                                            "BOOL" => vec.push(Type::BOOL),
+                                                            "INT8" => vec.push(Type::INT8),
+                                                            "INT4" => vec.push(Type::INT4),
+                                                            "INT2" => vec.push(Type::INT2),
+                                                            "TEXT" => vec.push(Type::TEXT),
+                                                            "VARCHAR" => vec.push(Type::VARCHAR),
+                                                            "FLOAT4" => vec.push(Type::FLOAT4),
+                                                            "FLOAT8" => vec.push(Type::FLOAT8),
+                                                            "JSON" => vec.push(Type::JSON),
+                                                            "TIMESTAMPTZ" => vec.push(Type::TIMESTAMPTZ),
+                                                            "UUID" => vec.push(Type::UUID),
+                                                            "BYTEA" => vec.push(Type::BYTEA),
+                                                            _ => {
+                                                                Log::warning(70, Some(value.to_string()));
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Log::warning(70, Some(value.to_string()));
+                                                    }
+                                                }
+                                                vec
+                                            } else {
+                                                Log::warning(70, Some(value.to_string()));
+                                                continue;
+                                            }
+                                        } else {
+                                            Vec::new()
+                                        };
+                                        conf.prepare
+                                            .insert(fnv1a_64(key.as_bytes()), DBPrepare { query: query.to_owned(), types });
+                                    } else {
+                                        Log::warning(70, Some(val.to_string()));
+                                    }
+                                } else {
+                                    Log::warning(70, Some(val.to_string()));
+                                }
+                            }
+                        } else {
+                            Log::warning(69, Some(value.to_string()));
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

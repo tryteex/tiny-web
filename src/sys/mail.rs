@@ -495,12 +495,12 @@ impl Mail {
             Some(r) => {
                 if r.len() != 1 {
                     Log::warning(3003, Some(format!("Message: {:?}.", &json)));
-                    return Err("".to_owned());
+                    return Err(String::new());
                 }
                 *id = unsafe { r.get_unchecked(0).get(0) };
                 format!("{}@{}", id, host)
             }
-            None => return Err("".to_owned()),
+            None => return Err(String::new()),
         };
 
         let from = match message.from.parse::<Mailbox>() {

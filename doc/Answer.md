@@ -7,9 +7,9 @@ pub enum Answer {
     Raw(Vec<u8>),
 }
 ```
-* ```Answer::None``` - The controller does not return any response.
-* ```Answer::String(String)``` - The controller returns a response as plain UTF-8 text.
-* ```Raw(Vec<u8>)``` -  The controller returns a response as a byte array.  
+* `Answer::None` - The controller does not return any response.
+* `Answer::String(String)` - The controller returns a response as plain UTF-8 text.
+* `Raw(Vec<u8>)` -  The controller returns a response as a byte array.  
 This is useful when the controller returns binary data, such as images.
 
 If a Redirect is specified in the controller, the library will generate the header:

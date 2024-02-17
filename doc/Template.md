@@ -1,13 +1,13 @@
 ## Template maker
 
-Upon launching the application, the library recursively scans the directory ```/app/module/class```, searching for files with the ```.html``` extension. These files serve as templates for corresponding __Module__-__Class__ pairs. The template's name is the file name without the extension (without ```.html```). Each template can be executed (rendered) from the respective controller.
+Upon launching the application, the library recursively scans the directory `/app/module/class`, searching for files with the `.html` extension. These files serve as templates for corresponding __Module__-__Class__ pairs. The template's name is the file name without the extension (without `.html`). Each template can be executed (rendered) from the respective controller.
 ```rust
 pub async fn action(this: &mut Action) -> Answer {
     // Render template from file head.html
     this.render("head")
 }
 ```
-As a result, a response is generated in the form of plain HTML text in the ```Answer::String(html)``` format.
+As a result, a response is generated in the form of plain HTML text in the `Answer::String(html)` format.
 
 Each template consists of HTML text and special expressions that will be replaced during rendering.
 
@@ -19,6 +19,7 @@ Each template consists of HTML text and special expressions that will be replace
 | {{-&nbsp;name&nbsp;}} | Trim White_Space from the left |
 | {{&nbsp;name&nbsp;-}} | Trim White_Space from the right |
 | {{&nbsp;name\|raw&nbsp;}} | Output text without escaping |
+| {{&nbsp;name\|dump&nbsp;}} | Output full dump of value |
 | {{&nbsp;name.title&nbsp;}} | Output text from nested variable|
 | {{&nbsp;name.title.title_ua&nbsp;}} | Output text from nested variables one by one |
 | {{#&nbsp;comment&nbsp;#}} | Comment |
@@ -34,6 +35,7 @@ Each template consists of HTML text and special expressions that will be replace
 | __Loop__ | | 
 | {%&nbsp;for&nbsp;arr&nbsp;in&nbsp;array&nbsp;%} | Start of a loop |
 | &nbsp;&nbsp;&nbsp;&nbsp;{{&nbsp;arr&nbsp;}} | Output loop variable with escaping |
+| &nbsp;&nbsp;&nbsp;&nbsp;{{&nbsp;arr\|key&nbsp;}} | Output index/key of loop variable if array is `Data::Vec`/`Data::Map` |
 | &nbsp;&nbsp;&nbsp;&nbsp;{{&nbsp;arr.title\|raw&nbsp;}} | Output loop sub variable without escaping |
 | {%&nbsp;elsefor&nbsp;%} | Empty or null array |
 | {%&nbsp;endfor&nbsp;%} | End of the loop |

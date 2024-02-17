@@ -1,7 +1,7 @@
 ## Struct __Action__
 On this page, a comprehensive description of the functionality you will obtain from the __Action__ structure in controllers will be provided.
 
-For example, to handle the request ```/api/product/get```, you need to create a controller. To do this, add the following code to the file ```./src/app/api/product.rs```:
+For example, to handle the request `/api/product/get`, you need to create a controller. To do this, add the following code to the file `./src/app/api/product.rs`:
 
 ```rust
 pub async fn get(this: &mut Action) -> Answer {
@@ -40,11 +40,11 @@ Invoking another controller.
 ```rust
 fn load(key: &str, module: &str, class: &str, action: &str, param: Option<String>) 
 ```
-* ```key: &str``` - The variable to which you need to set the data for rendering the html page.
-* ```module: &str``` - Module to be called. 
-* ```class: &str``` - Class to be called.
-* ```action: &str``` - Acction to be called. 
-* ```param: Option<String>``` - The option passed to the controller. 
+* `key: &str` - The variable to which you need to set the data for rendering the html page.
+* `module: &str` - Module to be called. 
+* `class: &str` - Class to be called.
+* `action: &str` - Acction to be called. 
+* `param: Option<String>` - The option passed to the controller. 
 #### Example
 ```rust
 pub async fn get(this: &mut Action) -> Answer {
@@ -60,7 +60,7 @@ Retrieving a simple translation
 ```rust
 fn lang(text: &str) -> String
 ```
-* ```text: &str``` - Variable name for simple translation.
+* `text: &str` - Variable name for simple translation.
 * __Return__: Returns a value depending on the set language.
 
 More about translations in [I18N.md](https://github.com/tryteex/tiny-web/blob/main/doc/I18N.md)
@@ -79,9 +79,9 @@ Checking permissions for the controller
 ```rust
 fn get_access(module: &str, class: &str, action: &str) -> bool
 ```
-* ```module: &str``` - Module to be checked. 
-* ```class: &str``` - Class to be checked.
-* ```action: &str``` - Action to be checked. 
+* `module: &str` - Module to be checked. 
+* `class: &str` - Class to be checked.
+* `action: &str` - Action to be checked. 
 * __Return__: Returns __true__ if access is available.  
 #### Example
 ```rust
@@ -119,8 +119,8 @@ Setting data for rendering an HTML page
 ```rust
 fn set(key: &str, value: Data)
 ```
-* ```key: &str``` - The variable to set the data to render the html page.
-* ```value: Data``` - Data for rendering the html page.  
+* `key: &str` - The variable to set the data to render the html page.
+* `value: Data` - Data for rendering the html page.  
 More about __Data__ in [Data.md](https://github.com/tryteex/tiny-web/blob/main/doc/Data.md)
 
 #### Example
@@ -142,11 +142,11 @@ Get the URL for the controller
 ```rust
 fn route(module: &str, class: &str, action: &str, param: Option<&str>, lang_id: i64) -> String
 ```
-* ```module: &str``` - Module for which you want to get the URL. 
-* ```class: &str``` - Class for which you want to get the URL.
-* ```action: &str``` - Action for which you want to get the URL.
-* ```param: Option<String>``` - Parameter to get the URL for. 
-* ```lang_id: i64``` - The language to get the URL for.
+* `module: &str` - Module for which you want to get the URL. 
+* `class: &str` - Class for which you want to get the URL.
+* `action: &str` - Action for which you want to get the URL.
+* `param: Option<String>` - Parameter to get the URL for. 
+* `lang_id: i64` - The language to get the URL for.
 * __Return__: Returns the url for the specified controller.
 #### Example
 ```rust
@@ -162,7 +162,7 @@ Rendering an HTML page
 ```rust
 fn render(template: &str) -> Answer 
 ```
-* ```template: &str``` - Template name. 
+* `template: &str` - Template name. 
 * __Return__: Returns __Answer__, for the specified template.  
 More about __Answer__ [Answer.md](https://github.com/tryteex/tiny-web/blob/main/doc/Answer.md)  
 
@@ -181,7 +181,7 @@ Sending an email
 ```rust
 fn mail(message: MailMessage) -> bool
 ```
-* ```message: MailMessage``` - Message. 
+* `message: MailMessage` - Message. 
 * __Return__: Returns __true__ if the message has been sent.
 
 More about __email__ [Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
