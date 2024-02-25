@@ -5,6 +5,7 @@ use std::{
     io::ErrorKind,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     str::FromStr,
+    sync::Arc,
 };
 
 use tokio_postgres::types::Type;
@@ -12,7 +13,7 @@ use toml::{Table, Value};
 
 use crate::fnv1a_64;
 
-use super::{db_one::DBPrepare, log::Log, worker::WorkerType};
+use super::{dbs::adapter::DBPrepare, log::Log, worker::WorkerType};
 
 /// Responsible for the IP address that should be accepted.
 ///
@@ -80,22 +81,6 @@ pub struct DBConfig {
 }
 
 /// Describes the server configuration.
-///
-/// # Values
-///
-/// * `version: String` - Server version from env!("CARGO_PKG_VERSION") primary project;
-/// * `lang: String` - Default language;
-/// * `log: String` - Path to log file;
-/// * `max: SysCount` - Number of work processes in async operations;
-/// * `bind_accept: AcceptAddr` - The address from which we accept working connections;
-/// * `bind_ip: Addr` - The address of the server that binds clients;
-/// * `rpc_accept: AcceptAddr` - The address from which we accept connections for managing the server;
-/// * `rpc_ip: Addr` - IP address from which to bind connections for managing the server;
-/// * `salt: String` - Salt for a crypto functions.
-/// * `db: Option<DBConfig>` - Database configuration.
-/// * `stop: u64` - Stop signal.
-/// * `status: u64` - Status signal.
-/// * `protocol: WorkerType` - Protocol.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Name server from env!("CARGO_PKG_NAME") primary project.
@@ -105,23 +90,25 @@ pub struct Config {
     /// Server version from env!("CARGO_PKG_VERSION") primary project.
     pub version: String,
     /// Default language.
-    pub lang: String,
+    pub lang: Arc<String>,
     /// Path to log file.
     pub log: String,
     /// Number of work processes in async operations.
     pub max: usize,
     /// The address from which we accept working connections.
-    pub bind_accept: AcceptAddr,
+    pub bind_accept: Arc<AcceptAddr>,
     /// The address of the server that binds clients.
     pub bind: Addr,
     /// The address from which we accept connections for managing the server.
     pub rpc_accept: AcceptAddr,
     /// IP address from which to bind connections for managing the server.
     pub rpc: Addr,
+    /// Session key
+    pub session: Arc<String>,
     /// Salt for a crypto functions.
-    pub salt: String,
+    pub salt: Arc<String>,
     /// Database configuration.
-    pub db: DBConfig,
+    pub db: Arc<DBConfig>,
     /// Stop signal
     pub stop: i64,
     /// Status signal
@@ -129,7 +116,7 @@ pub struct Config {
     /// Protocol
     pub protocol: WorkerType,
     /// Prepare sql queries
-    pub prepare: BTreeMap<i64, DBPrepare>,
+    pub prepare: Arc<BTreeMap<i64, DBPrepare>>,
 }
 
 /// Responsible for running mode of server.
@@ -178,7 +165,7 @@ pub struct Init {
     /// The full path to configuration file.
     pub conf_file: String,
     /// The full path to the folder where the server was started.
-    pub root_path: String,
+    pub root_path: Arc<String>,
 }
 
 impl Init {
@@ -276,7 +263,7 @@ impl Init {
             exe_file,
             exe_path,
             conf_file,
-            root_path,
+            root_path: Arc::new(root_path),
         })
     }
 
@@ -405,32 +392,28 @@ impl Init {
 
         let num_cpus = num_cpus::get();
         let mut num_connections = num_cpus * 3;
-        let mut conf = Config {
-            name: name.to_owned(),
-            desc: desc.to_owned(),
-            version: version.to_owned(),
-            lang: "ua".to_owned(),
-            log: "tiny.log".to_owned(),
-            max: num_cpus,
-            bind_accept: AcceptAddr::Any,
-            bind: Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500)),
-            rpc_accept: AcceptAddr::IpAddr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))),
-            rpc: Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12501)),
-            salt: String::new(),
-            db: DBConfig {
-                host: String::new(),
-                port: None,
-                name: String::new(),
-                user: None,
-                pwd: None,
-                sslmode: false,
-                max: num_connections,
-                zone: None,
-            },
-            stop: 0,
-            status: 0,
-            protocol: WorkerType::FastCGI,
-            prepare: BTreeMap::new(),
+        let mut lang = "ua".to_owned();
+        let mut log = "tiny.log".to_owned();
+        let mut max = num_cpus;
+        let mut bind_accept = AcceptAddr::Any;
+        let mut bind = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500));
+        let mut rpc_accept = AcceptAddr::IpAddr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+        let mut rpc = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12501));
+        let mut session = "tinysession".to_owned();
+        let mut salt = String::new();
+        let mut stop = 0;
+        let mut status = 0;
+        let mut protocol = WorkerType::FastCGI;
+        let mut prepare = BTreeMap::new();
+        let mut db = DBConfig {
+            host: String::new(),
+            port: None,
+            name: String::new(),
+            user: None,
+            pwd: None,
+            sslmode: false,
+            max: num_connections,
+            zone: None,
         };
         if !text.is_empty() {
             for (key, value) in text {
@@ -440,7 +423,7 @@ impl Init {
                             if val.len() != 2 {
                                 Log::warning(51, Some(val));
                             } else {
-                                conf.lang = val;
+                                lang = val;
                             }
                         } else {
                             Log::warning(51, Some(value.to_string()));
@@ -448,7 +431,7 @@ impl Init {
                     }
                     "log" => {
                         if let Value::String(val) = value {
-                            conf.log = val
+                            log = val
                         } else {
                             Log::warning(61, Some(value.to_string()));
                         }
@@ -462,7 +445,7 @@ impl Init {
                         Value::Integer(i) => match usize::try_from(i) {
                             Ok(v) => {
                                 if v > 0 {
-                                    conf.max = v;
+                                    max = v;
                                     num_connections = v * 3;
                                 } else {
                                     Log::warning(52, Some(v.to_string()));
@@ -481,17 +464,17 @@ impl Init {
                             if val.is_empty() {
                                 #[cfg(not(target_family = "windows"))]
                                 {
-                                    conf.bind_accept = AcceptAddr::UDS;
+                                    bind_accept = AcceptAddr::UDS;
                                 }
                                 #[cfg(target_family = "windows")]
                                 {
                                     Log::warning(53, None);
                                 }
                             } else if val == "any" {
-                                conf.bind_accept = AcceptAddr::Any;
+                                bind_accept = AcceptAddr::Any;
                             } else {
                                 match IpAddr::from_str(&val) {
-                                    Ok(ip) => conf.bind_accept = AcceptAddr::IpAddr(ip),
+                                    Ok(ip) => bind_accept = AcceptAddr::IpAddr(ip),
                                     Err(e) => {
                                         Log::warning(53, Some(format!("{} ({})", e, val)));
                                     }
@@ -505,7 +488,7 @@ impl Init {
                         if let Value::String(val) = value {
                             if val.contains(':') {
                                 match SocketAddr::from_str(&val) {
-                                    Ok(s) => conf.bind = Addr::SocketAddr(s),
+                                    Ok(s) => bind = Addr::SocketAddr(s),
                                     Err(e) => {
                                         Log::warning(54, Some(format!("{} ({})", e, val)));
                                     }
@@ -519,7 +502,7 @@ impl Init {
                                 if val.is_empty() || &val[..1] != "/" {
                                     Log::warning(54, None);
                                 } else {
-                                    conf.bind = Addr::UDS(val);
+                                    bind = Addr::UDS(val);
                                 }
                             }
                         } else {
@@ -531,17 +514,17 @@ impl Init {
                             if val.is_empty() {
                                 #[cfg(not(target_family = "windows"))]
                                 {
-                                    conf.rpc_accept = AcceptAddr::UDS;
+                                    rpc_accept = AcceptAddr::UDS;
                                 }
                                 #[cfg(target_family = "windows")]
                                 {
                                     Log::warning(53, None);
                                 }
                             } else if val == "any" {
-                                conf.rpc_accept = AcceptAddr::Any;
+                                rpc_accept = AcceptAddr::Any;
                             } else {
                                 match IpAddr::from_str(&val) {
-                                    Ok(ip) => conf.rpc_accept = AcceptAddr::IpAddr(ip),
+                                    Ok(ip) => rpc_accept = AcceptAddr::IpAddr(ip),
                                     Err(e) => {
                                         Log::warning(55, Some(format!("{} ({})", e, val)));
                                     }
@@ -555,7 +538,7 @@ impl Init {
                         if let Value::String(val) = value {
                             if val.contains(':') {
                                 match SocketAddr::from_str(&val) {
-                                    Ok(s) => conf.rpc = Addr::SocketAddr(s),
+                                    Ok(s) => rpc = Addr::SocketAddr(s),
                                     Err(e) => {
                                         Log::warning(56, Some(format!("{} ({})", e, val)));
                                     }
@@ -569,18 +552,25 @@ impl Init {
                                 if val.is_empty() || &val[..1] != "/" {
                                     Log::warning(56, None);
                                 } else {
-                                    conf.rpc = Addr::UDS(val);
+                                    rpc = Addr::UDS(val);
                                 }
                             }
                         } else {
                             Log::warning(56, Some(value.to_string()));
                         }
                     }
+                    "session" => {
+                        if let Value::String(val) = value {
+                            session = val;
+                        } else {
+                            Log::warning(71, Some(value.to_string()));
+                        }
+                    }
                     "salt" => {
                         if let Value::String(val) = value {
-                            conf.salt = val;
-                            conf.stop = fnv1a_64(format!("stop{}", &conf.salt).as_bytes());
-                            conf.status = fnv1a_64(format!("status{}", &conf.salt).as_bytes());
+                            salt = val;
+                            stop = fnv1a_64(format!("stop{}", &salt).as_bytes());
+                            status = fnv1a_64(format!("status{}", &salt).as_bytes());
                         } else {
                             Log::warning(62, Some(value.to_string()));
                         }
@@ -588,7 +578,7 @@ impl Init {
                     "db_host" => {
                         if let Value::String(val) = value {
                             if !val.is_empty() {
-                                conf.db.host = val;
+                                db.host = val;
                             }
                         } else {
                             Log::warning(63, Some(value.to_string()));
@@ -599,7 +589,7 @@ impl Init {
                             match u16::try_from(i) {
                                 Ok(v) => {
                                     if v > 0 {
-                                        conf.db.port = Some(v);
+                                        db.port = Some(v);
                                     } else {
                                         Log::warning(57, Some(v.to_string()));
                                     }
@@ -614,28 +604,28 @@ impl Init {
                     }
                     "db_name" => {
                         if let Value::String(val) = value {
-                            conf.db.name = val;
+                            db.name = val;
                         } else {
                             Log::warning(64, Some(value.to_string()));
                         }
                     }
                     "db_user" => {
                         if let Value::String(val) = value {
-                            conf.db.user = Some(val);
+                            db.user = Some(val);
                         } else {
                             Log::warning(65, Some(value.to_string()));
                         }
                     }
                     "db_pwd" => {
                         if let Value::String(val) = value {
-                            conf.db.pwd = Some(val);
+                            db.pwd = Some(val);
                         } else {
                             Log::warning(66, Some(value.to_string()));
                         }
                     }
                     "sslmode" => {
                         if let Value::Boolean(val) = value {
-                            conf.db.sslmode = val;
+                            db.sslmode = val;
                         } else {
                             Log::warning(67, Some(value.to_string()));
                         }
@@ -643,7 +633,7 @@ impl Init {
                     "max_db" => match value {
                         Value::String(s) => {
                             if &s == "auto" {
-                                conf.db.max = num_connections;
+                                db.max = num_connections;
                             } else {
                                 Log::warning(58, Some(s));
                             }
@@ -651,7 +641,7 @@ impl Init {
                         Value::Integer(i) => match usize::try_from(i) {
                             Ok(v) => {
                                 if v > 0 {
-                                    conf.db.max = v;
+                                    db.max = v;
                                 } else {
                                     Log::warning(58, Some(v.to_string()));
                                 }
@@ -667,7 +657,7 @@ impl Init {
                     "zone" => {
                         if let Value::String(val) = value {
                             if !val.is_empty() {
-                                conf.db.zone = Some(val)
+                                db.zone = Some(val)
                             } else {
                                 Log::warning(68, Some(val));
                             }
@@ -677,7 +667,7 @@ impl Init {
                     }
                     "protokol" => {
                         if let Value::String(val) = value {
-                            conf.protocol = match &val[..] {
+                            protocol = match &val[..] {
                                 "FastCGI" => WorkerType::FastCGI,
                                 "SCGI" => WorkerType::Scgi,
                                 "uWSGI" => WorkerType::Uwsgi,
@@ -738,8 +728,7 @@ impl Init {
                                         } else {
                                             Vec::new()
                                         };
-                                        conf.prepare
-                                            .insert(fnv1a_64(key.as_bytes()), DBPrepare { query: query.to_owned(), types });
+                                        prepare.insert(fnv1a_64(key.as_bytes()), DBPrepare { query: query.to_owned(), types });
                                     } else {
                                         Log::warning(70, Some(val.to_string()));
                                     }
@@ -755,15 +744,34 @@ impl Init {
                 }
             }
         }
-        if conf.db.host.is_empty() {
+        if db.host.is_empty() {
             Log::stop(59, None);
             return None;
         }
-        if check_salt && conf.salt.is_empty() {
+        if check_salt && salt.is_empty() {
             Log::stop(50, None);
             return None;
         }
-        Log::set_path(conf.log.clone());
+        Log::set_path(log.clone());
+        let conf = Config {
+            name: name.to_owned(),
+            desc: desc.to_owned(),
+            version: version.to_owned(),
+            lang: Arc::new(lang),
+            log,
+            max,
+            bind_accept: Arc::new(bind_accept),
+            bind,
+            rpc_accept,
+            rpc,
+            session: Arc::new(session),
+            salt: Arc::new(salt),
+            db: Arc::new(db),
+            stop,
+            status,
+            protocol,
+            prepare: Arc::new(prepare),
+        };
         Some(conf)
     }
 }

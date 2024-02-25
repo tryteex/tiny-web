@@ -208,3 +208,53 @@ impl StrOrArrI64 for Vec<i64> {
         self
     }
 }
+
+/// Cache struct
+#[derive(Debug)]
+pub struct Cache {
+    cache: Arc<Mutex<CacheSys>>,
+}
+
+impl Cache {
+    /// Create new Cache instanse
+    pub fn new(cache: Arc<Mutex<CacheSys>>) -> Cache {
+        Cache { cache }
+    }
+
+    /// Get cache
+    pub async fn get<T>(&mut self, keys: T) -> (Option<Data>, Vec<i64>)
+    where
+        T: StrOrArrI64,
+    {
+        let key = keys.to_arr();
+        (CacheSys::get(Arc::clone(&self.cache), &key).await, key)
+    }
+
+    /// Set cache
+    pub async fn set<T>(&mut self, keys: T, data: Data)
+    where
+        T: StrOrArrI64,
+    {
+        CacheSys::set(Arc::clone(&self.cache), &keys.to_arr(), data).await
+    }
+
+    /// Removes a key from the Cache.
+    ///
+    /// If `key` ends with a `:` character, all data beginning with that `key` is deleted.
+    pub async fn remove<T>(&mut self, keys: T)
+    where
+        T: StrOrArrI64,
+    {
+        CacheSys::del(Arc::clone(&self.cache), &keys.to_arr()).await
+    }
+
+    /// Clear all cache
+    pub async fn clear(&mut self) {
+        CacheSys::clear(Arc::clone(&self.cache)).await
+    }
+
+    /// Show all data in cache
+    pub async fn show(&mut self) {
+        CacheSys::show(Arc::clone(&self.cache)).await
+    }
+}

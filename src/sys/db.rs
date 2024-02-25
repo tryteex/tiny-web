@@ -5,7 +5,10 @@ use tokio::sync::{Mutex, Semaphore};
 
 use super::{
     action::Data,
-    db_one::{DBOne, DBPrepare, KeyOrQuery, StrOrI64OrUSize},
+    dbs::{
+        adapter::{DBPrepare, KeyOrQuery, StrOrI64OrUSize},
+        pgsql::PgSql,
+    },
     init::DBConfig,
     log::Log,
 };
@@ -20,7 +23,7 @@ use super::{
 #[derive(Debug)]
 pub struct DB {
     /// Vector of database connections.
-    connections: Vec<Arc<Mutex<DBOne>>>,
+    connections: Vec<Arc<Mutex<PgSql>>>,
     /// Semaphore for finding free connection.
     semaphore: Arc<Semaphore>,
     /// Number of connected databases.
@@ -39,11 +42,11 @@ impl DB {
     /// # Return
     ///
     /// New poll of database connections for asynchronous work.
-    pub async fn new(size: usize, config: Arc<DBConfig>, prepare: BTreeMap<i64, DBPrepare>) -> Option<DB> {
+    pub async fn new(size: usize, config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<DB> {
         let mut connections = Vec::with_capacity(size);
         let mut asize = 0;
         for _ in 0..size {
-            let mut db = DBOne::new(Arc::clone(&config), prepare.clone())?;
+            let mut db = PgSql::new(Arc::clone(&config), Arc::clone(&prepare))?;
             if db.connect().await {
                 asize += 1;
                 connections.push(Arc::new(Mutex::new(db)));

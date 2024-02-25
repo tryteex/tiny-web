@@ -1,11 +1,8 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
-use crate::{
-    sys::{
-        action::{ActionData, Input, Request},
-        worker::{StreamRead, StreamWrite, Worker, WorkerData},
-    },
-    TINY_KEY,
+use crate::sys::{
+    action::{ActionData, Input, Request},
+    worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
 /// Describes a header in a FastCGI record.
@@ -97,6 +94,7 @@ impl Net {
                 let mut is_stdin_done = false;
                 let mut params = Vec::new();
                 let mut stdin = Vec::new();
+
                 // Loop until empty records PARAMS and STDIN are received
                 loop {
                     // Gets next Record
@@ -126,21 +124,20 @@ impl Net {
                     }
                 }
                 // Reads params
-                let (mut request, content_type, session) = FastCGI::read_param(params);
+                let (mut request, content_type, session) = FastCGI::read_param(params, Arc::clone(&data.session_key));
                 // Reads POST data
                 let (post, file) = Worker::read_input(stdin, content_type).await;
                 request.input.file = file;
                 request.input.post = post;
                 let data = ActionData {
-                    data: WorkerData {
-                        engine: Arc::clone(&data.engine),
-                        lang: Arc::clone(&data.lang),
-                        html: Arc::clone(&data.html),
-                        cache: Arc::clone(&data.cache),
-                        db: Arc::clone(&data.db),
-                        salt: data.salt.clone(),
-                        mail: Arc::clone(&data.mail),
-                    },
+                    engine: Arc::clone(&data.engine),
+                    lang: Arc::clone(&data.lang),
+                    html: Arc::clone(&data.html),
+                    cache: Arc::clone(&data.cache),
+                    db: Arc::clone(&data.db),
+                    session_key: Arc::clone(&data.session_key),
+                    salt: Arc::clone(&data.salt),
+                    mail: Arc::clone(&data.mail),
                     request,
                     session,
                 };
@@ -162,7 +159,7 @@ impl Net {
     /// * `Request` - Request struct for web engine.
     /// * `Option<String>` - CONTENT_TYPE parameter for recognizing FASTCGI_STDIN.
     /// * `Option<String>` - key of session.
-    fn read_param(mut data: Vec<u8>) -> (Request, Option<String>, Option<String>) {
+    fn read_param(mut data: Vec<u8>, session: Arc<String>) -> (Request, Option<String>, Option<String>) {
         let mut params = HashMap::with_capacity(16);
         let len = data.len();
         let mut size = 0;
@@ -284,21 +281,20 @@ impl Net {
                     cookie.reserve(cooks.len());
                     for v in cooks {
                         let key: Vec<&str> = v.splitn(2, '=').collect();
-                        if key.len() == 2 {
-                            unsafe {
-                                if *key.get_unchecked(0) == TINY_KEY {
-                                    let val = *key.get_unchecked(1);
-                                    if val.len() == 128 {
-                                        for b in val.as_bytes() {
-                                            if !((*b > 47 && *b < 58) || (*b > 96 && *b < 103)) {
-                                                continue;
-                                            }
-                                        }
-                                        session_key = Some((*key.get_unchecked(1)).to_owned());
+                        if key.len() == 2 && *unsafe { key.get_unchecked(0) } == session.as_str() {
+                            let val = *unsafe { key.get_unchecked(1) };
+                            if val.len() == 128 {
+                                for b in val.as_bytes() {
+                                    if !((*b > 47 && *b < 58) || (*b > 96 && *b < 103)) {
+                                        continue;
                                     }
-                                } else {
-                                    cookie.insert((*key.get_unchecked(0)).to_owned(), (*key.get_unchecked(1)).to_owned());
                                 }
+                                session_key = Some((*unsafe { key.get_unchecked(1) }).to_owned());
+                            } else {
+                                cookie.insert(
+                                    (*unsafe { key.get_unchecked(0) }).to_owned(),
+                                    (*unsafe { key.get_unchecked(1) }).to_owned(),
+                                );
                             }
                         }
                     }

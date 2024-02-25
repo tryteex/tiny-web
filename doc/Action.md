@@ -11,14 +11,14 @@ pub async fn get(this: &mut Action) -> Answer {
 In this case, the following functionality will be available for the variable __this__:
 | Type | Name | Async| Return | Description |
 |-|-|:-:|-|-|
-| 𝑓 | load | так || Invoking another controller |
-| 𝑓 | lang | ні | String | Retrieving a simple translation |
-| 𝑓 | get_access | так | bool | Checking permissions for the controller |
-| 𝑓 | not_found | так | String | Retrieving the URL of the 404 Not Found controller |
-| 𝑓 | set | ні || Setting data for rendering an HTML page |
-| 𝑓 | route | так | String | Get the URL for the controller |
-| 𝑓 | render | ні | Answer | Rendering an HTML page |
-| 𝑓 | mail | так | bool| Sending an email |
+| 𝑓 | load | yes || Invoking another controller |
+| 𝑓 | lang | no | String | Retrieving a simple translation |
+| 𝑓 | get_access | yes | bool | Checking permissions for the controller |
+| 𝑓 | not_found | yes | String | Retrieving the URL of the 404 Not Found controller |
+| 𝑓 | set | no || Setting data for rendering an HTML page |
+| 𝑓 | route | yes | String | Get the URL for the controller |
+| 𝑓 | render | no | Answer | Rendering an HTML page |
+| 𝑓 | mail | yes | bool| Sending an email |
 | . | request || Request | Request parameters from the client and web server. More details [Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md) |
 | . | response || Response | Setting additional parameters for rendering an HTML page. More details [Response.md](https://github.com/tryteex/tiny-web/blob/main/doc/Response.md) |
 | . | session || Session | Client session data. More details [Session.md](https://github.com/tryteex/tiny-web/blob/main/doc/Session.md) |

@@ -10,8 +10,6 @@ use tokio::{
     sync::Mutex,
 };
 
-use crate::TINY_KEY;
-
 use super::{
     action::{ActMap, Action, ActionData, Answer, WebFile},
     cache::CacheSys,
@@ -63,15 +61,6 @@ pub enum WorkerType {
 }
 
 /// General data
-///
-/// # Values
-///
-/// * `engine: Arc<ActMap>` - Engine - binary tree of controller functions.
-/// * `lang: Arc<Lang>` - I18n system.
-/// * `html: Arc<Html>` - Template maker.
-/// * `cache: Arc<Mutex<Cache>>` - Cache system.
-/// * `db: Arc<DB>` - Database connections pool.
-/// * `salt: Arc<String>` - Salt for a crypto functions.
 #[derive(Debug)]
 pub struct WorkerData {
     /// Engine - binary tree of controller functions.
@@ -84,6 +73,8 @@ pub struct WorkerData {
     pub cache: Arc<Mutex<CacheSys>>,
     /// Database connections pool.
     pub db: Arc<DB>,
+    /// Session key.
+    pub session_key: Arc<String>,
     /// Salt for a crypto functions.
     pub salt: Arc<String>,
     /// Mail provider.
@@ -324,6 +315,7 @@ impl Worker {
     ///
     /// Vector with a binary data
     pub async fn call_action(data: ActionData) -> Vec<u8> {
+        let session_key = Arc::clone(&data.session_key);
         let mut action = match Action::new(data).await {
             Ok(action) => action,
             Err((redirect, files)) => {
@@ -388,7 +380,7 @@ impl Worker {
         answer.extend_from_slice(
             format!(
                 "Set-Cookie: {}={}; Expires={}; Max-Age={}; path=/; domain={}; {}SameSite=none\r\n",
-                TINY_KEY, &action.session.key, date, ONE_YEAR, action.request.host, secure
+                session_key, &action.session.key, date, ONE_YEAR, action.request.host, secure
             )
             .as_bytes(),
         );
@@ -408,7 +400,7 @@ impl Worker {
 
         // Stopping a call in a parallel thread
         tokio::spawn(async move {
-            Action::stop(action).await;
+            Action::end(action).await;
         });
         answer
     }

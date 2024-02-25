@@ -7,11 +7,14 @@ pub mod app;
 /// Cache system.
 pub mod cache;
 
-/// Work with one postgresql database.
-pub mod db_one;
+/// Work with database adapter.
+pub mod dbs;
 
 /// Database connection pool.
 pub mod db;
+
+/// User session.
+pub mod session;
 
 /// Launching the application.
 pub mod go;

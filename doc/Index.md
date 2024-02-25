@@ -18,17 +18,14 @@ This library is developed in parallel with an internet store (marketplace), and 
 * Template maker [Template.md](https://github.com/tryteex/tiny-web/blob/main/doc/Template.md)
 * I18N [I18N.md](https://github.com/tryteex/tiny-web/blob/main/doc/I18N.md)
 * Database [Database.md](https://github.com/tryteex/tiny-web/blob/main/doc/Database.md)
-* Router [Router.md](https://github.com/tryteex/tiny-web/blob/main/doc/Router.md)
 * Sessions [Sessions.md](https://github.com/tryteex/tiny-web/blob/main/doc/Sessions.md)
 * Caching [Caching.md](https://github.com/tryteex/tiny-web/blob/main/doc/Caching.md)
-* Email system [Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
-* Call another controller [Call.md](https://github.com/tryteex/tiny-web/blob/main/doc/Call.md)
-* Useful functions / macros [Functions.md](https://github.com/tryteex/tiny-web/blob/main/doc/Functions.md)
 * Request [Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md)
 * Response [Response.md](https://github.com/tryteex/tiny-web/blob/main/doc/Response.md)
+* Email system [Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
 * Configuring nginx [Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)
-* Performance [Performance.md](https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md)
 * Simple example [Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)
+* Performance [Performance.md](https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md)
 
 > **Note**  
 > Some things might be written unclearly or with incorrect meanings, so I apologize in advance because my native language is Ukrainian.

@@ -1,11 +1,8 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
-use crate::{
-    sys::{
-        action::{ActionData, Input, Request, WebFile},
-        worker::{StreamRead, StreamWrite, Worker, WorkerData},
-    },
-    TINY_KEY,
+use crate::sys::{
+    action::{ActionData, Input, Request, WebFile},
+    worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
 pub const SCGI_LEN_PACKAGE_SIZE: usize = 7;
@@ -82,10 +79,11 @@ impl Net {
         };
         stream_read.shift(shift + 1);
         // Reads header
-        let (mut request, content_type, session, content_len) = match Scgi::read_header(&mut stream_read, header_len).await {
-            Some(c) => c,
-            None => return,
-        };
+        let (mut request, content_type, session, content_len) =
+            match Scgi::read_header(&mut stream_read, header_len, Arc::clone(&data.session_key)).await {
+                Some(c) => c,
+                None => return,
+            };
         // Reads POST data
         let (post, file) = match Scgi::read_input(&mut stream_read, content_type, content_len).await {
             Some(c) => c,
@@ -94,15 +92,14 @@ impl Net {
         request.input.file = file;
         request.input.post = post;
         let data = ActionData {
-            data: WorkerData {
-                engine: Arc::clone(&data.engine),
-                lang: Arc::clone(&data.lang),
-                html: Arc::clone(&data.html),
-                cache: Arc::clone(&data.cache),
-                db: Arc::clone(&data.db),
-                salt: data.salt.clone(),
-                mail: Arc::clone(&data.mail),
-            },
+            engine: Arc::clone(&data.engine),
+            lang: Arc::clone(&data.lang),
+            html: Arc::clone(&data.html),
+            cache: Arc::clone(&data.cache),
+            db: Arc::clone(&data.db),
+            session_key: Arc::clone(&data.session_key),
+            salt: Arc::clone(&data.salt),
+            mail: Arc::clone(&data.mail),
             request,
             session,
         };
@@ -154,6 +151,7 @@ impl Net {
     async fn read_header(
         stream: &mut StreamRead,
         mut header_len: usize,
+        session: Arc<String>,
     ) -> Option<(Request, Option<String>, Option<String>, usize)> {
         let mut ajax = false;
         let mut host = String::new();
@@ -277,7 +275,7 @@ impl Net {
                         for v in cooks {
                             let key: Vec<&str> = v.splitn(2, '=').collect();
                             if key.len() == 2 {
-                                if unsafe { *key.get_unchecked(0) } == TINY_KEY {
+                                if unsafe { *key.get_unchecked(0) } == session.as_str() {
                                     let val = unsafe { *key.get_unchecked(1) };
                                     if val.len() == 128 {
                                         for b in val.as_bytes() {

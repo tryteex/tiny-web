@@ -77,15 +77,16 @@ impl Go {
                 return None;
             }
         };
-        let root_path = Arc::new(init.root_path.clone());
-        let db = Arc::new(init.conf.db.clone());
-        let lang = Arc::new(init.conf.lang.clone());
-        let bind_accept = Arc::new(init.conf.bind_accept.clone());
-        let salt = Arc::new(init.conf.salt.clone());
+        let root_path = Arc::clone(&init.root_path);
+        let db = Arc::clone(&init.conf.db);
+        let lang = Arc::clone(&init.conf.lang);
+        let bind_accept = Arc::clone(&init.conf.bind_accept);
+        let session_key = Arc::clone(&init.conf.session);
+        let salt = Arc::clone(&init.conf.salt);
         let engine_data = func();
         let protocol = init.conf.protocol.clone();
         let max = db.max;
-        let mut db = DB::new(max, db, init.conf.prepare.clone()).await?;
+        let mut db = DB::new(max, db, Arc::clone(&init.conf.prepare)).await?;
         let main = tokio::spawn(async move {
             let langs = Go::get_langs(&mut db).await;
             let lang = Arc::new(Lang::new(&root_path, &lang, langs));
@@ -94,6 +95,7 @@ impl Go {
             let engine = Arc::new(engine_data);
 
             let db = Arc::new(db);
+            let session_key = Arc::clone(&session_key);
             let salt = Arc::clone(&salt);
             let mail = Arc::new(Mutex::new(Mail::new(Arc::clone(&db)).await));
             let protocol = Arc::new(protocol);
@@ -132,6 +134,7 @@ impl Go {
                 let engine = Arc::clone(&engine);
                 let db = Arc::clone(&db);
                 let bind_accept = Arc::clone(&bind_accept);
+                let session_key = Arc::clone(&session_key);
                 let salt = Arc::clone(&salt);
                 let mail = Arc::clone(&mail);
                 let protocol = Arc::clone(&protocol);
@@ -156,6 +159,7 @@ impl Go {
                         html,
                         cache,
                         db,
+                        session_key,
                         salt,
                         mail,
                     };

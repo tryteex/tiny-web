@@ -18,9 +18,6 @@ pub fn run(name: &str, version: &str, desc: &str, func: impl Fn() -> ActMap) {
     Log::info(201, None);
 }
 
-/// Session paramater name
-pub const TINY_KEY: &str = "tinysession";
-
 /// fnv1a_64 hash function
 ///
 /// # Parameters

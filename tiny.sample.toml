@@ -27,6 +27,9 @@ rpc_from = "127.0.0.1"
 # On Unix systems, a "rpc" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.
 rpc = "127.0.0.1:12501"
 
+# Session key
+session = "tinysession"
+
 # salt for a crypto functions
 salt = "same salt words"
 

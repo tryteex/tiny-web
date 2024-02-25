@@ -12,7 +12,9 @@ use tokio_postgres::{types::Type, Column};
 
 use tiny_web_macro::fnv1a_64;
 
-use super::{action::Data, init::DBConfig, log::Log};
+use crate::sys::{action::Data, init::DBConfig, log::Log};
+
+use super::adapter::{DBPrepare, KeyOrQuery, StrOrI64OrUSize};
 
 /// Response to the result of the query
 ///
@@ -45,7 +47,7 @@ enum DBResult {
 /// * `tls: Option<MakeTlsConnector>` - Use tls for connection when sslmode=require;
 /// * `zone: Option<String>` - Time zone to init database;
 /// * `prepare: Vec<DBStatement>` - Prepare statement to database.
-pub struct DBOne {
+pub struct PgSql {
     /// Client for connection to database.
     client: Option<tokio_postgres::Client>,
     /// Connection config.
@@ -57,16 +59,7 @@ pub struct DBOne {
     /// Prepare statements to database.
     prepare: BTreeMap<i64, DBStatement>,
     /// External prepare statements to database.
-    external: BTreeMap<i64, DBPrepare>,
-}
-
-/// External prepare statements
-#[derive(Debug, Clone)]
-pub struct DBPrepare {
-    /// Query string
-    pub query: String,
-    /// Prepare types
-    pub types: Vec<Type>,
+    external: Arc<BTreeMap<i64, DBPrepare>>,
 }
 
 /// Statement to database
@@ -91,8 +84,8 @@ pub enum KeyStatement<'a> {
 /// Names of columns
 type ColumnName = (usize, fn(&Row, usize) -> Data);
 
-impl DBOne {
-    /// Initializes a new object `DBOne`
+impl PgSql {
+    /// Initializes a new object `PgSql`
     ///
     /// # Parameters
     ///
@@ -101,7 +94,7 @@ impl DBOne {
     /// # Return
     ///
     /// * `DB` - new DB object
-    pub fn new(config: Arc<DBConfig>, prepare: BTreeMap<i64, DBPrepare>) -> Option<DBOne> {
+    pub fn new(config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<PgSql> {
         let mut conn_str = String::with_capacity(512);
         //host
         conn_str.push_str("host='");
@@ -166,7 +159,7 @@ impl DBOne {
         } else {
             None
         };
-        Some(DBOne {
+        Some(PgSql {
             client: None,
             sql_conn,
             tls,
@@ -234,7 +227,7 @@ impl DBOne {
         }
         if let Some(z) = &self.zone {
             let query = format!("SET timezone TO '{}';", z);
-            match DBOne::exec(&self.client, &query, &[]).await {
+            match PgSql::exec(&self.client, &query, &[]).await {
                 DBResult::Ok(_) => (),
                 _ => {
                     Log::warning(602, Some(query));
@@ -411,7 +404,7 @@ impl DBOne {
                 map.insert(fnv1a_64!("lib_mail_ok"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
 
                 // Add config prepare
-                for (key, sql) in &self.external {
+                for (key, sql) in self.external.as_ref() {
                     map.insert(*key, (client.prepare_typed(&sql.query, &sql.types), sql.query.to_owned()));
                 }
 
@@ -469,9 +462,9 @@ impl DBOne {
                 Some(s) => s,
                 None => return DBResult::ErrPrepare,
             };
-            DBOne::exec(&self.client, &stat.statement, params).await
+            PgSql::exec(&self.client, &stat.statement, params).await
         } else {
-            DBOne::exec(&self.client, query.to_str(), params).await
+            PgSql::exec(&self.client, query.to_str(), params).await
         }
     }
 
@@ -976,11 +969,11 @@ impl DBOne {
     }
 }
 
-impl std::fmt::Debug for DBOne {
+impl std::fmt::Debug for PgSql {
     /// Formats the value using the given formatter.
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         let tls = self.tls.clone().map(|_| "TlsConnector");
-        let DBOne {
+        let PgSql {
             client,
             sql_conn,
             tls: _,
@@ -1008,92 +1001,5 @@ impl std::fmt::Debug for DBStatement {
             .field("columns", &statement.columns())
             .field("params", &statement.params())
             .finish()
-    }
-}
-
-/// Trait representing types that can be converted to a query or a key statement.
-pub trait KeyOrQuery {
-    /// Return key
-    fn to_i64(&self) -> i64;
-    /// Return text of query
-    fn to_str(&self) -> &str;
-    /// If value is key
-    fn is_key(&self) -> bool;
-}
-
-impl KeyOrQuery for i64 {
-    /// Return key
-    fn to_i64(&self) -> i64 {
-        *self
-    }
-
-    /// Return text of query
-    fn to_str(&self) -> &str {
-        "key_statement"
-    }
-
-    fn is_key(&self) -> bool {
-        true
-    }
-}
-
-impl KeyOrQuery for &str {
-    /// Return key
-    fn to_i64(&self) -> i64 {
-        0
-    }
-
-    /// Return text of query
-    fn to_str(&self) -> &str {
-        self
-    }
-
-    fn is_key(&self) -> bool {
-        false
-    }
-}
-
-/// A trait representing types that can be converted to either `i64` or `usize`.
-pub trait StrOrI64OrUSize {
-    /// Converts the implementor to an `i64`.
-    fn to_i64(&self) -> i64;
-
-    /// Converts the implementor to a `usize`.
-    fn to_usize(&self) -> usize;
-}
-
-impl StrOrI64OrUSize for i64 {
-    /// Converts `i64` to itself.
-    fn to_i64(&self) -> i64 {
-        *self
-    }
-
-    /// Converts `i64` to `usize`, always returning `0`.
-    fn to_usize(&self) -> usize {
-        usize::MAX
-    }
-}
-
-impl StrOrI64OrUSize for &str {
-    /// Converts `&str` to an `i64` using the FNV1a hash algorithm.
-    fn to_i64(&self) -> i64 {
-        crate::fnv1a_64(self.as_bytes())
-    }
-
-    /// Converts `&str` to `usize`, always returning `0`.
-    fn to_usize(&self) -> usize {
-        usize::MAX
-    }
-}
-
-impl StrOrI64OrUSize for usize {
-    /// Converts `usize` to `i64`, always returning `0`.
-    fn to_i64(&self) -> i64 {
-        0
-    }
-
-    /// Converts `usize` to itself.
-    fn to_usize(&self) -> usize {
-        *self
     }
 }

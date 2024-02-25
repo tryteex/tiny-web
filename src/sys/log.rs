@@ -235,6 +235,7 @@ impl Log {
             68 => "The 'zone' parameter in configuration file must be a string and not empty",
             69 => "The 'prepare' parameter in configuration file must be a group",
             70 => "The Key parameter in the 'prepare' group in configuration file must consist from two items: \"query\" and \"types\". \"Types\" ia array of string: BOOL, INT8, INT2, INT4, TEXT, VARCHAR, FLOAT4, FLOAT8, JSON, TIMESTAMPTZ, UUID, BYTEA",
+            71 => "The 'session' parameter in configuration file must be a string",
 
             200 => "Start",
             201 => "Stop",

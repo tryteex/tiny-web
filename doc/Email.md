@@ -1,5 +1,5 @@
 ## Email system
 
 ___
-Next => Call another controller [Call.md](https://github.com/tryteex/tiny-web/blob/main/doc/Call.md)  
+Next => Configuring nginx [Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)  
 Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

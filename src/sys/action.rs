@@ -8,22 +8,21 @@ use std::{
 };
 use tiny_web_macro::fnv1a_64;
 
-use chrono::{DateTime, Local};
+use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha3::{Digest, Sha3_512};
 use tokio::{fs::remove_file, sync::Mutex};
 
 use crate::{fnv1a_64, StrOrI64};
 
 use super::{
-    cache::{CacheSys, StrOrArrI64},
+    cache::{Cache, CacheSys},
     db::DB,
     html::{Html, Nodes},
     lang::Lang,
     log::Log,
     mail::{Mail, MailMessage, MailProvider},
-    worker::WorkerData,
+    session::Session,
 };
 
 /// Type of one controler. Use in engine.
@@ -235,48 +234,27 @@ pub struct Response {
     pub js: Vec<String>,
 }
 
-/// User session
-///
-///  # Values
-///
-/// * `id: i64` - session_id from database.
-/// * `lang_id: i64` - lang_id from database.
-/// * `user_id: i64` - user_id from database.
-/// * `role_id: i64` - role_id from database.
-/// * `pub key: String` - Cookie key.
-/// * `data: HashMap<String, Data>` - User data from database.
-/// * `change: bool` - User data is changed.
-#[derive(Debug)]
-pub struct Session {
-    /// session_id from database
-    id: i64,
-    /// Default lang_id for user
-    pub lang_id: i64,
-    /// user_id from database
-    pub user_id: i64,
-    /// role_id from database
-    role_id: i64,
-    /// Cookie key
-    pub key: String,
-    /// User data from database
-    data: HashMap<String, Data>,
-    /// User data is changed
-    change: bool,
-}
-
 /// Data to run Action (Main controler)
-///
-///  # Values
-///
-/// * `data: WorkerData` - Worker data.
-/// * `request: Request` - Request from web server.
-/// * `session: Option<String>` - Session key.
 pub struct ActionData {
-    /// Worker data
-    pub data: WorkerData,
+    /// Engine - binary tree of controller functions.
+    pub engine: Arc<ActMap>,
+    /// I18n system.
+    pub lang: Arc<Lang>,
+    /// Template maker.
+    pub html: Arc<Html>,
+    /// Cache system.
+    pub cache: Arc<Mutex<CacheSys>>,
+    /// Database connections pool.
+    pub db: Arc<DB>,
+    /// Session key.
+    pub session_key: Arc<String>,
+    /// Salt for a crypto functions.
+    pub salt: Arc<String>,
+    /// Mail provider.
+    pub mail: Arc<Mutex<Mail>>,
     /// Request from web server.
     pub request: Request,
-    /// Session key.
+    /// Session value.
     pub session: Option<String>,
 }
 
@@ -310,12 +288,6 @@ pub struct Route {
     param: Option<String>,
     /// Set lang id
     lang_id: Option<i64>,
-}
-
-/// Cache struct
-#[derive(Debug)]
-pub struct Cache {
-    cache: Arc<Mutex<CacheSys>>,
 }
 
 /// Main struct to run web engine
@@ -414,14 +386,14 @@ impl Action {
             css: Vec::new(),
             js: Vec::new(),
         };
-        let lang_id = data.data.lang.default as i64;
+        let lang_id = data.lang.default as i64;
         let mut session = if let Some(session) = data.session {
-            Session::load_session(session.clone(), Arc::clone(&data.data.db), lang_id).await
+            Session::load_session(session.clone(), Arc::clone(&data.db), lang_id).await
         } else {
-            Session::new(lang_id, &data.data.salt, &data.request.ip, &data.request.agent, &data.request.host)
+            Session::new(lang_id, &data.salt, &data.request.ip, &data.request.agent, &data.request.host)
         };
         // Module, class and action (controller) from URL
-        let route = match Action::extract_route(&data.request, Arc::clone(&data.data.cache), Arc::clone(&data.data.db)).await {
+        let route = match Action::extract_route(&data.request, Arc::clone(&data.cache), Arc::clone(&data.db)).await {
             Ok(r) => r,
             Err(redirect) => return Err((redirect, data.request.input.file)),
         };
@@ -439,10 +411,9 @@ impl Action {
         }
         let param = route.param;
         // Load new template list
-        let html = data.data.html.list.get(&module_id).and_then(|module| module.get(&class_id).map(Arc::clone));
+        let html = data.html.list.get(&module_id).and_then(|module| module.get(&class_id).map(Arc::clone));
         // Load new translate list
         let lang = data
-            .data
             .lang
             .list
             .get(&session.lang_id)
@@ -453,7 +424,7 @@ impl Action {
             request: data.request,
             response,
             session,
-            salt: Arc::clone(&data.data.salt),
+            salt: Arc::clone(&data.salt),
             data: BTreeMap::new(),
 
             module,
@@ -468,12 +439,12 @@ impl Action {
             html,
             lang,
 
-            engine: data.data.engine,
-            language: data.data.lang,
-            template: data.data.html,
-            cache: Cache::new(data.data.cache),
-            db: data.data.db,
-            mail: data.data.mail,
+            engine: data.engine,
+            language: data.lang,
+            template: data.html,
+            cache: Cache::new(data.cache),
+            db: data.db,
+            mail: data.mail,
             internal: false,
         })
     }
@@ -856,10 +827,10 @@ impl Action {
         }
     }
 
-    /// Stop controller
-    pub async fn stop(action: Action) {
+    /// Finish work of controller
+    pub async fn end(action: Action) {
         // Save session
-        let handle = Session::save_session(action.db, &action.session, &action.request);
+        Session::save_session(action.db, &action.session, &action.request).await;
         // Remove temp file
         for val in action.request.input.file.values() {
             for f in val {
@@ -868,7 +839,6 @@ impl Action {
                 };
             }
         }
-        handle.await;
     }
 
     /// Simple remove temp file after redirect
@@ -890,10 +860,26 @@ impl Action {
     /// # Value
     ///
     /// * `template: &str` - Name of template
-    pub fn render(&self, template: impl StrOrI64) -> Answer {
+    pub fn render(&mut self, template: impl StrOrI64) -> Answer {
         match &self.html {
             Some(h) => match h.get(&template.to_i64()) {
-                Some(vec) => Html::render(&self.data, vec),
+                Some(vec) => {
+                    if !self.response.css.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.css.len());
+                        for css in self.response.css.drain(..) {
+                            vec.push(Data::String(css));
+                        }
+                        self.data.insert(fnv1a_64!("css"), Data::Vec(vec));
+                    }
+                    if !self.response.css.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.css.len());
+                        for css in self.response.js.drain(..) {
+                            vec.push(Data::String(css));
+                        }
+                        self.data.insert(fnv1a_64!("js"), Data::Vec(vec));
+                    }
+                    Html::render(&self.data, vec)
+                }
                 None => Answer::None,
             },
             None => Answer::None,
@@ -957,144 +943,5 @@ impl Action {
                 None => format!("/{}/{}/{}", module, class, action),
             },
         }
-    }
-}
-
-impl Session {
-    /// Create new session
-    fn new(lang_id: i64, salt: &str, ip: &str, agent: &str, host: &str) -> Session {
-        Session {
-            id: 0,
-            lang_id,
-            user_id: 0,
-            role_id: 0,
-            key: Session::generate_session(salt, ip, agent, host),
-            data: HashMap::new(),
-            change: false,
-        }
-    }
-
-    /// Create new session by cookie (session) key
-    fn with_key(lang_id: i64, key: String) -> Session {
-        Session {
-            id: 0,
-            lang_id,
-            user_id: 0,
-            role_id: 0,
-            key,
-            data: HashMap::new(),
-            change: false,
-        }
-    }
-
-    /// Load session from database
-    async fn load_session(key: String, db: Arc<DB>, lang_id: i64) -> Session {
-        let res = match db.query_raw(fnv1a_64!("lib_get_session"), &[&key]).await {
-            Some(r) => r,
-            None => return Session::with_key(lang_id, key),
-        };
-        if res.is_empty() {
-            return Session::with_key(lang_id, key);
-        }
-        let row = &res[0];
-        let session_id: i64 = row.get(0);
-        let user_id: i64 = row.get(1);
-        let role_id: i64 = row.get(2);
-        let data: &[u8] = row.get(3);
-        let lang_id: i64 = row.get(4);
-
-        let res = if data.is_empty() {
-            HashMap::new()
-        } else {
-            match bincode::deserialize::<HashMap<String, Data>>(data) {
-                Ok(r) => r,
-                Err(_) => HashMap::new(),
-            }
-        };
-        Session {
-            id: session_id,
-            lang_id,
-            user_id,
-            role_id,
-            key,
-            data: res,
-            change: false,
-        }
-    }
-
-    /// Save session into database
-    async fn save_session(db: Arc<DB>, session: &Session, request: &Request) {
-        if session.change {
-            let data = match bincode::serialize(&session.data) {
-                Ok(r) => r,
-                Err(_) => Vec::new(),
-            };
-            if session.id == 0 {
-                db.query_raw(
-                    fnv1a_64!("lib_set_session"),
-                    &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
-                )
-                .await;
-            } else {
-                db.query_raw(
-                    fnv1a_64!("lib_add_session"),
-                    &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent],
-                )
-                .await;
-            };
-        }
-    }
-
-    /// Generete new session key
-    fn generate_session(salt: &str, ip: &str, agent: &str, host: &str) -> String {
-        // Generate a new cookie
-        let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f %:z").to_string();
-        let cook = format!("{}{}{}{}{}", salt, ip, agent, host, time);
-        let mut hasher = Sha3_512::new();
-        hasher.update(cook.as_bytes());
-        format!("{:#x}", hasher.finalize())
-    }
-}
-
-impl Cache {
-    /// Create new Cache instanse
-    pub fn new(cache: Arc<Mutex<CacheSys>>) -> Cache {
-        Cache { cache }
-    }
-
-    /// Get cache
-    pub async fn get<T>(&mut self, keys: T) -> (Option<Data>, Vec<i64>)
-    where
-        T: StrOrArrI64,
-    {
-        let key = keys.to_arr();
-        (CacheSys::get(Arc::clone(&self.cache), &key).await, key)
-    }
-
-    /// Set cache
-    pub async fn set<T>(&mut self, keys: T, data: Data)
-    where
-        T: StrOrArrI64,
-    {
-        CacheSys::set(Arc::clone(&self.cache), &keys.to_arr(), data).await
-    }
-
-    /// Removes a key from the Cache.
-    ///
-    /// If `key` ends with a `:` character, all data beginning with that `key` is deleted.
-    pub async fn del<T>(&mut self, keys: T)
-    where
-        T: StrOrArrI64,
-    {
-        CacheSys::del(Arc::clone(&self.cache), &keys.to_arr()).await
-    }
-
-    /// Clear all cache
-    pub async fn clear(&mut self) {
-        CacheSys::clear(Arc::clone(&self.cache)).await
-    }
-
-    pub async fn show(&mut self) {
-        CacheSys::show(Arc::clone(&self.cache)).await
     }
 }
