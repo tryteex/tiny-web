@@ -16,7 +16,7 @@ pub async fn <controller_name>(this: &mut Action) -> Answer {
 For example, for the "get" controller:
 ```rust
 pub async fn get(this: &mut Action) -> Answer {
-
+    let param = this.param;
     Answer::None
 }
 ```

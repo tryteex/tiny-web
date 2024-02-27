@@ -12,5 +12,5 @@ Access is managed at the user role level. This means that all users with the sam
 Access permissions are stored in the [database ](https://github.com/tryteex/tiny-web/blob/main/doc/Database.md)and are cached upon the first request.
 
 ___
-Next => Template maker [Template.md](https://github.com/tryteex/tiny-web/blob/main/doc/Template.md)
+Next => Template maker [Template.md](https://github.com/tryteex/tiny-web/blob/main/doc/Template.md)  
 Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

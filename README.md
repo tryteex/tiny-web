@@ -2,8 +2,7 @@
 
 `tiny-web` is a tiny async library (backend web server) that allows you to write a Laravel-style or Django-style backend in Rust language.
 
-> **Info**  
-> Short documentation for the library is [here](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md).
+Short documentation for the library is [here](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md).
 
 > **Note**  
 > For security reasons, this library must be located behind the Primary web server, for example, under Nginx.

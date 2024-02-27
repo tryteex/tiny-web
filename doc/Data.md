@@ -19,5 +19,5 @@ pub enum Data {
 }
 ```
 ___
-Next => Access system [Access.md](https://github.com/tryteex/tiny-web/blob/main/doc/Access.md)
+Next => Access system [Access.md](https://github.com/tryteex/tiny-web/blob/main/doc/Access.md)  
 Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
