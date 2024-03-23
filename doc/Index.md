@@ -25,7 +25,7 @@ This library is developed in parallel with an internet store (marketplace), and 
 * Email system [Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
 * Configuring nginx [Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)
 * Simple example [Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)
-* Performance [Performance.md](https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md)
+* Todo [Todo.md](https://github.com/tryteex/tiny-web/blob/main/doc/Todo.md)
 
 > **Note**  
-> Some things might be written unclearly or with incorrect meanings, so I apologize in advance because my native language is Ukrainian.
+> If you have any questions ask us on [discord channel](https://discord.com/channels/1116858532491448332/1116858533061869742).

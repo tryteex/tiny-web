@@ -1,12 +1,13 @@
 [package]
 name = "tiny-web"
 authors = ["Volodymyr Zamkovyi <v.zamkovyi@gmail.com>"]
-version = "0.4.17"
+version = "0.4.18"
 edition = "2021"
 license = "MIT"
 description = "tiny-web is a tiny async library (backend web server) that allows you to write a Laravel-style or Django-style backend in Rust language."
 keywords = ["web", "server", "backend", "fastcgi", "async"]
 repository = "https://github.com/tryteex/tiny-web"
+exclude = ["example", "doc"]
 
 [dependencies]
 tiny-web-macro="0.1.4"

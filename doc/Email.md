@@ -89,7 +89,7 @@ pub async fn index(this: &mut Action) -> Answer {
         bcc: None,
         from: "From me <email@tiny.com.ua>".to_owned(),
         reply_to: None,
-        subject: "Some subject тема".to_owned(),
+        subject: "Some subject".to_owned(),
         body: vec![html, text, file1, file2],
     };
     this.mail(mes).await;

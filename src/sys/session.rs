@@ -27,7 +27,7 @@ pub struct Session {
     /// session_id from database
     id: i64,
     /// Default lang_id for user
-    pub lang_id: i64,
+    lang_id: i64,
     /// user_id from database
     pub user_id: i64,
     /// role_id from database
@@ -36,8 +36,8 @@ pub struct Session {
     pub key: String,
     /// User data from database
     data: BTreeMap<i64, Data>,
-    /// User data is changed
-    pub(crate) change: bool,
+    /// User data is changed 
+    change: bool,
 }
 
 impl Session {
@@ -109,7 +109,7 @@ impl Session {
                 Ok(r) => r,
                 Err(_) => Vec::new(),
             };
-            if session.id == 0 {
+            if session.id > 0 {
                 db.query_raw(
                     fnv1a_64!("lib_set_session"),
                     &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
@@ -133,6 +133,19 @@ impl Session {
         let mut hasher = Sha3_512::new();
         hasher.update(cook.as_bytes());
         format!("{:#x}", hasher.finalize())
+    }
+
+    /// Set lang_id
+    pub fn set_lang_id(&mut self, lang_id: i64) {
+        if self.lang_id != lang_id {
+            self.lang_id = lang_id;
+            self.change = true;
+        }
+    }
+
+    /// Get lang_id
+    pub fn get_lang_id(&self) -> i64 {
+        self.lang_id
     }
 
     /// Set session data

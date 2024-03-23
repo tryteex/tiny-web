@@ -13,6 +13,10 @@ pub async fn <controller_name>(this: &mut Action) -> Answer {
     Answer::None
 }
 ```
+> **Note**  
+> * `pub async fn <controller_name>(this: &mut Action) -> Answer {` must be written on one line.
+> * It should be noted that the variable name `this` is mandatory and cannot be changed.
+
 For example, for the "get" controller:
 ```rust
 pub async fn get(this: &mut Action) -> Answer {
@@ -30,7 +34,7 @@ All created class and controller files will be automatically added to the projec
 ```toml
 [dependencies]
 tiny-web-macro="0.1"
-tiny-web="0.4"
+tiny-web="0.5"
 ```
 2. Add the tiny_web::run macro to the `./src/main.rs` file:
 ```rust

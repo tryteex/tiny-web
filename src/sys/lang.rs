@@ -195,8 +195,8 @@ impl Lang {
                         },
                         None => continue,
                     };
-                    if code.ends_with(".lang") && code.len() == 7 {
-                        let code = &code[0..2];
+                    if code.starts_with("lang.") && code.len() == 7 {
+                        let code = &code[5..7];
                         if let Some(id) = codes.get(code) {
                             if let Ok(text) = read_to_string(&path) {
                                 if !text.is_empty() {

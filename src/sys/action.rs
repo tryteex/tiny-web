@@ -1,4 +1,4 @@
-use chrono::{serde::ts_seconds::serialize as to_ts, Utc};
+use chrono::Local;
 use std::{
     collections::{BTreeMap, HashMap},
     future::Future,
@@ -19,7 +19,7 @@ use super::{
     cache::{Cache, CacheSys},
     db::DB,
     html::{Html, Nodes},
-    lang::Lang,
+    lang::{Lang, LangItem},
     log::Log,
     mail::{Mail, MailMessage, MailProvider},
     session::Session,
@@ -78,8 +78,7 @@ pub enum Data {
     /// String data.
     String(String),
     /// DateTime.
-    #[serde(serialize_with = "to_ts")]
-    Date(DateTime<Utc>),
+    Date(DateTime<Local>),
     /// Json
     Json(Value),
     /// List of `Data`.
@@ -216,8 +215,9 @@ pub struct Request {
 /// * `content_type: Option<String>` - Content type.
 /// * `headers: Vec<String>` - Additional headers.
 /// * `http_code: Option<u16>` - Http code.
-/// * `css: Vec<String>` - Addition css script.
-/// * `js: Vec<String>` - Addition js script.
+/// * `css: Vec<String>` - Addition css.
+/// * `js: Vec<String>` - Addition js.
+/// * `mata: Vec<String>` - Addition meta.
 #[derive(Debug)]
 pub struct Response {
     /// Redirect
@@ -228,10 +228,12 @@ pub struct Response {
     pub headers: Vec<(String, String)>,
     /// Http code
     pub http_code: Option<u16>,
-    /// Addition css script
+    /// Addition css
     pub css: Vec<String>,
-    /// Addition js script
+    /// Addition js
     pub js: Vec<String>,
+    /// Addition meta
+    pub meta: Vec<String>,
 }
 
 /// Data to run Action (Main controler)
@@ -385,6 +387,7 @@ impl Action {
             http_code: None,
             css: Vec::new(),
             js: Vec::new(),
+            meta: Vec::new(),
         };
         let lang_id = data.lang.default as i64;
         let mut session = if let Some(session) = data.session {
@@ -404,21 +407,18 @@ impl Action {
         let class_id = route.class_id;
         let action_id = route.action_id;
         if let Some(lang_id) = route.lang_id {
-            if session.lang_id != lang_id {
-                session.change = true;
-                session.lang_id = lang_id;
-            }
+            session.set_lang_id(lang_id);
         }
         let param = route.param;
         // Load new template list
-        let html = data.html.list.get(&module_id).and_then(|module| module.get(&class_id).map(Arc::clone));
+        let html = data.html.list.get(&module_id).and_then(|module| module.get(&class_id).cloned());
         // Load new translate list
         let lang = data
             .lang
             .list
-            .get(&session.lang_id)
+            .get(&session.get_lang_id())
             .and_then(|langs| langs.get(&module_id))
-            .and_then(|module| module.get(&class_id).map(Arc::clone));
+            .and_then(|module| module.get(&class_id).cloned());
 
         Ok(Action {
             request: data.request,
@@ -480,11 +480,18 @@ impl Action {
     ) -> Answer {
         // Check permission
         if self.get_access(module_id, class_id, action_id).await {
-            return self.invoke(module_id, class_id, action_id, param, internal).await;
+            if let Some(answer) = self.invoke(module_id, class_id, action_id, param, internal).await {
+                return answer;
+            };
         }
         if internal {
             return Answer::None;
         }
+        if self.request.ajax {
+            self.response.http_code = Some(404);
+            return Answer::None;
+        }
+
         // If not /index/index/not_found - then redirect
         if !(module_id == fnv1a_64!("index") && class_id == fnv1a_64!("index") && action_id == fnv1a_64!("not_found")) {
             self.response.redirect = Some(Redirect {
@@ -514,8 +521,25 @@ impl Action {
         text.to_str().to_owned()
     }
 
+    /// Get current lang
+    pub fn lang_current(&self) -> &LangItem{
+        unsafe { self.language.langs.get_unchecked(self.session.get_lang_id() as usize)}
+    }
+    
+    /// Get vector of system languages
+    pub fn lang_list(&self) -> &Vec<LangItem>{
+        &self.language.langs
+    }
+
     /// Invoke found controller
-    async fn invoke(&mut self, module_id: i64, class_id: i64, action_id: i64, param: Option<String>, internal: bool) -> Answer {
+    async fn invoke(
+        &mut self,
+        module_id: i64,
+        class_id: i64,
+        action_id: i64,
+        param: Option<String>,
+        internal: bool,
+    ) -> Option<Answer> {
         if let Some(m) = self.engine.get(&module_id) {
             if let Some(c) = m.get(&class_id) {
                 if let Some(a) = c.get(&action_id) {
@@ -530,7 +554,7 @@ impl Action {
                         let res = a(self).await;
                         self.internal = i;
                         self.param = p;
-                        return res;
+                        return Some(res);
                     } else {
                         // Call from the different module as the current one
 
@@ -543,7 +567,7 @@ impl Action {
                             None => self.html.take(),
                         };
                         // Load new translate list
-                        let l = match self.language.list.get(&self.session.lang_id) {
+                        let l = match self.language.list.get(&self.session.get_lang_id()) {
                             Some(l) => match l.get(&module_id) {
                                 Some(l) => match l.get(&class_id) {
                                     Some(l) => self.lang.replace(Arc::clone(l)),
@@ -574,12 +598,12 @@ impl Action {
                         self.lang = l;
                         self.internal = i;
                         self.param = p;
-                        return res;
+                        return Some(res);
                     }
                 }
             }
         }
-        Answer::None
+        None
     }
 
     /// Get access to run controller
@@ -618,7 +642,7 @@ impl Action {
 
     /// Get not_found url
     pub async fn not_found(&mut self) -> String {
-        let key = vec![fnv1a_64!("404"), self.session.lang_id];
+        let key = vec![fnv1a_64!("404"), self.session.get_lang_id()];
         let (data, key) = self.cache.get(key).await;
         match data {
             Some(d) => match d {
@@ -627,7 +651,7 @@ impl Action {
             },
             None => {
                 // Load from database
-                match self.db.query_raw(fnv1a_64!("lib_get_not_found"), &[&self.session.lang_id]).await {
+                match self.db.query_raw(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()]).await {
                     Some(v) => {
                         if v.is_empty() {
                             self.cache.set(key, Data::None).await;
@@ -871,12 +895,19 @@ impl Action {
                         }
                         self.data.insert(fnv1a_64!("css"), Data::Vec(vec));
                     }
-                    if !self.response.css.is_empty() {
-                        let mut vec = Vec::with_capacity(self.response.css.len());
-                        for css in self.response.js.drain(..) {
-                            vec.push(Data::String(css));
+                    if !self.response.js.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.js.len());
+                        for js in self.response.js.drain(..) {
+                            vec.push(Data::String(js));
                         }
                         self.data.insert(fnv1a_64!("js"), Data::Vec(vec));
+                    }
+                    if !self.response.meta.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.meta.len());
+                        for meta in self.response.meta.drain(..) {
+                            vec.push(Data::String(meta));
+                        }
+                        self.data.insert(fnv1a_64!("meta"), Data::Vec(vec));
                     }
                     Html::render(&self.data, vec)
                 }

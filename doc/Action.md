@@ -13,6 +13,8 @@ In this case, the following functionality will be available for the variable __t
 |-|-|:-:|-|-|
 | 𝑓 | load | yes || Invoking another controller |
 | 𝑓 | lang | no | String | Retrieving a simple translation |
+| 𝑓 | lang_current | no | &LangItem | Current user language |
+| 𝑓 | lang_list | no | &Vec<LangItem> | List of languages |
 | 𝑓 | get_access | yes | bool | Checking permissions for the controller |
 | 𝑓 | not_found | yes | String | Retrieving the URL of the 404 Not Found controller |
 | 𝑓 | set | no || Setting data for rendering an HTML page |

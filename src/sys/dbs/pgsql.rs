@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local};
 use native_tls::Protocol;
 use postgres::{types::ToSql, NoTls, Row, Statement, ToStatement};
 use postgres_native_tls::MakeTlsConnector;
@@ -261,7 +261,7 @@ impl PgSql {
                         RETURNING session_id, user_id, data, lang_id
                     )
                     SELECT 
-                        s.session_id, s.user_id, u.role_id, s.data, s.user_id, s.lang_id 
+                        s.session_id, s.user_id, u.role_id, s.data, s.lang_id 
                     FROM 
                         upd s
                         INNER JOIN "user" u ON u.user_id=s.user_id
@@ -908,10 +908,10 @@ impl PgSql {
         }
     }
 
-    /// Row::DateTime<Utc> to Data::DateTime<Utc>
+    /// Row::DateTime<Local> to Data::DateTime<Local>
     #[inline]
     fn get_date(row: &Row, idx: usize) -> Data {
-        let d: Option<DateTime<Utc>> = row.get(idx);
+        let d: Option<DateTime<Local>> = row.get(idx);
         match d {
             Some(d) => Data::Date(d),
             None => Data::None,

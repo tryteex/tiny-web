@@ -1,7 +1,5 @@
 use std::{
-    collections::BTreeMap,
-    fs::{read_dir, read_to_string},
-    sync::Arc,
+    collections::BTreeMap, fs::{read_dir, read_to_string}, sync::Arc
 };
 
 use crate::fnv1a_64;
@@ -818,7 +816,7 @@ impl Html {
     }
 
     /// Parse text for searching `echo` conditions
-    fn get_echo(val: &str) -> Option<Nodes> {
+    fn get_echo(val: &str) -> Result<Nodes, usize> {
         let mut shift = 0;
         let mut c;
         let mut l;
@@ -861,14 +859,14 @@ impl Html {
                         res.push(Node::Text(val[last..idx - 2].to_owned()));
                         vl = val[idx..shift].trim().to_owned();
                         if vl.is_empty() {
-                            return None;
+                            return Err(shift);
                         }
                         // Check begin trim
                         if unsafe { vl.get_unchecked(..1) } == "-" {
                             trim_begin = true;
                             vl = vl[1..].trim().to_owned();
                             if vl.is_empty() {
-                                return None;
+                                return Err(shift);
                             }
                         }
                         // Check end trim
@@ -876,14 +874,14 @@ impl Html {
                             trim_end = true;
                             vl = vl[..vl.len() - 1].trim().to_owned();
                             if vl.is_empty() {
-                                return None;
+                                return Err(shift);
                             }
                         }
                         // Save begin/end trim
                         match (trim_begin, trim_end) {
                             (true, true) => {
                                 res.push(Node::Value(EchoValue {
-                                    val: Html::get_val(&vl, None)?,
+                                    val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
                                     begin: true,
                                     end: true,
                                 }));
@@ -892,7 +890,7 @@ impl Html {
                             }
                             (true, false) => {
                                 res.push(Node::Value(EchoValue {
-                                    val: Html::get_val(&vl, None)?,
+                                    val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
                                     begin: true,
                                     end: false,
                                 }));
@@ -900,14 +898,14 @@ impl Html {
                             }
                             (false, true) => {
                                 res.push(Node::Value(EchoValue {
-                                    val: Html::get_val(&vl, None)?,
+                                    val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
                                     begin: false,
                                     end: true,
                                 }));
                                 trim_end = false;
                             }
                             (false, false) => res.push(Node::Value(EchoValue {
-                                val: Html::get_val(&vl, None)?,
+                                val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
                                 begin: false,
                                 end: false,
                             })),
@@ -917,12 +915,12 @@ impl Html {
                     shift += 2;
                     order = false;
                 }
-                ("{{", true) | ("}}", false) => return None,
+                ("{{", true) => return Err(shift),
                 _ => shift += 1,
             }
         }
         res.push(Node::Text(val[last..].to_owned()));
-        Some(res)
+        Ok(res)
     }
 
     /// Check if expressions
@@ -971,17 +969,19 @@ impl Html {
                     return Err(format!(r#"Incorrect tag None in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                 }
                 ItemCondition::Text => match Html::get_echo(&item.text) {
-                    Some(ns) => {
+                    Ok(ns) => {
                         for n in ns {
                             nodes.push(n);
                         }
                     }
-                    None => {
+                    Err(shift) => {
+                        let start = if shift < 25 { 0 } else { shift - 25 };
+                        let finish = if shift + 25 > item.text.len() - 3 { item.text.len() - 3 } else { shift + 25 };
                         return Err(format!(
                             r#"Incorrect echo "{}" in "{}""#,
-                            &item.text[1..item.text.len() - 3],
+                            &item.text[start..finish],
                             Html::get_err_msg(item.begin, item.end, html)
-                        ))
+                        ));
                     }
                 },
                 ItemCondition::If => {
@@ -991,8 +991,7 @@ impl Html {
                             Some(e) => e,
                             None => {
                                 return Err(format!(
-                                    r#"Incorrect expression "{}" in "{}""#,
-                                    &item.text[1..item.text.len() - 3],
+                                    r#"Incorrect expression in "{}""#,
                                     Html::get_err_msg(item.begin, item.end, html)
                                 ));
                             }
@@ -1012,8 +1011,7 @@ impl Html {
                             Some(e) => e,
                             None => {
                                 return Err(format!(
-                                    r#"Incorrect expression "{}" in "{}""#,
-                                    &item.text[1..item.text.len() - 3],
+                                    r#"Incorrect expression in "{}""#,
                                     Html::get_err_msg(item.begin, item.end, html)
                                 ));
                             }
@@ -1253,8 +1251,8 @@ impl Html {
                         Some(d) => match d {
                             Data::Vec(vec) => {
                                 if !vec.is_empty() {
-                                    let key = fnv1a_64(f.local.as_bytes());
                                     let key_idx = fnv1a_64(format!("{}|key", f.local).as_bytes());
+                                    let key = fnv1a_64(f.local.as_bytes());
                                     for (idx, v) in vec.into_iter().enumerate() {
                                         tmp.insert(key_idx, Data::Usize(idx + 1));
                                         tmp.insert(key, v.clone());
@@ -1893,9 +1891,37 @@ impl Html {
                 Filter::Len => "{{err::Len}}".to_owned(),
                 Filter::Set => "{{err::Set}}".to_owned(),
                 Filter::Unset => "{{err::Unset}}".to_owned(),
-                Filter::Dump => format!("{:?}", data),
+                Filter::Dump => Html::data_to_dump(name, data, tmp),
             },
         }
+    }
+
+    fn data_to_dump(name: &[String], data: &BTreeMap<i64, Data>, tmp: &BTreeMap<i64, Data>) -> String {
+        if name.is_empty() {
+            return "{{{{EMPTY}}}}".to_owned();
+        }
+        let mut key = fnv1a_64(unsafe { name.get_unchecked(0) }.as_bytes());
+        let mut val = match data.get(&key) {
+            Some(v) => v,
+            None => match tmp.get(&key) {
+                Some(v) => v,
+                None => return format!("{{{{KEY={}}}}}", name.join(".")),
+            },
+        };
+        let mut shift = 1;
+        while shift < name.len() {
+            if let Data::Map(map) = val {
+                key = fnv1a_64(unsafe { name.get_unchecked(shift) }.as_bytes());
+                val = match map.get(&key) {
+                    Some(v) => v,
+                    None => return format!("{{{{KEY={}}}}}", name.join(".")),
+                };
+            } else {
+                return format!("{{{{KEY={}}}}}", name.join("."));
+            }
+            shift += 1;
+        }
+        format!("{{{{KEY={} VALUE={:?}}}}}", name.join("."), val)
     }
 
     /// Extract string from value

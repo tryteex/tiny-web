@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <title>{{ title }}</title>
+        <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+        <link href="https://fonts.googleapis.com/css?family=Lora:400,700,400italic,700italic" rel="stylesheet" type="text/css" />
+        <link href="https://fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,600italic,700italic,800italic,400,300,600,700,800" rel="stylesheet" type="text/css" />
+        <link href="/css/styles.css" rel="stylesheet" />
+        {% for style in css %}{{ style|raw }}{% endfor %}
+        <script src="/js/all.js" crossorigin="anonymous"></script>
+        {% for script in js %}{{ script|raw }}{% endfor %}
+        {% for m in meta %}{{ m|raw }}{% endfor %}
+    </head>
+    <body>
+        <nav class="navbar navbar-expand-lg navbar-light" id="mainNav">
+            <div class="container px-4 px-lg-5">
+                <a class="navbar-brand" href="/">{{ home }}</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarResponsive" aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation">
+                    {{ menu }}
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarResponsive">
+                    <ul class="navbar-nav ms-auto py-4 py-lg-0">
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                {{ lang_name }}
+                            </a>
+                            <ul class="dropdown-menu">
+                                {% for item in lang_list %}
+                                <li data-id="{{ item.id }}" class="lang-choose"><span class="dropdown-item pointer">{{ item.name }}</span></li>
+                                {% endfor %}
+                            </ul>
+                        </li>                  
+                    </ul>          
+                </div>
+            </div>
+        </nav>
+        <header class="masthead" style="background-image: url('/img/about-bg.jpg')">
+            <div class="container position-relative px-4 px-lg-5">
+                <div class="row gx-4 gx-lg-5 justify-content-center">
+                    <div class="col-md-10 col-lg-8 col-xl-7">
+                        <div class="page-heading">
+                            <h1>{{ about }}</h1>
+                            <span class="subheading">{{ i_do }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <script>
+            document.addEventListener("DOMContentLoaded", (event) => {
+                let elements = document.querySelectorAll(".lang-choose");
+                for (let i = 0; i < elements.length; i++) {
+                    const element = elements[i];
+                    element.addEventListener('click', async function(event) {
+                        try {
+                            let id = element.getAttribute("data-id");
+                            let response = await fetch(
+                                "/index/index/lang/"+id, 
+                                { headers: { 'X-Requested-With': 'XMLHttpRequest' }}
+                            );
+                            if(response.status == 200){
+                                window.location.reload();
+                            } else {
+                                console.log(response)
+                            }
+                        } catch (e) {
+                            console.log(e)
+                        }
+                    });
+                }
+            });
+        </script>

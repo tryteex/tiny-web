@@ -630,7 +630,7 @@ impl Init {
                             Log::warning(67, Some(value.to_string()));
                         }
                     }
-                    "max_db" => match value {
+                    "db_max" => match value {
                         Value::String(s) => {
                             if &s == "auto" {
                                 db.max = num_connections;

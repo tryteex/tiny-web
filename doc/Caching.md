@@ -17,6 +17,16 @@ pub async fn index(this: &mut Action) -> Answer {
     ...
 }
 ```
+Cache keys have a hierarchical structure. The symbol `:` is used to separate keys in the hierarchy. Hierarchy is useful when it's necessary to clear cache at a certain level.
+
+For example: cache keys for permissions are formed in the format `auth:user_role_id:module_id:class_id:action_id`. And if it's necessary to clear all permissions but not reset other cache, then you need to execute:
+```rust
+this.cache.remove("auth").await
+```
+If it's necessary to clear all permissions only for `role_id=2`:
+```rust
+this.cache.remove("auth:2").await
+```
 ___
 Next => Request [Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md)  
 Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
