@@ -196,7 +196,7 @@ WantedBy=multi-user.target
 ```
 Restarting systemd:
 ```bash
-tiny@server:~$ біб
+tiny@server:~$ sudo systemctl daemon-reload
 ```
 Enable the service:
 ```bash
