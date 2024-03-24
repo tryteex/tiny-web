@@ -5,36 +5,36 @@ These structures are very similar and have minimal differences.
 For __Development__, each project should be structured as follows:
 
 ```bash
-├── tiny-shop/
-│    ├── Cargo.toml
-│    ├── tiny.toml
-│    ├── app/
-│    │    ├── module___/
-│    │    │    ├── class___/
-│    │    │    │    ├── html___.html
-│    │    │    │    ├── lang.___
-│    ├── www/
-│    ├── src/
-│    │    ├── main.rs
-│    │    ├── app/
-│    │    │    ├── mod.rs
-│    │    │    ├── module___/
-│    │    │    │    ├── class___.rs
-│    ├── target/
+└── tiny-shop/
+    ├── Cargo.toml
+    ├── tiny.toml
+    ├── app/
+    │   └── module___/
+    │       └── class___/
+    │           ├── html___.html
+    │           └── lang.___
+    ├── www/
+    ├── src/
+    │   ├── main.rs
+    │   └── app/
+    │       ├── mod.rs
+    │       └── module___/
+    │           └── class___.rs
+    └── target/
 ```
 For __Production__, each project should be structured as follows:
 
 ```bash
-├── tiny-shop/
-│    ├── bin/
-│    │    ├── tiny-shop.exe
-│    │    ├── tiny.toml
-│    │    ├── app/
-│    │    │    ├── module___/
-│    │    │    │    ├── class___/
-│    │    │    │    │    ├── html___.html
-│    │    │    │    │    ├── lang.___
-│    ├── www/
+└── tiny-shop/
+    ├── bin/
+    │   ├── tiny-shop.exe
+    │   ├── tiny.toml
+    │   └── app/
+    │       └── module___/
+    │           └── class___/
+    │               ├── html___.html
+    │               └── lang.___
+    └─ www/
 ```
 
 "___" means that there may be several files/directories.

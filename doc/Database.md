@@ -8,7 +8,7 @@ During the library startup, the timezone in the database is set from the configu
 In the future, the ability to initialize prepared queries before starting the library will be added.
 ___
 ### Installation
-At the root of the project lies the file [install.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/install.sql) which needs to be executed before the first run in the DB.  
+At the root of the project lies the file [lib-install.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/lib-install.sql) which needs to be executed before the first run in the DB.  
 In the future, the installation and update process will be automated. 
 ___
 ### Access and pool connections

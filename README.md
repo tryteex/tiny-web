@@ -15,7 +15,7 @@ This library works only with FastCGI, SCGI, and UWSGI (modifier1=0) protocols.
 
 This library works with Postgresql 15+ database. But you can try the lower version.
 
-The `install.sql` file is in the root of the project as a temporary solution so that the server can start. In the future, the `install` and `update` command will be added to the library to install and update the database.
+The `lib-install.sql` file is in the root of the project as a temporary solution so that the server can start. In the future, the `install` and `update` command will be added to the library to install and update the database.
 
 ## Contributing
 

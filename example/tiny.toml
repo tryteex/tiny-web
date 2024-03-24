@@ -1,12 +1,12 @@
 lang = "uk"
-log = "c:/work/web/tiny/tiny-shop/tiny.log"
+log = "/home/tiny/tiny-demo/tiny.log"
 max = 5
 bind_from = "127.0.0.1"
-bind = "127.0.0.1:12500"
+bind = "127.0.0.1:12501"
 rpc_from = "127.0.0.1"
-rpc = "127.0.0.1:12501"
+rpc = "127.0.0.1:12502"
 session = "tinysession"
-salt = "d34fuuUY^d*d99fd76$$%8dfkKh-lfF"
+salt = "UY^8dfkKh-lfF"
 db_host = "127.0.0.1"
 db_port = 5432
 db_name = "tiny"

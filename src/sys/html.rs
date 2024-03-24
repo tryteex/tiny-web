@@ -1,5 +1,7 @@
 use std::{
-    collections::BTreeMap, fs::{read_dir, read_to_string}, sync::Arc
+    collections::BTreeMap,
+    fs::{read_dir, read_to_string},
+    sync::Arc,
 };
 
 use crate::fnv1a_64;
@@ -881,7 +883,7 @@ impl Html {
                         match (trim_begin, trim_end) {
                             (true, true) => {
                                 res.push(Node::Value(EchoValue {
-                                    val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
+                                    val: Html::get_val(&vl, None).ok_or(shift)?,
                                     begin: true,
                                     end: true,
                                 }));
@@ -890,7 +892,7 @@ impl Html {
                             }
                             (true, false) => {
                                 res.push(Node::Value(EchoValue {
-                                    val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
+                                    val: Html::get_val(&vl, None).ok_or(shift)?,
                                     begin: true,
                                     end: false,
                                 }));
@@ -898,14 +900,14 @@ impl Html {
                             }
                             (false, true) => {
                                 res.push(Node::Value(EchoValue {
-                                    val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
+                                    val: Html::get_val(&vl, None).ok_or(shift)?,
                                     begin: false,
                                     end: true,
                                 }));
                                 trim_end = false;
                             }
                             (false, false) => res.push(Node::Value(EchoValue {
-                                val: Html::get_val(&vl, None).ok_or_else(|| shift)?,
+                                val: Html::get_val(&vl, None).ok_or(shift)?,
                                 begin: false,
                                 end: false,
                             })),

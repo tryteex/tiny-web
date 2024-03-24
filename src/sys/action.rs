@@ -522,12 +522,12 @@ impl Action {
     }
 
     /// Get current lang
-    pub fn lang_current(&self) -> &LangItem{
-        unsafe { self.language.langs.get_unchecked(self.session.get_lang_id() as usize)}
+    pub fn lang_current(&self) -> &LangItem {
+        unsafe { self.language.langs.get_unchecked(self.session.get_lang_id() as usize) }
     }
-    
+
     /// Get vector of system languages
-    pub fn lang_list(&self) -> &Vec<LangItem>{
+    pub fn lang_list(&self) -> &Vec<LangItem> {
         &self.language.langs
     }
 

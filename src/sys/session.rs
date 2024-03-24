@@ -36,7 +36,7 @@ pub struct Session {
     pub key: String,
     /// User data from database
     data: BTreeMap<i64, Data>,
-    /// User data is changed 
+    /// User data is changed
     change: bool,
 }
 

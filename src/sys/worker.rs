@@ -1,6 +1,6 @@
 use std::{cmp::min, collections::HashMap, io::Error, sync::Arc};
 
-use chrono::Utc;
+use chrono::{TimeDelta, Utc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
@@ -24,7 +24,6 @@ use super::{
 
 /// Buffer for read data from TcpStream
 pub const BUFFER_SIZE: usize = 8192;
-// pub const BUFFER_SIZE: usize = 50;
 
 /// One year in seconds
 const ONE_YEAR: i64 = 31622400;
@@ -373,7 +372,8 @@ impl Worker {
         }
 
         // Write Cookie
-        let time = Utc::now() + chrono::Duration::seconds(ONE_YEAR);
+        let sec = TimeDelta::new(ONE_YEAR, 0).unwrap_or(TimeDelta::zero());
+        let time = Utc::now() + sec;
         let date = time.format("%a, %d-%b-%Y %H:%M:%S GMT").to_string();
         let secure = if action.request.scheme == "https" { "Secure; " } else { "" };
 
