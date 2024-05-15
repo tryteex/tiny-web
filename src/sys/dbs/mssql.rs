@@ -1,23 +1,22 @@
 use std::{
+    borrow::Cow,
     collections::{btree_map::Entry, BTreeMap},
     sync::Arc,
 };
 
 use chrono::{DateTime, Utc};
-use futures_util::{pin_mut, TryStreamExt};
-use postgres::{types::ToSql, NoTls, Row, Statement, ToStatement};
-use rustls::{ClientConfig, RootCertStore};
-use serde_json::Value;
-use tokio_postgres::{types::Type, Client, Column};
 
+use futures_util::TryStreamExt;
+use tiberius::{error::Error, AuthMethod, Client, Column, Config, EncryptionLevel, QueryItem, Row, ToSql};
 use tiny_web_macro::fnv1a_64;
+use tokio::net::TcpStream;
+use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use crate::sys::{action::Data, init::DBConfig, log::Log};
 
-use super::adapter::{DBFieldType, DBPrepare, KeyOrQuery, MakeTinyTlsConnect, StrOrI64OrUSize};
+use super::adapter::{DBFieldType, DBPrepare, KeyOrQuery, StrOrI64OrUSize};
 
 /// Response to the result of the query
-#[derive(Debug)]
 enum DBResult {
     /// The request was completed successfully.
     Vec(Vec<Row>),
@@ -33,99 +32,50 @@ enum DBResult {
     ErrPrepare,
 }
 
-/// Responsible for working with postgresql database
-pub struct PgSql {
-    /// Client for connection to database.
-    client: Option<Client>,
-    /// Connection config.
-    sql_conn: tokio_postgres::Config,
-    /// Use tls for connection when sslmode=require.
-    tls: Option<MakeTinyTlsConnect>,
-    /// Prepare statements to database.
-    prepare: BTreeMap<i64, PgStatement>,
-    /// External prepare statements to database.
+/// Responsible for working with MsSql database
+pub struct MsSql {
+    config: Config,
+    client: Option<Client<Compat<TcpStream>>>,
+    prepare: BTreeMap<i64, MsStatement>,
     external: Arc<BTreeMap<i64, DBPrepare>>,
 }
 
 /// Statement to database
-pub struct PgStatement {
+pub struct MsStatement {
     /// Statement to database
-    statement: Statement,
+    statement: i64,
     /// Sql query to database
     sql: String,
 }
 
-/// Search correct type to query
-pub enum PgKeyStatement<'a> {
-    Key(&'a PgStatement),
-    Query(&'a str),
-}
-
 /// Names of columns
-type PgColumnName = (usize, fn(&Row, usize) -> Data);
+type MsColumnName = (usize, fn(&Row, usize) -> Data);
 
-impl PgSql {
+impl MsSql {
     /// Initializes a new object `PgSql`
-    pub fn new(config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<PgSql> {
-        let mut conn_str = String::with_capacity(512);
-        //host
-        conn_str.push_str("host='");
-        conn_str.push_str(&config.host);
-        conn_str.push_str("' ");
-        //port
+    pub fn new(config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<MsSql> {
+        let mut cfg = Config::new();
+        cfg.host(&config.host);
         if let Some(p) = &config.port {
-            conn_str.push_str("port='");
-            conn_str.push_str(&p.to_string());
-            conn_str.push_str("' ");
+            cfg.port(*p);
         }
-        // Database name
-        conn_str.push_str("dbname='");
-        conn_str.push_str(&config.name);
-        conn_str.push_str("' ");
-        //user
-        if let Some(u) = &config.user {
-            conn_str.push_str("user='");
-            conn_str.push_str(u);
-            conn_str.push_str("' ");
-        }
-        //password
+        cfg.database(&config.name);
+        let user = if let Some(u) = &config.user { u.to_owned() } else { "SA".to_owned() };
         if let Some(p) = &config.pwd {
-            conn_str.push_str("password='");
-            conn_str.push_str(p);
-            conn_str.push_str("' ");
-        }
-        //sslmode
-        if config.sslmode {
-            conn_str.push_str("sslmode=require ");
-        }
-        //connect_timeout
-        conn_str.push_str("connect_timeout=1 ");
-        //application_name
-        conn_str.push_str("application_name='");
-        conn_str.push_str(env!("CARGO_PKG_NAME"));
-        conn_str.push(' ');
-        conn_str.push_str(env!("CARGO_PKG_VERSION"));
-        conn_str.push_str("' ");
-        //options
-        conn_str.push_str("options='--client_encoding=UTF8'");
-
-        let sql_conn: tokio_postgres::Config = match conn_str.parse() {
-            Ok(c) => c,
-            Err(e) => {
-                Log::stop(609, Some(e.to_string()));
-                return None;
-            }
-        };
-        let tls = if config.sslmode {
-            let config = ClientConfig::builder().with_root_certificates(RootCertStore::empty()).with_no_client_auth();
-            Some(MakeTinyTlsConnect::new(config))
+            cfg.authentication(AuthMethod::sql_server(user, p));
         } else {
-            None
-        };
-        Some(PgSql {
+            cfg.authentication(AuthMethod::aad_token(user));
+        }
+        let app = format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+        cfg.application_name(app);
+        cfg.trust_cert();
+        if config.sslmode {
+            cfg.encryption(EncryptionLevel::Required);
+        }
+
+        Some(MsSql {
+            config: cfg,
             client: None,
-            sql_conn,
-            tls,
             prepare: BTreeMap::new(),
             external: prepare,
         })
@@ -134,239 +84,252 @@ impl PgSql {
     /// Connect to the database
     pub async fn connect(&mut self) -> bool {
         match &self.client {
-            Some(c) => {
-                if c.is_closed() {
-                    self.try_connect().await
-                } else {
-                    true
-                }
-            }
+            Some(_) => true,
             None => self.try_connect().await,
         }
     }
 
     /// Trying to connect to the database
     async fn try_connect(&mut self) -> bool {
-        match self.tls.clone() {
-            Some(tls) => match self.sql_conn.connect(tls).await {
-                Ok((client, connection)) => {
-                    tokio::spawn(async move {
-                        if let Err(e) = connection.await {
-                            Log::stop(612, Some(e.to_string()));
-                        }
-                    });
-                    self.client = Some(client);
-                }
-                Err(e) => {
-                    Log::warning(601, Some(format!("Error: {} => {:?}", e, &self.sql_conn)));
-                    return false;
-                }
-            },
-            None => match self.sql_conn.connect(NoTls).await {
-                Ok((client, connection)) => {
-                    tokio::spawn(async move {
-                        if let Err(e) = connection.await {
-                            Log::warning(612, Some(e.to_string()));
-                        }
-                    });
-                    self.client = Some(client);
-                }
-                Err(e) => {
-                    Log::warning(601, Some(format!("Error: {} => {:?}", e, &self.sql_conn)));
-                    return false;
-                }
-            },
-        }
+        let tcp = match TcpStream::connect(self.config.get_addr()).await {
+            Ok(tcp) => tcp,
+            Err(e) => {
+                Log::stop(601, Some(e.to_string()));
+                return false;
+            }
+        };
+        if let Err(e) = tcp.set_nodelay(true) {
+            Log::stop(616, Some(e.to_string()));
+            return false;
+        };
+        let client = match Client::connect(self.config.clone(), tcp.compat_write()).await {
+            Ok(client) => client,
+            Err(e) => {
+                Log::stop(604, Some(e.to_string()));
+                return false;
+            }
+        };
+        self.client = Some(client);
+
         self.prepare().await
     }
 
     /// Prepare sql statement
     async fn prepare(&mut self) -> bool {
         self.prepare.clear();
-        match &self.client {
+        match self.client.as_mut() {
             Some(client) => {
                 let mut map = BTreeMap::new();
-
                 // Get lang
                 let sql = r#"
-                    SELECT lang_id, lang, name, index
-                    FROM lang
-                    WHERE enable
-                    ORDER BY sort
+                    SELECT [lang_id], [lang], [name], [index]
+                    FROM [lang]
+                    WHERE [enable]=1
+                    ORDER BY [sort]
                 "#;
-                map.insert(fnv1a_64!("lib_get_langs"), (client.prepare_typed(sql, &[]), sql.to_owned()));
-
+                map.insert(fnv1a_64!("lib_get_langs"), ("".to_owned(), sql.to_owned()));
                 // Get session
                 let sql = r#"
-                    WITH upd AS (
-                        UPDATE session
-                        SET 
-                            last = now()
-                        WHERE
-                            session=$1
-                        RETURNING session_id, user_id, data, lang_id
-                    )
-                    SELECT 
-                        s.session_id, s.user_id, u.role_id, s.data, s.lang_id 
-                    FROM 
-                        upd s
-                        INNER JOIN "user" u ON u.user_id=s.user_id
+                    UPDATE [session] 
+                    SET
+                        [last] = CURRENT_TIMESTAMP
+                    OUTPUT INSERTED.[session_id], INSERTED.[user_id], u.[role_id], INSERTED.[data], INSERTED.[lang_id]
+                    FROM [session] s
+                    INNER JOIN [user] u ON u.[user_id]=s.[user_id] 
+                    WHERE
+                        s.[session] = @P1
                 "#;
-                map.insert(fnv1a_64!("lib_get_session"), (client.prepare_typed(sql, &[Type::TEXT]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_get_session"), ("'@P1 VARCHAR(512)".to_owned(), sql.to_owned()));
 
                 // Update session
                 let sql = r#"
-                    UPDATE session
-                    SET 
-                        user_id=$1,
-                        lang_id=$2,
-                        data=$3,
-                        last=now(),
-                        ip=$4,
-                        user_agent=$5
+                    UPDATE [session]
+                    SET
+                        [user_id] = @P1,
+                        [lang_id] = @P2,
+                        [data] = @P3,
+                        [last] = CURRENT_TIMESTAMP,
+                        [ip] = @P4,
+                        [user_agent] = @P5
                     WHERE
-                        session_id=$6
+                        [session_id] = @P6
                 "#;
                 map.insert(
                     fnv1a_64!("lib_set_session"),
                     (
-                        client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::BYTEA, Type::TEXT, Type::TEXT, Type::INT8]),
+                        "@P1 BIGINT, @P2 BIGINT, @P3 VARBINARY(MAX), @P4 VARCHAR(255), @P5 VARCHAR(MAX), @P6 BIGINT]".to_owned(),
                         sql.to_owned(),
                     ),
                 );
 
                 // Insert session
                 let sql = r#"
-                    INSERT INTO session (user_id, lang_id, session, data, created, last, ip, user_agent)
-                    SELECT $1, $2, $3, $4, now(), now(), $5, $6
+                    INSERT INTO [session] ([user_id], [lang_id], [session], [data], [created], [last], [ip], [user_agent])
+                    SELECT @P1, @P2, @P3, @P4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, @P5, @P6
                 "#;
                 map.insert(
                     fnv1a_64!("lib_add_session"),
                     (
-                        client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::TEXT, Type::BYTEA, Type::TEXT, Type::TEXT]),
+                        "@P1 BIGINT, @P2 BIGINT, @P3 VARCHAR(512), @P4 VARBINARY(MAX), @P5 VARCHAR(255), @P6 VARCHAR(MAX)"
+                            .to_owned(),
                         sql.to_owned(),
                     ),
                 );
 
                 // Get redirect
                 let sql = r#"
-                    SELECT redirect, permanently FROM redirect WHERE url=$1
+                    SELECT [redirect], [permanently] FROM [redirect] WHERE [url]=@P1
                 "#;
-                map.insert(fnv1a_64!("lib_get_redirect"), (client.prepare_typed(sql, &[Type::TEXT]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_get_redirect"), ("@P1 VARCHAR(4000)".to_owned(), sql.to_owned()));
 
                 // Get route
                 let sql = r#"
-                    SELECT 
-                        c.module, c.class, c.action,
-                        c.module_id, c.class_id, c.action_id,
-                        r.params, r.lang_id
-                    FROM 
-                        route r
-                        INNER JOIN controller c ON c.controller_id=r.controller_id
-                    WHERE r.url=$1
+                    SELECT
+                        c.[module], c.[class], c.[action],
+                        c.[module_id], c.[class_id], c.[action_id],
+                        r.[params], r.[lang_id]
+                    FROM
+                        [route] r
+                        INNER JOIN [controller] c ON c.[controller_id]=r.[controller_id]
+                    WHERE r.[url]=@P1
                 "#;
-                map.insert(fnv1a_64!("lib_get_route"), (client.prepare_typed(sql, &[Type::TEXT]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_get_route"), ("@P1 VARCHAR(4000)".to_owned(), sql.to_owned()));
+
                 // Get route from module/class/action
                 let sql = r#"
-                    SELECT r.url 
-                    FROM 
-                        controller c
-                        INNER JOIN route r ON 
-                            r.controller_id=c.controller_id AND r.lang_id=$5 AND r.params = $4
-                    WHERE 
-                        c.module_id=$1 AND c.class_id=$2 AND c.action_id=$3
+                    SELECT r.[url]
+                    FROM
+                        [controller] c
+                        INNER JOIN [route] r ON
+                            r.[controller_id]=c.[controller_id] AND r.[lang_id]=@P5 AND r.[params] = @P4
+                    WHERE
+                        c.[module_id]=@P1 AND c.[class_id]=@P2 AND c.[action_id]=@P3
                 "#;
                 map.insert(
                     fnv1a_64!("lib_get_url"),
-                    (client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::INT8, Type::TEXT, Type::INT8]), sql.to_owned()),
+                    ("@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 BIGINT, @P5 VARCHAR(255)".to_owned(), sql.to_owned()),
                 );
 
                 // Get auth permissions
                 let sql = r#"
-                    SELECT ISNULL(MAX(a.access), 0) AS access
+                    SELECT ISNULL(MAX(CAST(a.[access] as TINYINT)), 0) AS [access]
                     FROM
-                        access a
-                        INNER JOIN "user" u ON u.role_id=a.role_id
-                        INNER JOIN controller c ON a.controller_id=c.controller_id
+                        [access] a
+                        INNER JOIN [user] u ON u.[role_id]=a.[role_id]
+                        INNER JOIN [controller] c ON a.[controller_id]=c.[controller_id]
                     WHERE
-                        a.access AND a.role_id=$1 AND (
-                            (c.module_id=-3750763034362895579 AND c.class_id=-3750763034362895579 AND c.action_id=-3750763034362895579)
-                            OR (c.module_id=$2 AND c.class_id=-3750763034362895579 AND c.action_id=-3750763034362895579)
-                            OR (c.module_id=$3 AND c.class_id=$5 AND c.action_id=-3750763034362895579)
-                            OR (c.module_id=$4 AND c.class_id=$6 AND c.action_id=$7)
+                        a.[access]=1 AND a.[role_id]=@P1 AND (
+                            (c.[module_id]=-3750763034362895579 AND c.[class_id]=-3750763034362895579 AND c.[action_id]=-3750763034362895579)
+                            OR (c.[module_id]=@P2 AND c.[class_id]=-3750763034362895579 AND c.[action_id]=-3750763034362895579)
+                            OR (c.[module_id]=@P3 AND c.[class_id]=@P5 AND c.[action_id]=-3750763034362895579)
+                            OR (c.[module_id]=@P4 AND c.[class_id]=@P6 AND c.[action_id]=@P7)
                         )
                 "#;
                 map.insert(
                     fnv1a_64!("lib_get_auth"),
                     (
-                        client.prepare_typed(
-                            sql,
-                            &[Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8],
-                        ),
+                        "@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 BIGINT, @P5 BIGINT, @P6 BIGINT, @P7 BIGINT".to_owned(),
                         sql.to_owned(),
                     ),
                 );
+
                 // Get not found
                 let sql = r#"
-                    SELECT url
-                    FROM route
-                    WHERE controller_id=3 AND lang_id=$1
+                    SELECT [url]
+                    FROM [route]
+                    WHERE [controller_id]=3 AND [lang_id]=@P1
                 "#;
-                map.insert(fnv1a_64!("lib_get_not_found"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_get_not_found"), ("@P1 BIGINT".to_owned(), sql.to_owned()));
+
                 // Get settings
                 let sql = r#"
-                    SELECT data FROM setting WHERE key=$1
+                    SELECT [data] FROM [setting] WHERE [key]=@P1
                 "#;
-                map.insert(fnv1a_64!("lib_get_setting"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_get_setting"), ("@P1 BIGINT".to_owned(), sql.to_owned()));
+
                 // Insert email
                 let sql = r#"
-                    INSERT INTO mail(user_id, mail, "create", err, transport)
-                    VALUES ($1, $2, now(), false, $3)
-                    RETURNING mail_id;
+                    INSERT INTO [mail]([user_id], [mail], [create], [err], [transport])
+                    OUTPUT INSERTED.[mail_id]
+                    VALUES (@P1, @P2, CURRENT_TIMESTAMP, 0, @P3)
                 "#;
                 map.insert(
                     fnv1a_64!("lib_mail_new"),
-                    (client.prepare_typed(sql, &[Type::INT8, Type::TEXT, Type::TEXT]), sql.to_owned()),
+                    ("@P1 BIGINT, @P2 NVARCHAR(MAX), @P3 VARCHAR(255)".to_owned(), sql.to_owned()),
                 );
+
                 // Insert email without provider
                 let sql = r#"
-                    INSERT INTO mail(user_id, mail, "create", send, err, transport)
-                    VALUES ($1, $2, now(), now(), false, 'None')
+                    INSERT INTO [mail]([user_id], [mail], [create], [send], [err], [transport])
+                    VALUES (@P1, @P2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 'None')
                 "#;
-                map.insert(fnv1a_64!("lib_mail_add"), (client.prepare_typed(sql, &[Type::INT8, Type::TEXT]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_mail_add"), ("@P1 BIGINT, @P2 NVARCHAR(MAX)".to_owned(), sql.to_owned()));
+
                 // Insert error send email
                 let sql = r#"
-                    UPDATE mail
-                    SET err=true, send=now(), err_text=$1
-                    WHERE mail_id=$2
+                    UPDATE [mail]
+                    SET [err]=1, [send]=CURRENT_TIMESTAMP, [err_text]=@P1
+                    WHERE [mail_id]=@P2
                 "#;
-                map.insert(fnv1a_64!("lib_mail_err"), (client.prepare_typed(sql, &[Type::TEXT, Type::INT8]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_mail_err"), ("@P1 NVARCHAR(MAX), @P2 BIGINT".to_owned(), sql.to_owned()));
+
                 // Insert success send email
                 let sql = r#"
-                    UPDATE mail
-                    SET err=false, send=now()
-                    WHERE mail_id=$1
+                    UPDATE [mail]
+                    SET [err]=0, [send]=CURRENT_TIMESTAMP
+                    WHERE [mail_id]=@P1
                 "#;
-                map.insert(fnv1a_64!("lib_mail_ok"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_mail_ok"), ("@P1 BIGINT".to_owned(), sql.to_owned()));
 
                 // Add config prepare
                 for (key, sql) in self.external.as_ref() {
-                    if let DBFieldType::Pgsql(vec) = &sql.types {
-                        map.insert(*key, (client.prepare_typed(&sql.query, vec), sql.query.to_owned()));
+                    if let DBFieldType::Mssql(vec) = &sql.types {
+                        let res = vec
+                            .iter()
+                            .enumerate()
+                            .map(|(index, s)| format!("@P{} {}", index, s))
+                            .collect::<Vec<String>>()
+                            .join(", ");
+                        map.insert(*key, (res, sql.query.to_owned()));
                     }
                 }
 
                 // Prepare statements
-                for (key, (prepare, sql)) in map {
-                    match prepare.await {
-                        Ok(s) => {
-                            self.prepare.insert(key, PgStatement { statement: s, sql });
-                        }
+                for (key, (types, sql)) in map {
+                    let sql = format!(
+                        r#"
+                        DECLARE @handle INT;
+                        EXEC sp_prepare @handle OUTPUT,
+                            N'{}',
+                            N'{}';
+                        SELECT @handle;
+                    "#,
+                        types, sql
+                    );
+                    match client.query(&sql, &[]).await {
+                        Ok(mut stream) => match stream.try_next().await {
+                            Ok(Some(QueryItem::Row(row))) => {
+                                if let Some(statement) = row.get(0) {
+                                    self.prepare.insert(key, MsStatement { statement, sql });
+                                } else {
+                                    Log::stop(613, Some(format!("Error=No handle in prepare. sql={}", sql)));
+                                    return false;
+                                }
+                            }
+                            Err(e) => {
+                                Log::stop(613, Some(format!("Error={}. sql={}", e, sql)));
+                                return false;
+                            }
+                            _ => {
+                                Log::stop(613, Some(format!("Error=No handle in prepare. sql={}", sql)));
+                                return false;
+                            }
+                        },
                         Err(e) => {
                             Log::stop(613, Some(format!("Error={}. sql={}", e, sql)));
                             return false;
                         }
-                    }
+                    };
                 }
                 true
             }
@@ -375,134 +338,111 @@ impl PgSql {
     }
 
     /// Executes a statement in database, returning the results
-    async fn query_raw<T>(client: &Option<tokio_postgres::Client>, query: &T, params: &[&(dyn ToSql + Sync)]) -> DBResult
+    async fn query_raw<'a, 'b>(
+        client: &'a mut Option<Client<Compat<TcpStream>>>,
+        query: impl Into<Cow<'b, str>>,
+        params: &'b [&'b dyn ToSql],
+    ) -> DBResult
     where
-        T: ?Sized + ToStatement,
+        'a: 'b,
     {
         match client {
-            Some(sql) => match sql.query_raw(query, PgSql::slice_iter(params)).await {
-                Ok(res) => {
-                    pin_mut!(res);
-                    match res.try_next().await {
-                        Ok(row) => match row {
-                            Some(r) => {
-                                let mut result = match res.rows_affected() {
-                                    Some(s) => Vec::with_capacity(s as usize),
-                                    None => Vec::new(),
-                                };
-                                result.push(r);
-                                loop {
-                                    match res.try_next().await {
-                                        Ok(row) => match row {
-                                            Some(r) => {
-                                                result.push(r);
-                                            }
-                                            None => break,
-                                        },
-                                        Err(e) => return DBResult::ErrQuery(e.to_string()),
-                                    }
+            Some(sql) => match sql.query(query, params).await {
+                Ok(mut s) => {
+                    let mut vec = Vec::new();
+                    loop {
+                        match s.try_next().await {
+                            Ok(Some(QueryItem::Row(row))) => vec.push(row),
+                            Ok(None) => {
+                                if !vec.is_empty() {
+                                    break DBResult::Vec(vec);
+                                } else {
+                                    break DBResult::Void;
                                 }
-                                DBResult::Vec(result)
                             }
-                            None => DBResult::Void,
-                        },
-                        Err(e) => DBResult::ErrQuery(e.to_string()),
+                            Ok(_) => {}
+                            Err(e) => break MsSql::get_error(e),
+                        }
                     }
                 }
-                Err(e) => {
-                    if e.is_closed() {
-                        DBResult::ErrConnect(e.to_string())
-                    } else {
-                        DBResult::ErrQuery(e.to_string())
-                    }
-                }
+                Err(e) => MsSql::get_error(e),
             },
             None => DBResult::NoClient,
         }
     }
 
     /// Executes a statement in database, without results
-    async fn execute_raw<T>(client: &Option<tokio_postgres::Client>, query: &T, params: &[&(dyn ToSql + Sync)]) -> DBResult
-    where
-        T: ?Sized + ToStatement,
-    {
-        match client {
-            Some(sql) => match sql.execute_raw(query, PgSql::slice_iter(params)).await {
+    async fn execute_raw<'a>(
+        client: &mut Option<Client<Compat<TcpStream>>>,
+        query: impl Into<Cow<'a, str>>,
+        params: &[&dyn ToSql],
+    ) -> DBResult {
+        match client.as_mut() {
+            Some(sql) => match sql.execute(query, params).await {
                 Ok(_) => DBResult::Void,
-                Err(e) => {
-                    if e.is_closed() {
-                        DBResult::ErrConnect(e.to_string())
-                    } else {
-                        DBResult::ErrQuery(e.to_string())
-                    }
-                }
+                Err(e) => MsSql::get_error(e),
             },
             None => DBResult::NoClient,
         }
     }
 
-    /// Slise to ToSql
-    fn slice_iter<'a>(s: &'a [&'a (dyn ToSql + Sync)]) -> impl ExactSizeIterator<Item = &'a dyn ToSql> + 'a {
-        s.iter().map(|s| *s as _)
+    /// Get Error from query
+    fn get_error(e: Error) -> DBResult {
+        match e {
+            Error::Io { kind: _, message } => DBResult::ErrConnect(message),
+            Error::Tls(e) => DBResult::ErrConnect(e),
+            tiberius::error::Error::Routing { host, port } => DBResult::ErrConnect(format!("Erro route: {}:{}", host, port)),
+            Error::Protocol(e) => DBResult::ErrQuery(e.to_string()),
+            Error::Encoding(e) => DBResult::ErrQuery(e.to_string()),
+            Error::Conversion(e) => DBResult::ErrQuery(e.to_string()),
+            Error::Utf8 => DBResult::ErrQuery("Error::Utf8".to_owned()),
+            Error::Utf16 => DBResult::ErrQuery("Error::Utf16".to_owned()),
+            Error::ParseInt(e) => DBResult::ErrQuery(e.to_string()),
+            Error::Server(e) => DBResult::ErrQuery(e.to_string()),
+            Error::BulkInput(e) => DBResult::ErrQuery(e.to_string()),
+        }
     }
 
     /// Execute query to database and return a result
-    async fn query_statement(&self, query: &impl KeyOrQuery, params: &[&(dyn ToSql + Sync)]) -> DBResult {
+    async fn query_statement(&mut self, query: &impl KeyOrQuery, params: &[&dyn ToSql]) -> DBResult {
         if query.is_key() {
             let stat = match self.prepare.get(&query.to_i64()) {
                 Some(s) => s,
                 None => return DBResult::ErrPrepare,
             };
-            PgSql::query_raw(&self.client, &stat.statement, params).await
+            let mut sql = format!("EXEC sp_execute {}", stat.statement);
+            sql.reserve(20 + 6 * params.len());
+            for i in 0..params.len() {
+                sql.push_str(", @P");
+                sql.push_str(&i.to_string());
+            }
+            MsSql::query_raw(&mut self.client, sql, params).await
         } else {
-            PgSql::query_raw(&self.client, query.to_str(), params).await
+            MsSql::query_raw(&mut self.client, query.to_str(), params).await
         }
     }
 
     /// Execute query to database without a result
-    async fn execute_statement(&self, query: &impl KeyOrQuery, params: &[&(dyn ToSql + Sync)]) -> DBResult {
+    async fn execute_statement(&mut self, query: &impl KeyOrQuery, params: &[&(dyn ToSql)]) -> DBResult {
         if query.is_key() {
             let stat = match self.prepare.get(&query.to_i64()) {
                 Some(s) => s,
                 None => return DBResult::ErrPrepare,
             };
-            PgSql::execute_raw(&self.client, &stat.statement, params).await
+            let mut sql = format!("EXEC sp_execute {}", stat.statement);
+            sql.reserve(20 + 6 * params.len());
+            for i in 0..params.len() {
+                sql.push_str(", @P");
+                sql.push_str(&i.to_string());
+            }
+            MsSql::execute_raw(&mut self.client, sql, params).await
         } else {
-            PgSql::execute_raw(&self.client, query.to_str(), params).await
+            MsSql::execute_raw(&mut self.client, query.to_str(), params).await
         }
-    }
-
-    /// Execute query to database without a result
-    pub async fn execute(&mut self, query: &impl KeyOrQuery, params: &[&(dyn ToSql + Sync)]) -> Option<()> {
-        match self.execute_statement(query, params).await {
-            DBResult::Void | DBResult::Vec(_) => return Some(()),
-            DBResult::ErrQuery(e) => {
-                if query.is_key() {
-                    Log::warning(602, Some(format!("Statement key={} error={}", query.to_i64(), e)));
-                } else {
-                    Log::warning(602, Some(format!("{} error={}", query.to_str(), e)));
-                }
-                return None;
-            }
-            DBResult::ErrPrepare => {
-                Log::warning(615, Some(format!("{:?}", query.to_i64())));
-                return None;
-            }
-            DBResult::NoClient => Log::warning(604, None),
-            DBResult::ErrConnect(e) => Log::warning(603, Some(e)),
-        };
-        self.client = None;
-        if self.try_connect().await {
-            match self.execute_statement(query, params).await {
-                DBResult::Void | DBResult::Vec(_) => return Some(()),
-                _ => {}
-            }
-        }
-        None
     }
 
     /// Execute query to database and return a result
-    pub async fn query(&mut self, query: &impl KeyOrQuery, params: &[&(dyn ToSql + Sync)], assoc: bool) -> Option<Vec<Data>> {
+    pub async fn query(&mut self, query: &impl KeyOrQuery, params: &[&dyn ToSql], assoc: bool) -> Option<Vec<Data>> {
         match self.query_statement(query, params).await {
             DBResult::Vec(rows) => return Some(self.convert(rows, assoc)),
             DBResult::Void => return Some(Vec::new()),
@@ -532,12 +472,41 @@ impl PgSql {
         None
     }
 
+    /// Execute query to database without a result
+    pub async fn execute(&mut self, query: &impl KeyOrQuery, params: &[&dyn ToSql]) -> Option<()> {
+        match self.execute_statement(query, params).await {
+            DBResult::Void | DBResult::Vec(_) => return Some(()),
+            DBResult::ErrQuery(e) => {
+                if query.is_key() {
+                    Log::warning(602, Some(format!("Statement key={} error={}", query.to_i64(), e)));
+                } else {
+                    Log::warning(602, Some(format!("{} error={}", query.to_str(), e)));
+                }
+                return None;
+            }
+            DBResult::ErrPrepare => {
+                Log::warning(615, Some(format!("{:?}", query.to_i64())));
+                return None;
+            }
+            DBResult::NoClient => Log::warning(604, None),
+            DBResult::ErrConnect(e) => Log::warning(603, Some(e)),
+        };
+        self.client = None;
+        if self.try_connect().await {
+            match self.execute_statement(query, params).await {
+                DBResult::Void | DBResult::Vec(_) => return Some(()),
+                _ => {}
+            }
+        }
+        None
+    }
+
     /// Execute query to database and return a result,  
     /// and grouping tabular data according to specified conditions.
     pub async fn query_group(
         &mut self,
         query: &impl KeyOrQuery,
-        params: &[&(dyn ToSql + Sync)],
+        params: &[&dyn ToSql],
         assoc: bool,
         conds: &[&[impl StrOrI64OrUSize]],
     ) -> Option<Data> {
@@ -588,7 +557,7 @@ impl PgSql {
                 _ => {}
             }
         }
-        Some(Data::Map(BTreeMap::new()))
+        None
     }
 
     /// Convert Vec<Row> to Data::Map<Data::Map<...>>
@@ -635,7 +604,7 @@ impl PgSql {
     fn fill_map<'a>(
         &self,
         row: &Row,
-        columns: &BTreeMap<i64, PgColumnName>,
+        columns: &BTreeMap<i64, MsColumnName>,
         conds: &[impl StrOrI64OrUSize],
         map: &'a mut BTreeMap<i64, Data>,
     ) -> Option<&'a mut BTreeMap<i64, Data>> {
@@ -762,22 +731,24 @@ impl PgSql {
     fn get_column_type<'a>(&self, cols: &'a [Column]) -> Vec<fn(&Row, usize) -> Data> {
         let mut columns = Vec::with_capacity(cols.len());
         for col in cols {
-            let func = match col.type_() {
-                &Type::BOOL => Self::get_bool,
-                &Type::BYTEA => Self::get_bytea,
-                &Type::TEXT => Self::get_string,
-                &Type::JSON => Self::get_json,
-                &Type::JSONB => Self::get_json,
-                &Type::UUID => Self::get_uuid,
-                &Type::VARCHAR => Self::get_string,
-                &Type::INT8 => Self::get_i64,
-                &Type::INT2 => Self::get_i16,
-                &Type::INT4 => Self::get_i32,
-                &Type::FLOAT4 => Self::get_f32,
-                &Type::FLOAT8 => Self::get_f64,
-                &Type::TIMESTAMPTZ => Self::get_date,
+            let func = match col.column_type() {
+                tiberius::ColumnType::Bit => Self::get_bool,
+                tiberius::ColumnType::Int1 => Self::get_i8,
+                tiberius::ColumnType::Int2 => Self::get_i16,
+                tiberius::ColumnType::Int4 => Self::get_i32,
+                tiberius::ColumnType::Int8 => Self::get_i64,
+                tiberius::ColumnType::Float4 => Self::get_f32,
+                tiberius::ColumnType::Float8 => Self::get_f64,
+                tiberius::ColumnType::DatetimeOffsetn => Self::get_date,
+                tiberius::ColumnType::Guid => Self::get_uuid,
+                tiberius::ColumnType::BigVarBin => Self::get_bytea,
+                tiberius::ColumnType::BigVarChar => Self::get_string,
+                tiberius::ColumnType::BigBinary => Self::get_bytea,
+                tiberius::ColumnType::BigChar => Self::get_string,
+                tiberius::ColumnType::NVarchar => Self::get_string,
+                tiberius::ColumnType::Text => Self::get_string,
                 u => {
-                    Log::warning(614, Some(format!("Type: {}", u)));
+                    Log::warning(614, Some(format!("Type: {:?}", u)));
                     Self::get_unknown
                 }
             };
@@ -787,25 +758,27 @@ impl PgSql {
     }
 
     /// Detect columns' type with columns' name
-    fn get_column_type_name(&self, cols: &[Column]) -> BTreeMap<i64, PgColumnName> {
+    fn get_column_type_name(&self, cols: &[Column]) -> BTreeMap<i64, MsColumnName> {
         let mut columns = BTreeMap::new();
         for (idx, col) in cols.iter().enumerate() {
-            let func = match col.type_() {
-                &Type::BOOL => Self::get_bool,
-                &Type::BYTEA => Self::get_bytea,
-                &Type::TEXT => Self::get_string,
-                &Type::JSON => Self::get_json,
-                &Type::JSONB => Self::get_json,
-                &Type::UUID => Self::get_uuid,
-                &Type::VARCHAR => Self::get_string,
-                &Type::INT8 => Self::get_i64,
-                &Type::INT2 => Self::get_i16,
-                &Type::INT4 => Self::get_i32,
-                &Type::FLOAT4 => Self::get_f32,
-                &Type::FLOAT8 => Self::get_f64,
-                &Type::TIMESTAMPTZ => Self::get_date,
+            let func = match col.column_type() {
+                tiberius::ColumnType::Bit => Self::get_bool,
+                tiberius::ColumnType::Int1 => Self::get_i8,
+                tiberius::ColumnType::Int2 => Self::get_i16,
+                tiberius::ColumnType::Int4 => Self::get_i32,
+                tiberius::ColumnType::Int8 => Self::get_i64,
+                tiberius::ColumnType::Float4 => Self::get_f32,
+                tiberius::ColumnType::Float8 => Self::get_f64,
+                tiberius::ColumnType::DatetimeOffsetn => Self::get_date,
+                tiberius::ColumnType::Guid => Self::get_uuid,
+                tiberius::ColumnType::BigVarBin => Self::get_bytea,
+                tiberius::ColumnType::BigVarChar => Self::get_string,
+                tiberius::ColumnType::BigBinary => Self::get_bytea,
+                tiberius::ColumnType::BigChar => Self::get_string,
+                tiberius::ColumnType::NVarchar => Self::get_string,
+                tiberius::ColumnType::Text => Self::get_string,
                 u => {
-                    Log::warning(614, Some(format!("Type: {}", u)));
+                    Log::warning(614, Some(format!("Type: {:?}", u)));
                     Self::get_unknown
                 }
             };
@@ -818,6 +791,16 @@ impl PgSql {
     #[inline]
     fn get_unknown(_: &Row, _: usize) -> Data {
         Data::None
+    }
+
+    /// Row::i8 to Data::I16
+    #[inline]
+    fn get_i8(row: &Row, idx: usize) -> Data {
+        let i: Option<i16> = row.get(idx);
+        match i {
+            Some(i) => Data::I16(i),
+            None => Data::None,
+        }
     }
 
     /// Row::i16 to Data::I16
@@ -873,10 +856,11 @@ impl PgSql {
     /// Row::DateTime<Utc> to Data::DateTime<Utc>
     #[inline]
     fn get_date(row: &Row, idx: usize) -> Data {
-        let d: Option<DateTime<Utc>> = row.get(idx);
-        match d {
-            Some(d) => Data::Date(d),
-            None => Data::None,
+        let s: Result<Option<DateTime<Utc>>, Error> = row.try_get(idx);
+        match s {
+            Ok(Some(s)) => Data::Date(s),
+            Ok(None) => Data::None,
+            Err(_) => Data::None,
         }
     }
 
@@ -890,33 +874,25 @@ impl PgSql {
         }
     }
 
-    /// Row::Json to Data::Json
-    #[inline]
-    fn get_json(row: &Row, idx: usize) -> Data {
-        let j: Option<Value> = row.get(idx);
-        match j {
-            Some(j) => Data::Json(j),
-            None => Data::None,
-        }
-    }
-
     /// Row::String to Data::String
     #[inline]
     fn get_string(row: &Row, idx: usize) -> Data {
-        let s: Option<String> = row.get(idx);
+        let s: Result<Option<&str>, Error> = row.try_get(idx);
         match s {
-            Some(s) => Data::String(s),
-            None => Data::None,
+            Ok(Some(s)) => Data::String(s.to_owned()),
+            Ok(None) => Data::None,
+            Err(_) => Data::None,
         }
     }
 
     /// Row::Vec<u8> to Data::Raw
     #[inline]
     fn get_bytea(row: &Row, idx: usize) -> Data {
-        let r: Option<Vec<u8>> = row.get(idx);
-        match r {
-            Some(r) => Data::Raw(r),
-            None => Data::None,
+        let s: Result<Option<&[u8]>, Error> = row.try_get(idx);
+        match s {
+            Ok(Some(s)) => Data::Raw(s.to_vec()),
+            Ok(None) => Data::None,
+            Err(_) => Data::None,
         }
     }
 
@@ -931,35 +907,23 @@ impl PgSql {
     }
 }
 
-impl std::fmt::Debug for PgSql {
+impl std::fmt::Debug for MsSql {
     /// Formats the value using the given formatter.
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        let tls = self.tls.clone().map(|_| "TlsConnector");
-        let PgSql {
-            client,
-            sql_conn,
-            tls: _,
-            prepare,
-            external,
-        } = self;
+        let MsSql { client, prepare, external, config } = self;
         f.debug_struct("DB")
             .field("client", &client)
-            .field("sql_conn", &sql_conn)
-            .field("tls", &tls)
+            .field("config", &config)
             .field("prepare", &prepare)
             .field("external", &external)
             .finish()
     }
 }
 
-impl std::fmt::Debug for PgStatement {
+impl std::fmt::Debug for MsStatement {
     /// Formats the value using the given formatter.
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        let PgStatement { statement, sql } = self;
-        f.debug_struct("PgStatement")
-            .field("sql", &sql)
-            .field("columns", &statement.columns())
-            .field("params", &statement.params())
-            .finish()
+        let MsStatement { statement, sql } = self;
+        f.debug_struct("PgStatement").field("sql", &sql).field("statement", &statement).finish()
     }
 }

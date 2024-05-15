@@ -35,7 +35,7 @@ If no part of the controller is specified in the request, it is replaced with '_
 * https://example.com/api/ => https://example.com/api/index/index/
 * https://example.com/api/product/ => https://example.com/api/product/index/
 
-The system should have two default controllers: __/index/index/index/__ and __/index/index/not_found/__. The __/index/index/not_found/__ controller is triggered when the specified controller is not found or when there is no access.
+The system should have tree default controllers: __/index/index/index/__, __/index/index/err/__ and __/index/index/not_found/__. The __/index/index/not_found/__ controller is triggered when the specified controller is not found or when there is no access. The __/index/index/err/__ controller is triggered when an incredible or unpredictable situation occurred. Ideally, the __/index/index/err/__ controller should never be called.
 
 For SEO optimizations, route mechanisms are applied, which can transform any URL request into a pre-defined controller, that is, __/Module/Class/Action/Param__.
 ___

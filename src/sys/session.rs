@@ -8,7 +8,7 @@ use crate::StrOrI64;
 
 use super::{
     action::{Data, Request},
-    db::DB,
+    dbs::adapter::DB,
 };
 
 /// User session
@@ -69,24 +69,39 @@ impl Session {
 
     /// Load session from database
     pub(crate) async fn load_session(key: String, db: Arc<DB>, lang_id: i64) -> Session {
-        let res = match db.query_raw(fnv1a_64!("lib_get_session"), &[&key]).await {
+        let res = match db.query(fnv1a_64!("lib_get_session"), &[&key], false).await {
             Some(r) => r,
             None => return Session::with_key(lang_id, key),
         };
         if res.is_empty() {
             return Session::with_key(lang_id, key);
         }
-        let row = &res[0];
-        let session_id: i64 = row.get(0);
-        let user_id: i64 = row.get(1);
-        let role_id: i64 = row.get(2);
-        let data: &[u8] = row.get(3);
-        let lang_id: i64 = row.get(4);
+        let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
+            row
+        } else {
+            return Session::with_key(lang_id, key);
+        };
+        if row.len() != 5 {
+            return Session::with_key(lang_id, key);
+        }
+        let session_id =
+            if let Data::I64(val) = unsafe { row.get_unchecked(0) } { *val } else { return Session::with_key(lang_id, key) };
+        let user_id =
+            if let Data::I64(val) = unsafe { row.get_unchecked(1) } { *val } else { return Session::with_key(lang_id, key) };
+        let role_id =
+            if let Data::I64(val) = unsafe { row.get_unchecked(2) } { *val } else { return Session::with_key(lang_id, key) };
+        let data = if let Data::Raw(val) = unsafe { row.get_unchecked(2) } {
+            val.to_owned()
+        } else {
+            return Session::with_key(lang_id, key);
+        };
+        let lang_id =
+            if let Data::I64(val) = unsafe { row.get_unchecked(4) } { *val } else { return Session::with_key(lang_id, key) };
 
         let res = if data.is_empty() {
             BTreeMap::new()
         } else {
-            match bincode::deserialize::<BTreeMap<i64, Data>>(data) {
+            match bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]) {
                 Ok(r) => r,
                 Err(_) => BTreeMap::new(),
             }
@@ -110,13 +125,13 @@ impl Session {
                 Err(_) => Vec::new(),
             };
             if session.id > 0 {
-                db.query_raw(
+                db.execute(
                     fnv1a_64!("lib_set_session"),
                     &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
                 )
                 .await;
             } else {
-                db.query_raw(
+                db.execute(
                     fnv1a_64!("lib_add_session"),
                     &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent],
                 )

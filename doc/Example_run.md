@@ -18,7 +18,7 @@ We'll place it in: `/home/tiny/app/demo1/`:
         ├── Cargo.toml
         ├── LICENSE
         ├── install.sql
-        └── lib-install.sql
+        └── lib-install-pgsql.sql
 ```
 Type in the command line:
 ```bash
@@ -85,7 +85,7 @@ ___
 ### Installing the Database
 The next step is to install tables.
 All data is located in two files:
-* `/home/tiny/app/demo1/lib-install.sql`
+* `/home/tiny/app/demo1/lib-install-pgsql.sql`
 * `/home/tiny/app/demo1/install.sql`
 ___
 ### Configuration 

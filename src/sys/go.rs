@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 
+use tiny_web_macro::fnv1a_64;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -19,9 +20,9 @@ use tokio::{
 };
 
 use super::{
-    action::ActMap,
+    action::{ActMap, Data},
     cache::CacheSys,
-    db::DB,
+    dbs::adapter::DB,
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
     lang::{Lang, LangItem},
@@ -298,25 +299,54 @@ impl Go {
 
     /// Get list of enabled langs from database
     async fn get_langs(db: &mut DB) -> Vec<LangItem> {
-        let sql = "
-            SELECT lang_id, lang, name
-            FROM lang
-            WHERE enable
-            ORDER BY sort
-        ";
-        let res = match db.query_raw(sql, &[]).await {
-            Some(res) => res,
+        let res = match db.query(fnv1a_64!("lib_get_langs"), &[], false).await {
+            Some(r) => r,
             None => {
                 Log::warning(1150, None);
                 return Vec::new();
             }
         };
+        if res.is_empty() {
+            Log::warning(1151, None);
+            return Vec::new();
+        }
         let mut vec = Vec::with_capacity(res.len());
         for row in res {
-            let id = row.get::<usize, i64>(0);
-            vec.push(LangItem { id, lang: row.get(1), name: row.get(2) });
+            if let Data::Vec(row) = row {
+                if row.len() != 4 {
+                    Log::warning(1150, None);
+                    return Vec::new();
+                }
+                let id = if let Data::I64(val) = unsafe { row.get_unchecked(0) } {
+                    *val
+                } else {
+                    Log::warning(1150, None);
+                    return Vec::new();
+                };
+                let index = if let Data::I64(val) = unsafe { row.get_unchecked(3) } {
+                    *val
+                } else {
+                    Log::warning(1150, None);
+                    return Vec::new();
+                };
+                let lang = if let Data::String(val) = unsafe { row.get_unchecked(1) } {
+                    val.to_owned()
+                } else {
+                    Log::warning(1150, None);
+                    return Vec::new();
+                };
+                let name = if let Data::String(val) = unsafe { row.get_unchecked(2) } {
+                    val.to_owned()
+                } else {
+                    Log::warning(1150, None);
+                    return Vec::new();
+                };
+                vec.push(LangItem { id, lang, name, index });
+            } else {
+                Log::warning(1150, None);
+                return Vec::new();
+            }
         }
-        vec.shrink_to_fit();
         vec
     }
 }

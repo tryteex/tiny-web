@@ -18,6 +18,7 @@ use super::log::Log;
 /// * `lang: String` - Languane name ISO 639-1: uk - ukrainian, en - english, en - english.
 /// * `code: String` - Languane code ISO 3166 alpha-2: ua - Ukraine, us - USA, gb - United Kingdom.
 /// * `name: String` - Native name of the language.
+/// * `index: i64` - Index in JSON type field db.
 #[derive(Debug, Clone)]
 pub struct LangItem {
     /// Language ID
@@ -26,6 +27,8 @@ pub struct LangItem {
     pub lang: String,
     /// Native name of the language
     pub name: String,
+    /// Index in JSON type field db
+    pub index: i64,
 }
 
 /// I18n

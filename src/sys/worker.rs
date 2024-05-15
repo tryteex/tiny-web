@@ -13,7 +13,7 @@ use tokio::{
 use super::{
     action::{ActMap, Action, ActionData, Answer, WebFile},
     cache::CacheSys,
-    db::DB,
+    dbs::adapter::DB,
     file::TempFile,
     html::Html,
     lang::Lang,

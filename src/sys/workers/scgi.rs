@@ -250,7 +250,7 @@ impl Net {
                     b"DOCUMENT_ROOT" => path = val,
                     b"REDIRECT_URL" => {
                         if let Some(u) = val.split('?').next() {
-                            url = u.to_owned();
+                            u.clone_into(&mut url);
                         }
                     }
                     b"QUERY_STRING" => {

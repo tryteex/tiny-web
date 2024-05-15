@@ -1,14 +1,14 @@
 ## Database
-The library uses PostgreSQL DBMS version 15 and above. However, you can also try lower versions.
+The library uses PostgreSQL DBMS version 15 and above via adapter. However, you can also try lower versions.
+or
+The library uses MsSql Server DBMS version 16 and above via adapter. However, you can also try lower versions.
+
 
 Access to the database is mandatory when starting the server. In case of connection loss during operation, the library will attempt to restore it with each request. The corresponding event will be logged.
 
-During the library startup, the timezone in the database is set from the configuration file.
-
-In the future, the ability to initialize prepared queries before starting the library will be added.
 ___
 ### Installation
-At the root of the project lies the file [lib-install.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/lib-install.sql) which needs to be executed before the first run in the DB.  
+At the root of the project lies the file [lib-install-pgsql.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/lib-install-pgsql.sql) for Postgres or [lib-install-mssql.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/lib-install-mssql.sql) for MsSql which needs to be executed before the first run in the DB.  
 In the future, the installation and update process will be automated. 
 ___
 ### Access and pool connections
@@ -24,12 +24,12 @@ Can be empty.
 Can be empty.
 * `sslmode` - Postgresql database sslmode mode.  
 `true` is require. 
-* `zone` - Time zone of a database server.
 * `db_max` - Number of connections to the database for all work threads in async.  
 Usually set from 2 to 4 on one work thread.  
 Set "auto" to detect automatically.
 * `[prepare]` - Prepare sql queries.  
-Type can be `BOOL`, `INT8`, `INT2`, `INT4`, `TEXT`, `VARCHAR`, `FLOAT4`, `FLOAT8`, `JSON`, `TIMESTAMPTZ`, `UUID`, `BYTEA`.
+For Postgresql types can be `BOOL`, `INT8`, `INT2`, `INT4`, `TEXT`, `VARCHAR`, `FLOAT4`, `FLOAT8`, `JSON`, `TIMESTAMPTZ`, `UUID`, `BYTEA`.
+For MsSql types can be `BIT`, `BIGINT`, `INT`, `SMALLINT`, `TINYINT`, `NVARCHAR(MAX)`, `NVARCHAR(N_int <= 4000)`, `VARCHAR(MAX)`, `VARCHAR(N_int <= 4000)`, `FLOAT`, `REAL`, `DATETIMEOFFSET`, `UNIQUEIDENTIFIER`, `VARBINARY(MAX)`, `VARBINARY(N_int <= 8000)`.
 ```toml
 [prepare]
 key_name1.query = "SELECT name FROM user WHERE id=$1"
@@ -65,17 +65,17 @@ pub async fn index(this: &mut Action) -> Answer {
 ```
 ___
 For executing queries to the database, you can use the following functions:
-* `query` - Execute a regular query.
+* `execute` - Execute a regular query without results.
+* `query` - Execute a regular query with results.
 * `query_group` - Execute a query returning hierarchical results.
-* `query_raw` - Execute a query without transforming the result.
 
-### The `query` function
-Execute query to database synchronously.
+### The `execute` or `query` functions
+Execute query to database asynchronously.
 
 Parmeters:
 * `query: &str` - SQL query;
 * `query: i64` - Key of Statement;
-* `params: &[&(dyn ToSql + Sync)]` - Array of params.
+* `params: &[&dyn ToSql]` - Array of params.
 * `assoc: bool` - Return columns as associate array if True or Vecor id False.
 
 Return:

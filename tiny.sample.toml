@@ -33,32 +33,31 @@ session = "tinysession"
 # salt for a crypto functions
 salt = "same salt words"
 
-# Postgresql database host.
+# Database type. Only postgresql or mssql. Default postgresql.
+db_type = "postgresql"
+
+# Database host.
 # On Unix systems, a "db_host" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.
 db_host = "removehost"
 
-# Postgresql database port.
+# Database port.
 # Can be empty.
 db_port = 5432
 
-# Postgresql database name.
+# Database name.
 db_name = "name"
 
-# Postgresql database username.
+# Database username.
 # Can be empty.
 db_user = "user"
 
-# Postgresql database password.
+# Database password.
 # Can be empty.
 db_pwd = "pwd"
 
-# Postgresql database sslmode mode.
+# Database sslmode mode.
 # true is require
 sslmode = true
-
-# Time zone of a database server.
-# Used when a database is used.
-zone = "Europe/Kyiv"
 
 # Number of connections to the database for all work threads in async.
 # Usually set from 2 to 4 on one work thread.
@@ -70,9 +69,17 @@ db_max = "auto"
 protocol = "FastCGI"
 
 # Prepare sql queries
-# Type can be BOOL, INT8, INT2, INT4, TEXT, VARCHAR, FLOAT4, FLOAT8, JSON, TIMESTAMPTZ, UUID, BYTEA
+# Type can be BOOL, INT8, INT4, INT2, TEXT, VARCHAR, FLOAT8, FLOAT4, JSON, TIMESTAMPTZ, UUID, BYTEA for Postgresql
+# Type can be BIT, BIGINT, INT, SMALLINT, TINYINT, NVARCHAR(MAX), NVARCHAR(N_int <= 4000), VARCHAR(MAX), VARCHAR(N_int <= 4000), FLOAT, REAL, DATETIMEOFFSET, UNIQUEIDENTIFIER, VARBINARY(MAX), VARBINARY(N_int <= 8000) for Ms Sql Server
+# It is important that "db_type" is defined before the "[prepare]" section, otherwise the field types for Postgresql will be applied
 [prepare]
+# For PgSql
 #key_name1.query = "SELECT name FROM user WHERE id=$1"
 #key_name1.types = ["INT4"]
 #key_name2.query = "INSERT INTO user(name) VALUES ($1)"
 #key_name2.types = ["TEXT"]
+# For MsSql
+#key_name1.query = "SELECT [name] FROM [user] WHERE [id]=@p1"
+#key_name1.types = ["BIGINT"]
+#key_name2.query = "INSERT INTO [user](name) VALUES (@p1)"
+#key_name2.types = ["NVARCHAR(MAX)"]

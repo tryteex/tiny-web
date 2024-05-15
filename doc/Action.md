@@ -18,6 +18,8 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | get_access | yes | bool | Checking permissions for the controller |
 | 𝑓 | not_found | yes | String | Retrieving the URL of the 404 Not Found controller |
 | 𝑓 | set | no || Setting data for rendering an HTML page |
+| 𝑓 | set_lang | no || Setting data for rendering an HTML page from translation |
+| 𝑓 | set_lang_arr | no || Setting the array data for rendering an HTML page from translation |
 | 𝑓 | route | yes | String | Get the URL for the controller |
 | 𝑓 | render | no | Answer | Rendering an HTML page |
 | 𝑓 | mail | yes | bool| Sending an email |
@@ -138,6 +140,24 @@ pub async fn get(this: &mut Action) -> Answer {
     ...
 }
 ```
+___
+### set_lang
+Setting data for rendering an HTML page from translation
+```rust
+fn set_lang(key: &str)
+```
+* `key: &str` - The variable to set the data to render the html page.
+This is equivalent to the following function call:  
+`this.set_lang("str");` => `this.set("str", Data::String(this.lang("str")));`
+___
+### set_lang_arr
+Setting the array data for rendering an HTML page from translation
+```rust
+fn set_lang_arr(key: &[&str])
+```
+* `keys: &[&str]` - The array of variable to set the data to render the html page.
+This is equivalent to the following function call:  
+`this.set_lang_arr(&["str1", "str2"]);` => `this.set_lang("str1");this.set_lang("str2");`
 ___
 ### route
 Get the URL for the controller

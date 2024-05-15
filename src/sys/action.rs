@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::Utc;
 use std::{
     collections::{BTreeMap, HashMap},
     future::Future,
@@ -17,7 +17,7 @@ use crate::{fnv1a_64, StrOrI64};
 
 use super::{
     cache::{Cache, CacheSys},
-    db::DB,
+    dbs::adapter::DB,
     html::{Html, Nodes},
     lang::{Lang, LangItem},
     log::Log,
@@ -78,7 +78,7 @@ pub enum Data {
     /// String data.
     String(String),
     /// DateTime.
-    Date(DateTime<Local>),
+    Date(DateTime<Utc>),
     /// Json
     Json(Value),
     /// List of `Data`.
@@ -329,7 +329,6 @@ pub struct Action {
     pub session: Session,
     /// Secret salt
     pub salt: Arc<String>,
-
     /// Data transferred between controllers template markers and cache
     data: BTreeMap<i64, Data>,
     /// Start module name
@@ -379,7 +378,7 @@ impl Action {
     ///
     /// `Ok(Action)` - Action (controller) was found success.
     /// `Err(Redirect, HashMap<String, Vec<WebFile>>)` - Must redirect, and then remove temp files.
-    pub async fn new(data: ActionData) -> Result<Action, (Redirect, HashMap<String, Vec<WebFile>>)> {
+    pub(crate) async fn new(data: ActionData) -> Result<Action, (Redirect, HashMap<String, Vec<WebFile>>)> {
         let response = Response {
             redirect: None,
             content_type: None,
@@ -450,7 +449,7 @@ impl Action {
     }
 
     /// Run execute of controller
-    pub async fn run(action: &mut Action) -> Answer {
+    pub(crate) async fn run(action: &mut Action) -> Answer {
         action.start_route(action.module_id, action.class_id, action.action_id, action.param.clone(), false).await
     }
 
@@ -620,15 +619,28 @@ impl Action {
         // Prepare sql query
         match self
             .db
-            .query_raw(
+            .query(
                 fnv1a_64!("lib_get_auth"),
                 &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id],
+                false,
             )
             .await
         {
             Some(rows) => {
                 if rows.len() == 1 {
-                    let access: bool = rows[0].get(0);
+                    let access = if let Data::Vec(row) = unsafe { rows.get_unchecked(0) } {
+                        if row.is_empty() {
+                            return false;
+                        }
+                        if let Data::I32(val) = unsafe { row.get_unchecked(0) } {
+                            *val != 0
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    };
+
                     self.cache.set(key, Data::Bool(access)).await;
                     access
                 } else {
@@ -651,21 +663,45 @@ impl Action {
             },
             None => {
                 // Load from database
-                match self.db.query_raw(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()]).await {
+                match self.db.query(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()], false).await {
                     Some(v) => {
                         if v.is_empty() {
                             self.cache.set(key, Data::None).await;
                             "/index/index/not_found".to_owned()
+                        } else if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
+                            if !row.is_empty() {
+                                if let Data::String(url) = unsafe { row.get_unchecked(0) } {
+                                    self.cache.set(key, Data::String(url.clone())).await;
+                                    url.clone()
+                                } else {
+                                    self.cache.set(key, Data::None).await;
+                                    "/index/index/not_found".to_owned()
+                                }
+                            } else {
+                                self.cache.set(key, Data::None).await;
+                                "/index/index/not_found".to_owned()
+                            }
                         } else {
-                            let row = unsafe { v.get_unchecked(0) };
-                            let url: String = row.get(0);
-                            self.cache.set(key, Data::String(url.clone())).await;
-                            url
+                            self.cache.set(key, Data::None).await;
+                            "/index/index/not_found".to_owned()
                         }
                     }
                     None => "/index/index/not_found".to_owned(),
                 }
             }
+        }
+    }
+
+    fn error_route() -> Route {
+        Route {
+            module: "index".to_owned(),
+            class: "index".to_owned(),
+            action: "err".to_owned(),
+            module_id: fnv1a_64!("index"),
+            class_id: fnv1a_64!("index"),
+            action_id: fnv1a_64!("err"),
+            param: None,
+            lang_id: None,
         }
     }
 
@@ -683,33 +719,35 @@ impl Action {
             },
             None => {
                 // Load from database
-                match db.query_raw(fnv1a_64!("lib_get_redirect"), &[&request.url]).await {
+                match db.query(fnv1a_64!("lib_get_redirect"), &[&request.url], false).await {
                     Some(v) => {
                         if v.is_empty() {
                             CacheSys::set(Arc::clone(&cache), &key, Data::None).await;
                         } else {
-                            let row = unsafe { v.get_unchecked(0) };
-                            let r = Redirect {
-                                url: row.get(0),
-                                permanently: row.get(1),
+                            let row = if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
+                                row
+                            } else {
+                                return Ok(Action::error_route());
                             };
+                            if row.len() != 2 {
+                                return Ok(Action::error_route());
+                            }
+                            let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
+                                url.to_owned()
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let permanently = if let Data::Bool(permanently) = unsafe { row.get_unchecked(1) } {
+                                *permanently
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let r = Redirect { url, permanently };
                             CacheSys::set(Arc::clone(&cache), &key, Data::Redirect(r.clone())).await;
                             return Err(r);
                         }
                     }
-                    None => {
-                        let r = Route {
-                            module: "index".to_owned(),
-                            class: "index".to_owned(),
-                            action: "err".to_owned(),
-                            module_id: fnv1a_64!("index"),
-                            class_id: fnv1a_64!("index"),
-                            action_id: fnv1a_64!("err"),
-                            param: None,
-                            lang_id: None,
-                        };
-                        return Ok(r);
-                    }
+                    None => return Ok(Action::error_route()),
                 }
             }
         }
@@ -726,39 +764,78 @@ impl Action {
             },
             None => {
                 // Load from database
-                match db.query_raw(fnv1a_64!("lib_get_route"), &[&request.url]).await {
+                match db.query(fnv1a_64!("lib_get_route"), &[&request.url], false).await {
                     Some(v) => {
                         if v.is_empty() {
                             CacheSys::set(Arc::clone(&cache), &key, Data::None).await;
                         } else {
-                            let row = unsafe { v.get_unchecked(0) };
+                            let row = if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
+                                row
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            if row.len() != 8 {
+                                return Ok(Action::error_route());
+                            }
+                            let module = if let Data::String(module) = unsafe { row.get_unchecked(0) } {
+                                module.to_owned()
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let class = if let Data::String(class) = unsafe { row.get_unchecked(1) } {
+                                class.to_owned()
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let action = if let Data::String(action) = unsafe { row.get_unchecked(2) } {
+                                action.to_owned()
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let param = if let Data::String(param) = unsafe { row.get_unchecked(6) } {
+                                if param.is_empty() {
+                                    None
+                                } else {
+                                    Some(param.to_owned())
+                                }
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let module_id = if let Data::I64(module_id) = unsafe { row.get_unchecked(3) } {
+                                *module_id
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let class_id = if let Data::I64(class_id) = unsafe { row.get_unchecked(4) } {
+                                *class_id
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let action_id = if let Data::I64(action_id) = unsafe { row.get_unchecked(5) } {
+                                *action_id
+                            } else {
+                                return Ok(Action::error_route());
+                            };
+                            let lang_id = if let Data::I64(lang_id) = unsafe { row.get_unchecked(7) } {
+                                Some(*lang_id)
+                            } else {
+                                return Ok(Action::error_route());
+                            };
                             let r = Route {
-                                module: row.get(0),
-                                class: row.get(1),
-                                action: row.get(2),
-                                module_id: row.get(3),
-                                class_id: row.get(4),
-                                action_id: row.get(5),
-                                param: row.get(6),
-                                lang_id: row.get(7),
+                                module,
+                                class,
+                                action,
+                                module_id,
+                                class_id,
+                                action_id,
+                                param,
+                                lang_id,
                             };
                             CacheSys::set(Arc::clone(&cache), &key, Data::Route(r.clone())).await;
                             return Ok(r);
                         }
                     }
-                    None => {
-                        let r = Route {
-                            module: "index".to_owned(),
-                            class: "index".to_owned(),
-                            action: "err".to_owned(),
-                            module_id: fnv1a_64!("index"),
-                            class_id: fnv1a_64!("index"),
-                            action_id: fnv1a_64!("err"),
-                            param: None,
-                            lang_id: None,
-                        };
-                        return Ok(r);
-                    }
+                    None => return Ok(Action::error_route()),
                 }
             }
         }
@@ -852,7 +929,7 @@ impl Action {
     }
 
     /// Finish work of controller
-    pub async fn end(action: Action) {
+    pub(crate) async fn end(action: Action) {
         // Save session
         Session::save_session(action.db, &action.session, &action.request).await;
         // Remove temp file
@@ -866,7 +943,7 @@ impl Action {
     }
 
     /// Simple remove temp file after redirect
-    pub async fn clean_file(file: Vec<PathBuf>) {
+    pub(crate) async fn clean_file(file: Vec<PathBuf>) {
         for f in file {
             if let Err(e) = remove_file(&f).await {
                 Log::warning(1103, Some(format!("filename={}. Error={}", f.display(), e)));
@@ -877,6 +954,32 @@ impl Action {
     /// Set value for the template
     pub fn set(&mut self, key: impl StrOrI64, value: Data) {
         self.data.insert(key.to_i64(), value);
+    }
+
+    /// Set value for the template from translate
+    pub fn set_lang(&mut self, key: impl StrOrI64) {
+        let idkey = key.to_i64();
+        if let Some(l) = &self.lang {
+            if let Some(str) = l.get(&idkey) {
+                self.data.insert(idkey, Data::String(str.to_owned()));
+                return;
+            }
+        }
+        self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+    }
+
+    /// Set an array of values for the template from the translation
+    pub fn set_lang_arr(&mut self, keys: &[impl StrOrI64]) {
+        for key in keys {
+            let idkey = key.to_i64();
+            if let Some(l) = &self.lang {
+                if let Some(str) = l.get(&idkey) {
+                    self.data.insert(idkey, Data::String(str.to_owned()));
+                    return;
+                }
+            }
+            self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+        }
     }
 
     /// Render template
@@ -917,6 +1020,15 @@ impl Action {
         }
     }
 
+    fn format_route(module: &str, class: &str, action: &str, param: Option<&str>) -> String {
+        match param {
+            Some(s) => {
+                format!("/{}/{}/{}/{}", module, class, action, s)
+            }
+            None => format!("/{}/{}/{}", module, class, action),
+        }
+    }
+
     /// Get route
     pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: i64) -> String {
         // Read from cache
@@ -945,34 +1057,38 @@ impl Action {
         // Prepare sql query
         match self
             .db
-            .query_raw(
+            .query(
                 fnv1a_64!("lib_get_url"),
                 &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
+                false,
             )
             .await
         {
             Some(rows) => {
                 if rows.len() == 1 {
-                    let url: String = rows[0].get(0);
+                    let row = if let Data::Vec(vec) = unsafe { rows.get_unchecked(0) } {
+                        vec
+                    } else {
+                        return Action::format_route(module, class, action, param);
+                    };
+                    if row.is_empty() {
+                        return Action::format_route(module, class, action, param);
+                    }
+
+                    let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
+                        url.clone()
+                    } else {
+                        return Action::format_route(module, class, action, param);
+                    };
                     self.cache.set(key, Data::String(url.clone())).await;
                     url
                 } else {
-                    let url = match param {
-                        Some(s) => {
-                            format!("/{}/{}/{}/{}", module, class, action, s)
-                        }
-                        None => format!("/{}/{}/{}", module, class, action),
-                    };
+                    let url = Action::format_route(module, class, action, param);
                     self.cache.set(key, Data::String(url.clone())).await;
                     url
                 }
             }
-            None => match param {
-                Some(s) => {
-                    format!("/{}/{}/{}/{}", module, class, action, s)
-                }
-                None => format!("/{}/{}/{}", module, class, action),
-            },
+            None => Action::format_route(module, class, action, param),
         }
     }
 }

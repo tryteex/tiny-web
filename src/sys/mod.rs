@@ -10,9 +10,6 @@ pub mod cache;
 /// Work with database adapter.
 pub mod dbs;
 
-/// Database connection pool.
-pub mod db;
-
 /// User session.
 pub mod session;
 

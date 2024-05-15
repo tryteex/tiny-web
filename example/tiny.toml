@@ -14,7 +14,6 @@ db_user = "tiny"
 db_pwd = "tiny"
 db_max = 5
 sslmode = false
-zone = "Europe/Kyiv"
 protocol = "FastCGI"
 [prepare]
 list_review.query = """

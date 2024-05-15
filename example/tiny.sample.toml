@@ -56,10 +56,6 @@ db_pwd = "pwd"
 # true is require
 sslmode = true
 
-# Time zone of a database server.
-# Used when a database is used.
-zone = "Europe/Kyiv"
-
 # Number of connections to the database for all work threads in async.
 # Usually set from 2 to 4 on one work thread.
 # Set "auto" to detect automatically.

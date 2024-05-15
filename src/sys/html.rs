@@ -525,7 +525,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = i.text[idx + 1..].to_owned();
+                        //i.text = i.text[idx + 1..].to_owned();
                     }
                     "elseif" => {
                         i.level = level;
@@ -536,7 +536,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = i.text[idx + 1..].to_owned();
+                        i.text = i.text[idx + 1..].to_string();
                     }
                     "else" => {
                         i.level = level;
@@ -571,7 +571,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        i.text = i.text[idx + 1..].to_owned();
+                        i.text = i.text[idx + 1..].to_string();
                     }
                     "elsefor" => {
                         i.level = level;

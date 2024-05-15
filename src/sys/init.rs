@@ -8,12 +8,15 @@ use std::{
     sync::Arc,
 };
 
-use tokio_postgres::types::Type;
-use toml::{Table, Value};
+use toml::{map::Map, Table, Value};
 
 use crate::fnv1a_64;
 
-use super::{dbs::adapter::DBPrepare, log::Log, worker::WorkerType};
+use super::{
+    dbs::adapter::{DBEngine, DBFieldType, DBPrepare},
+    log::Log,
+    worker::WorkerType,
+};
 
 /// Responsible for the IP address that should be accepted.
 ///
@@ -52,6 +55,7 @@ pub enum Addr {
 ///
 /// # Values
 ///
+/// * `engine: DBEngine` - Engine of database;
 /// * `host: String` - Host of database;
 /// * `port: Option<u16>` - Port of database;
 /// * `name: String` - Name of database;
@@ -59,9 +63,10 @@ pub enum Addr {
 /// * `pwd: Option<String>` - Password of database user;
 /// * `sslmode: bool` - Use for sslmode=require when connecting to the database;
 /// * `max: SysCount` - The number of connections that will be used in the pool;
-/// * `zone: String` - Time zone to init database.
 #[derive(Debug, Clone)]
 pub struct DBConfig {
+    /// Engine of database.
+    pub engine: DBEngine,
     /// Host of database.
     pub host: String,
     /// Port of database.
@@ -76,8 +81,6 @@ pub struct DBConfig {
     pub sslmode: bool,
     /// The number of connections that will be used in the pool
     pub max: usize,
-    /// Time zone to init database.
-    pub zone: Option<String>,
 }
 
 /// Describes the server configuration.
@@ -406,6 +409,7 @@ impl Init {
         let mut protocol = WorkerType::FastCGI;
         let mut prepare = BTreeMap::new();
         let mut db = DBConfig {
+            engine: DBEngine::Pgsql,
             host: String::new(),
             port: None,
             name: String::new(),
@@ -413,7 +417,6 @@ impl Init {
             pwd: None,
             sslmode: false,
             max: num_connections,
-            zone: None,
         };
         if !text.is_empty() {
             for (key, value) in text {
@@ -575,6 +578,19 @@ impl Init {
                             Log::warning(62, Some(value.to_string()));
                         }
                     }
+                    "db_type" => {
+                        if let Value::String(val) = value {
+                            match val.as_bytes() {
+                                b"postgresql" => db.engine = DBEngine::Pgsql,
+                                b"mssql" => db.engine = DBEngine::Mssql,
+                                _ => {
+                                    Log::warning(73, Some(val.to_string()));
+                                }
+                            }
+                        } else {
+                            Log::warning(72, Some(value.to_string()));
+                        }
+                    }
                     "db_host" => {
                         if let Value::String(val) = value {
                             if !val.is_empty() {
@@ -654,17 +670,6 @@ impl Init {
                             Log::warning(58, Some(value.to_string()));
                         }
                     },
-                    "zone" => {
-                        if let Value::String(val) = value {
-                            if !val.is_empty() {
-                                db.zone = Some(val)
-                            } else {
-                                Log::warning(68, Some(val));
-                            }
-                        } else {
-                            Log::warning(68, Some(value.to_string()));
-                        }
-                    }
                     "protokol" => {
                         if let Value::String(val) = value {
                             protocol = match &val[..] {
@@ -685,56 +690,9 @@ impl Init {
                     }
                     "prepare" => {
                         if let Value::Table(list) = &value {
-                            for (key, val) in list {
-                                if let Value::Table(item) = val {
-                                    if let Some(sql) = item.get("query") {
-                                        let query = if let Value::String(q) = sql {
-                                            q
-                                        } else {
-                                            Log::warning(70, Some(value.to_string()));
-                                            continue;
-                                        };
-                                        let types = if let Some(types) = item.get("types") {
-                                            if let Value::Array(types) = types {
-                                                let mut vec = Vec::with_capacity(types.len());
-                                                for t in types {
-                                                    if let Value::String(v) = t {
-                                                        match v.as_str() {
-                                                            "BOOL" => vec.push(Type::BOOL),
-                                                            "INT8" => vec.push(Type::INT8),
-                                                            "INT4" => vec.push(Type::INT4),
-                                                            "INT2" => vec.push(Type::INT2),
-                                                            "TEXT" => vec.push(Type::TEXT),
-                                                            "VARCHAR" => vec.push(Type::VARCHAR),
-                                                            "FLOAT4" => vec.push(Type::FLOAT4),
-                                                            "FLOAT8" => vec.push(Type::FLOAT8),
-                                                            "JSON" => vec.push(Type::JSON),
-                                                            "TIMESTAMPTZ" => vec.push(Type::TIMESTAMPTZ),
-                                                            "UUID" => vec.push(Type::UUID),
-                                                            "BYTEA" => vec.push(Type::BYTEA),
-                                                            _ => {
-                                                                Log::warning(70, Some(value.to_string()));
-                                                            }
-                                                        }
-                                                    } else {
-                                                        Log::warning(70, Some(value.to_string()));
-                                                    }
-                                                }
-                                                vec
-                                            } else {
-                                                Log::warning(70, Some(value.to_string()));
-                                                continue;
-                                            }
-                                        } else {
-                                            Vec::new()
-                                        };
-                                        prepare.insert(fnv1a_64(key.as_bytes()), DBPrepare { query: query.to_owned(), types });
-                                    } else {
-                                        Log::warning(70, Some(val.to_string()));
-                                    }
-                                } else {
-                                    Log::warning(70, Some(val.to_string()));
-                                }
+                            match db.engine {
+                                DBEngine::Pgsql => Init::load_pgsql_prepare(list, &value, &mut prepare),
+                                DBEngine::Mssql => Init::load_mssql_prepare(list, &value, &mut prepare),
                             }
                         } else {
                             Log::warning(69, Some(value.to_string()));
@@ -773,5 +731,167 @@ impl Init {
             prepare: Arc::new(prepare),
         };
         Some(conf)
+    }
+
+    /// Load prepare for Postgresql
+    fn load_pgsql_prepare(list: &Map<String, Value>, value: &Value, prepare: &mut BTreeMap<i64, DBPrepare>) {
+        for (key, val) in list {
+            if let Value::Table(item) = val {
+                if let Some(sql) = item.get("query") {
+                    let query = if let Value::String(q) = sql {
+                        q
+                    } else {
+                        Log::warning(70, Some(value.to_string()));
+                        continue;
+                    };
+                    let types = if let Some(types) = item.get("types") {
+                        if let Value::Array(types) = types {
+                            let mut vec = Vec::with_capacity(types.len());
+                            for t in types {
+                                if let Value::String(v) = t {
+                                    match v.as_str() {
+                                        "BOOL" => vec.push(tokio_postgres::types::Type::BOOL),
+                                        "INT8" => vec.push(tokio_postgres::types::Type::INT8),
+                                        "INT4" => vec.push(tokio_postgres::types::Type::INT4),
+                                        "INT2" => vec.push(tokio_postgres::types::Type::INT2),
+                                        "TEXT" => vec.push(tokio_postgres::types::Type::TEXT),
+                                        "VARCHAR" => vec.push(tokio_postgres::types::Type::VARCHAR),
+                                        "FLOAT4" => vec.push(tokio_postgres::types::Type::FLOAT4),
+                                        "FLOAT8" => vec.push(tokio_postgres::types::Type::FLOAT8),
+                                        "JSON" => vec.push(tokio_postgres::types::Type::JSON),
+                                        "TIMESTAMPTZ" => vec.push(tokio_postgres::types::Type::TIMESTAMPTZ),
+                                        "UUID" => vec.push(tokio_postgres::types::Type::UUID),
+                                        "BYTEA" => vec.push(tokio_postgres::types::Type::BYTEA),
+                                        _ => {
+                                            Log::warning(70, Some(value.to_string()));
+                                        }
+                                    }
+                                } else {
+                                    Log::warning(70, Some(value.to_string()));
+                                }
+                            }
+                            vec
+                        } else {
+                            Log::warning(70, Some(value.to_string()));
+                            continue;
+                        }
+                    } else {
+                        Vec::new()
+                    };
+                    prepare.insert(
+                        fnv1a_64(key.as_bytes()),
+                        DBPrepare {
+                            query: query.to_owned(),
+                            types: DBFieldType::Pgsql(types),
+                        },
+                    );
+                } else {
+                    Log::warning(70, Some(val.to_string()));
+                }
+            } else {
+                Log::warning(70, Some(val.to_string()));
+            }
+        }
+    }
+
+    /// Load prepare for MsSql
+    /// Load prepare for MsSql
+    fn load_mssql_prepare(list: &Map<String, Value>, value: &Value, prepare: &mut BTreeMap<i64, DBPrepare>) {
+        for (key, val) in list {
+            if let Value::Table(item) = val {
+                if let Some(sql) = item.get("query") {
+                    let query = if let Value::String(q) = sql {
+                        q
+                    } else {
+                        Log::warning(70, Some(value.to_string()));
+                        continue;
+                    };
+                    let types = if let Some(types) = item.get("types") {
+                        if let Value::Array(types) = types {
+                            let mut vec = Vec::with_capacity(types.len());
+                            for t in types {
+                                if let Value::String(v) = t {
+                                    //NVARCHAR(N_int), VARCHAR(N_int), VARBINARY(N_int)
+
+                                    match v.as_str() {
+                                        "TINYINT" | "BIGINT" | "INT" | "SMALLINT" | "NVARCHAR(MAX)" | "VARCHAR(MAX)"
+                                        | "FLOAT" | "REAL" | "DATETIMEOFFSET" | "UNIQUEIDENTIFIER" | "VARBINARY(MAX)" => {
+                                            vec.push(v.to_owned())
+                                        }
+                                        t => {
+                                            if &t[t.len() - 1..t.len()] == ")" {
+                                                if t.len() > 10 && &t[..8] == "VARCHAR(" {
+                                                    match &t[8..t.len() - 1].parse::<i16>() {
+                                                        Ok(i) => {
+                                                            if *i <= 4000 {
+                                                                vec.push(v.to_owned());
+                                                            } else {
+                                                                Log::warning(70, Some(value.to_string()));
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            Log::warning(70, Some(value.to_string()));
+                                                        }
+                                                    }
+                                                } else if t.len() > 11 && &t[..9] == "NVARCHAR(" {
+                                                    match &t[9..t.len() - 1].parse::<i16>() {
+                                                        Ok(i) => {
+                                                            if *i <= 4000 {
+                                                                vec.push(v.to_owned());
+                                                            } else {
+                                                                Log::warning(70, Some(value.to_string()));
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            Log::warning(70, Some(value.to_string()));
+                                                        }
+                                                    }
+                                                } else if t.len() > 12 && &t[..10] == "VARBINARY(" {
+                                                    match &t[10..t.len() - 1].parse::<i16>() {
+                                                        Ok(i) => {
+                                                            if *i <= 4000 {
+                                                                vec.push(v.to_owned());
+                                                            } else {
+                                                                Log::warning(70, Some(value.to_string()));
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            Log::warning(70, Some(value.to_string()));
+                                                        }
+                                                    }
+                                                } else {
+                                                    Log::warning(70, Some(value.to_string()));
+                                                }
+                                            } else {
+                                                Log::warning(70, Some(value.to_string()));
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Log::warning(70, Some(value.to_string()));
+                                }
+                            }
+                            vec
+                        } else {
+                            Log::warning(70, Some(value.to_string()));
+                            continue;
+                        }
+                    } else {
+                        Vec::new()
+                    };
+                    prepare.insert(
+                        fnv1a_64(key.as_bytes()),
+                        DBPrepare {
+                            query: query.to_owned(),
+                            types: DBFieldType::Mssql(types),
+                        },
+                    );
+                } else {
+                    Log::warning(70, Some(val.to_string()));
+                }
+            } else {
+                Log::warning(70, Some(val.to_string()));
+            }
+        }
     }
 }
