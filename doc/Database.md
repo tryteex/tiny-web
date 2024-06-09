@@ -10,6 +10,8 @@ ___
 ### Installation
 At the root of the project lies the file [lib-install-pgsql.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/lib-install-pgsql.sql) for Postgres or [lib-install-mssql.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/lib-install-mssql.sql) for MsSql which needs to be executed before the first run in the DB.  
 In the future, the installation and update process will be automated. 
+
+Or start project without `config` file as [First-Time start.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md).
 ___
 ### Access and pool connections
 In the configuration file, connection parameters to the database are specified.

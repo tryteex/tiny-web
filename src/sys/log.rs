@@ -1,4 +1,4 @@
-use std::{fs::OpenOptions, io::Write, process, sync::OnceLock};
+use std::{fs::OpenOptions, io::Write, process};
 
 use chrono::Local;
 
@@ -43,7 +43,7 @@ struct LogText {
 }
 
 /// Path to log file
-static LOG_FILE: OnceLock<String> = OnceLock::new();
+static mut LOG_FILE: String = String::new();
 
 /// Responsible for event log messages.
 pub struct Log;
@@ -100,9 +100,7 @@ impl Log {
     ///
     /// * `path: String` - New path to log file.
     pub fn set_path(path: String) {
-        if LOG_FILE.set(path).is_err() {
-            Log::panic("Can't set new path to LOG_FILE");
-        };
+        unsafe { LOG_FILE = path };
     }
 
     /// Simple save message to file.
@@ -121,13 +119,7 @@ impl Log {
         #[cfg(debug_assertions)]
         eprintln!("{}", str.trim_end());
 
-        let file = match LOG_FILE.get() {
-            Some(path) => path.as_str(),
-            None => {
-                Log::set_path("tiny.log".to_owned());
-                "tiny.log"
-            }
-        };
+        let file = unsafe { LOG_FILE.as_str() };
         match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut file) => match file.write_all(str.as_bytes()) {
                 Ok(f) => f,
@@ -152,13 +144,7 @@ impl Log {
             LogView::Critical,
             text
         );
-        let file = match LOG_FILE.get() {
-            Some(path) => path.as_str(),
-            None => {
-                Log::set_path("tiny.log".to_owned());
-                "tiny.log"
-            }
-        };
+        let file = unsafe { LOG_FILE.as_str() };
         match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
@@ -224,7 +210,7 @@ impl Log {
             57 => "The 'db_port' parameter in the configuration file must be bool. If true sslmode is requeres",
             58 => "The 'db_max' parameter in the configuration file must be usize and greater than 0 or \"auto\"",
             59 => "The 'db_host' parameter in the configuration file can't be empty",
-            60 => "The 'protokol' parameter in the configuration file must be only string: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
+            60 => "The 'protocol' parameter in the configuration file must be only string: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
             61 => "The 'log' parameter in the configuration file must be a string",
             62 => "The 'salt' parameter in the configuration file must be a string",
             63 => "The 'db_host' parameter in the configuration file must be a string",

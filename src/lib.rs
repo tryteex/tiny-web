@@ -5,17 +5,31 @@ pub mod sys;
 
 use std::mem::transmute;
 
-use sys::{action::ActMap, app::App, log::Log};
+use sys::{action::ActMap, app::App, init::Mode, log::Log};
 
 /// Entry point
 pub fn run(name: &str, version: &str, desc: &str, func: impl Fn() -> ActMap) {
-    let app = match App::new(name, version, desc) {
-        Some(a) => a,
+    let app = match execute(name, version, desc, &func, true) {
+        Some(app) => app,
         None => return,
+    };
+    if let Mode::Go = app.init.mode {
+        if app.init.conf.is_default {
+            execute(name, version, desc, &func, false);
+        }
+    }
+}
+
+/// Run application
+pub fn execute(name: &str, version: &str, desc: &str, func: &impl Fn() -> ActMap, allow_no_config: bool) -> Option<App> {
+    let app = match App::new(name, version, desc, allow_no_config) {
+        Some(a) => a,
+        None => return None,
     };
     Log::info(200, None);
     app.run(func);
     Log::info(201, None);
+    Some(app)
 }
 
 /// fnv1a_64 hash function

@@ -96,5 +96,5 @@ pub async fn index(this: &mut Action) -> Answer {
 }
 ```
 ___
-Next => Configuring nginx [Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)  
+Next => First-Time start [First.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md)  
 Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

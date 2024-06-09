@@ -8,7 +8,7 @@ use crate::StrOrI64;
 
 use super::{
     action::{Data, Request},
-    dbs::adapter::DB,
+    dbs::adapter::{DBEngine, DB},
 };
 
 /// User session
@@ -69,6 +69,17 @@ impl Session {
 
     /// Load session from database
     pub(crate) async fn load_session(key: String, db: Arc<DB>, lang_id: i64) -> Session {
+        if let DBEngine::None = db.engine {
+            return Session {
+                id: 0,
+                lang_id,
+                user_id: 0,
+                role_id: 0,
+                key,
+                data: BTreeMap::new(),
+                change: false,
+            };
+        }
         let res = match db.query(fnv1a_64!("lib_get_session"), &[&key], false).await {
             Some(r) => r,
             None => return Session::with_key(lang_id, key),
@@ -119,6 +130,9 @@ impl Session {
 
     /// Save session into database
     pub(crate) async fn save_session(db: Arc<DB>, session: &Session, request: &Request) {
+        if let DBEngine::None = db.engine {
+            return;
+        }
         if session.change {
             let data = match bincode::serialize(&session.data) {
                 Ok(r) => r,

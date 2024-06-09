@@ -11,6 +11,7 @@ use std::{
 use toml::{map::Map, Table, Value};
 
 use crate::fnv1a_64;
+use tiny_web_macro::fnv1a_64 as m_fnv1a_64;
 
 use super::{
     dbs::adapter::{DBEngine, DBFieldType, DBPrepare},
@@ -86,6 +87,7 @@ pub struct DBConfig {
 /// Describes the server configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub is_default: bool,
     /// Name server from env!("CARGO_PKG_NAME") primary project.
     pub name: String,
     /// Description server from env!("CARGO_PKG_DESCRIPTION") primary project.
@@ -120,6 +122,49 @@ pub struct Config {
     pub protocol: WorkerType,
     /// Prepare sql queries
     pub prepare: Arc<BTreeMap<i64, DBPrepare>>,
+}
+
+impl Config {
+    fn default(name: &str, version: &str, desc: &str) -> Config {
+        let num_cpus = num_cpus::get();
+        let bind_accept = AcceptAddr::Any;
+        let bind = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500));
+        let rpc_accept = AcceptAddr::IpAddr(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)));
+        let rpc = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12501));
+
+        let db = DBConfig {
+            engine: DBEngine::None,
+            host: String::new(),
+            port: None,
+            name: String::new(),
+            user: None,
+            pwd: None,
+            sslmode: false,
+            max: 0,
+        };
+        let log = "tiny.log".to_owned();
+        Log::set_path(log.clone());
+        Config {
+            is_default: true,
+            name: name.to_owned(),
+            desc: desc.to_owned(),
+            version: version.to_owned(),
+            lang: Arc::new("en".to_owned()),
+            log,
+            max: num_cpus,
+            bind_accept: Arc::new(bind_accept),
+            bind,
+            rpc_accept,
+            rpc,
+            session: Arc::new("tinysession".to_owned()),
+            salt: Arc::new("salt".to_owned()),
+            db: Arc::new(db),
+            stop: m_fnv1a_64!("stopsalt"),
+            status: m_fnv1a_64!("statussalt"),
+            protocol: WorkerType::FastCGI,
+            prepare: Arc::new(BTreeMap::new()),
+        }
+    }
 }
 
 /// Responsible for running mode of server.
@@ -166,16 +211,17 @@ pub struct Init {
     /// The full path to this executable file.
     pub exe_file: String,
     /// The full path to configuration file.
-    pub conf_file: String,
+    pub conf_file: Option<String>,
     /// The full path to the folder where the server was started.
     pub root_path: Arc<String>,
 }
 
 impl Init {
     /// Initializes the server configuration
-    pub fn new(name: &str, version: &str, desc: &str) -> Option<Init> {
+    pub fn new(name: &str, version: &str, desc: &str, allow_no_config: bool) -> Option<Init> {
         let exe_file = Init::get_current_exe()?;
 
+        #[cfg(not(debug_assertions))]
         let exe_path = match exe_file.rfind('/') {
             Some(i) => exe_file[..i].to_owned(),
             None => {
@@ -183,11 +229,25 @@ impl Init {
                 return None;
             }
         };
+        #[cfg(debug_assertions)]
+        let exe_path = match env::current_dir() {
+            Ok(path) => match path.to_str() {
+                Some(path) => path.to_owned(),
+                None => {
+                    Log::stop(16, Some(format!("{:?}", path)));
+                    return None;
+                }
+            },
+            Err(e) => {
+                Log::stop(16, Some(e.to_string()));
+                return None;
+            }
+        };
 
         let mut args = env::args();
 
-        let mode;
         let conf;
+        let mode;
         let conf_file;
         let root_path;
 
@@ -198,7 +258,8 @@ impl Init {
             // first parameter is empty
             None => {
                 mode = Mode::Help;
-                (conf_file, conf, root_path) = Init::check_path(&exe_path)?;
+                (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
+                conf = Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
             }
             // first parameter is not empty
             Some(arg) => {
@@ -220,23 +281,22 @@ impl Init {
                                 match args.next() {
                                     Some(p) => {
                                         let file = format!("{}/tiny.toml", p);
-                                        match read_to_string(&file) {
-                                            Ok(s) => {
-                                                conf_file = file;
-                                                conf = s;
-                                                root_path = match conf_file.rfind('/') {
-                                                    Some(i) => conf_file[..i].to_owned(),
-                                                    None => {
-                                                        Log::stop(16, Some(conf_file));
-                                                        return None;
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                Log::stop(14, Some(format!("{}. Error: {}", &p, e)));
+                                        root_path = match file.rfind('/') {
+                                            Some(i) => file[..i].to_owned(),
+                                            None => {
+                                                Log::stop(16, Some(file));
                                                 return None;
                                             }
-                                        }
+                                        };
+                                        conf = Init::load_conf(
+                                            Some(&root_path),
+                                            mode != Mode::Help,
+                                            name,
+                                            version,
+                                            desc,
+                                            allow_no_config,
+                                        )?;
+                                        conf_file = Some(file);
                                     }
                                     None => {
                                         Log::stop(13, None);
@@ -244,21 +304,31 @@ impl Init {
                                     }
                                 }
                             } else {
-                                (conf_file, conf, root_path) = Init::check_path(&exe_path)?;
+                                (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
+                                conf = Init::load_conf(
+                                    conf_file.as_deref(),
+                                    mode != Mode::Help,
+                                    name,
+                                    version,
+                                    desc,
+                                    allow_no_config,
+                                )?;
                             }
                         }
                         // second parameter is empty
-                        None => (conf_file, conf, root_path) = Init::check_path(&exe_path)?,
+                        None => {
+                            (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
+                            conf =
+                                Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
+                        }
                     };
                 } else {
-                    conf = String::new();
-                    conf_file = String::new();
+                    conf_file = None;
                     root_path = String::new();
+                    conf = Config::default(name, version, desc);
                 }
             }
         };
-
-        let conf = Init::load_conf(conf, mode != Mode::Help, name, version, desc)?;
 
         Some(Init {
             mode,
@@ -310,55 +380,18 @@ impl Init {
     /// * `Option::None` - file not found;
     /// * `Option::Some((String, String, String))` - success read configuration file:
     ///   * `turple.0` - path to configuration file
-    ///   * `turple.1` - file contents
-    ///   * `turple.2` - root folder
-    fn check_path(path: &str) -> Option<(String, String, String)> {
-        // configuration file was not found,
-        // so we look for it in the folder with the current program
+    ///   * `turple.1` - root folder
+    fn check_path(path: &str, allow_no_config: bool) -> Option<(Option<String>, String)> {
         let file = format!("{}/tiny.toml", path);
         match read_to_string(&file) {
-            Ok(s) => {
-                let root = match file.rfind('/') {
-                    Some(i) => file[..i].to_owned(),
-                    None => {
-                        Log::stop(16, Some(file));
-                        return None;
-                    }
-                };
-                Some((file, s, root))
-            }
+            Ok(_) => Some((Some(file), path.to_owned())),
             Err(e) => match e.kind() {
                 ErrorKind::NotFound => {
-                    // configuration file was not found,
-                    // so we look for it in env::current_dir()
-                    let file = match env::current_dir() {
-                        Ok(f) => match f.to_str() {
-                            Some(s) => format!("{}/tiny.toml", s.replace('\\', "/")),
-                            None => {
-                                Log::stop(15, None);
-                                return None;
-                            }
-                        },
-                        Err(_) => {
-                            Log::stop(15, None);
-                            return None;
-                        }
-                    };
-                    match read_to_string(&file) {
-                        Ok(s) => {
-                            let root = match file.rfind('/') {
-                                Some(i) => file[..i].to_owned(),
-                                None => {
-                                    Log::stop(16, Some(file));
-                                    return None;
-                                }
-                            };
-                            Some((file, s, root))
-                        }
-                        Err(_) => {
-                            Log::stop(15, None);
-                            None
-                        }
+                    if allow_no_config {
+                        Some((None, path.to_owned()))
+                    } else {
+                        Log::stop(15, Some(format!("{}. Error: {}", &file, e)));
+                        None
                     }
                 }
                 _ => {
@@ -384,7 +417,34 @@ impl Init {
     /// `Option<Config>` - Option of parsed configuration:
     ///   * `None` - Configuration contains errors;
     ///   * `Some(Config)` - is ok.
-    fn load_conf(text: String, check_salt: bool, name: &str, version: &str, desc: &str) -> Option<Config> {
+    fn load_conf(
+        file: Option<&str>,
+        check_salt: bool,
+        name: &str,
+        version: &str,
+        desc: &str,
+        allow_no_config: bool,
+    ) -> Option<Config> {
+        let file = match file {
+            Some(file) => file,
+            None => {
+                if allow_no_config {
+                    return Some(Config::default(name, version, desc));
+                } else {
+                    Log::stop(14, None);
+                    return None;
+                }
+            }
+        };
+
+        let text = match read_to_string(file) {
+            Ok(text) => text,
+            Err(e) => {
+                Log::stop(14, Some(format!("{}. Error: {}", &file, e)));
+                return None;
+            }
+        };
+
         let text = match text.parse::<Table>() {
             Ok(v) => v,
             Err(e) => {
@@ -395,7 +455,7 @@ impl Init {
 
         let num_cpus = num_cpus::get();
         let mut num_connections = num_cpus * 3;
-        let mut lang = "ua".to_owned();
+        let mut lang = "en".to_owned();
         let mut log = "tiny.log".to_owned();
         let mut max = num_cpus;
         let mut bind_accept = AcceptAddr::Any;
@@ -693,6 +753,7 @@ impl Init {
                             match db.engine {
                                 DBEngine::Pgsql => Init::load_pgsql_prepare(list, &value, &mut prepare),
                                 DBEngine::Mssql => Init::load_mssql_prepare(list, &value, &mut prepare),
+                                _ => {}
                             }
                         } else {
                             Log::warning(69, Some(value.to_string()));
@@ -712,6 +773,7 @@ impl Init {
         }
         Log::set_path(log.clone());
         let conf = Config {
+            is_default: false,
             name: name.to_owned(),
             desc: desc.to_owned(),
             version: version.to_owned(),

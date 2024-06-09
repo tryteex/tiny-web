@@ -347,6 +347,7 @@ impl Html {
                 if !path.is_dir() {
                     continue;
                 }
+
                 let class = match path.file_name() {
                     Some(c) => match c.to_str() {
                         Some(class) => class,
@@ -405,34 +406,39 @@ impl Html {
     /// Gets temptale from String
     fn parse(orig: &str) -> Result<Nodes, String> {
         let mut shift = 1;
+        let mut last = 1;
+
         let mut html = String::with_capacity(orig.len() + 4);
+        let mut len = orig.len();
         html.push('_');
         html.push_str(orig);
         html.push_str("___");
 
-        let mut c;
-        let mut l;
-        let mut last = 0;
-        let mut res = String::with_capacity(html.len());
+        let mut current;
+        let mut prev;
+
+        let mut result = String::with_capacity(len);
 
         // remove comment
         let mut ignore = None;
-        while shift < html.len() {
-            c = unsafe { html.get_unchecked(shift..shift + 2) };
-            l = unsafe { html.get_unchecked(shift - 1..shift) };
-            match c {
+        while shift < len + 1 {
+            // Take 2 symbols
+            current = unsafe { html.get_unchecked(shift..shift + 2) };
+            // Take prev symbol
+            prev = unsafe { html.get_unchecked(shift - 1..shift) };
+            match current {
                 "{#" => {
-                    if l == "@" {
+                    if prev == "@" {
                         ignore = Some(shift - 1);
                     } else {
-                        res.push_str(&html[last..shift]);
+                        result.push_str(&html[last..shift]);
                     }
                     shift += 2;
                 }
                 "#}" => {
                     if let Some(idx) = ignore {
-                        res.push_str(&html[last..idx]);
-                        res.push_str(&html[idx + 1..shift + 2]);
+                        result.push_str(&html[last..idx]);
+                        result.push_str(&html[idx + 1..shift + 2]);
                         ignore = None;
                     }
                     shift += 2;
@@ -441,22 +447,30 @@ impl Html {
                 _ => shift += 1,
             }
         }
-        res.push_str(&html[last..]);
-        html = res;
+        result.push_str(&html[last..len + 1]);
+
+        let mut html = String::with_capacity(result.len() + 4);
+        len = result.len();
+        html.push('_');
+        html.push_str(&result);
+        html.push_str("___");
 
         // read conditions
         shift = 1;
+        last = 1;
+
         let mut order = false;
         let mut idx = 0;
         let mut vec = Vec::new();
-        let mut last_shift = 0;
-        while shift < html.len() {
-            c = unsafe { html.get_unchecked(shift..shift + 2) };
-            l = unsafe { html.get_unchecked(shift - 1..shift) };
-            match (c, order) {
+        while shift < len + 1 {
+            // Take 2 symbols
+            current = unsafe { html.get_unchecked(shift..shift + 2) };
+            // Take prev symbol
+            prev = unsafe { html.get_unchecked(shift - 1..shift) };
+            match (current, order) {
                 // Begin condition
                 ("{%", false) => {
-                    if l == "@" {
+                    if prev == "@" {
                         ignore = Some(0);
                     } else {
                         idx = shift + 2;
@@ -470,22 +484,22 @@ impl Html {
                         ignore = None;
                     } else {
                         vec.push(Item {
-                            begin: last_shift,
-                            end: idx - 2,
-                            text: html[last_shift..idx - 2].to_owned(),
+                            begin: last - 1,
+                            end: idx - 3,
+                            text: html[last..idx - 2].to_owned(),
                             level: 0,
                             cond: ItemCondition::Text,
                             child: Vec::new(),
                         });
                         vec.push(Item {
-                            begin: idx,
-                            end: shift + 2,
+                            begin: idx - 1,
+                            end: shift - 1,
                             text: html[idx..shift].trim().to_owned(),
                             level: 0,
                             cond: ItemCondition::None,
                             child: Vec::new(),
                         });
-                        last_shift = shift + 2;
+                        last = shift + 2;
                     }
                     shift += 2;
                     order = false;
@@ -498,9 +512,9 @@ impl Html {
         }
         // Add closing text
         vec.push(Item {
-            begin: last_shift,
-            end: html.len(),
-            text: html[last_shift..html.len()].to_owned(),
+            begin: last - 1,
+            end: len,
+            text: html[last..len + 1].to_owned(),
             level: 0,
             cond: ItemCondition::Text,
             child: Vec::new(),
@@ -525,7 +539,7 @@ impl Html {
                                 Html::get_err_msg(i.begin, i.end, &html)
                             ));
                         }
-                        //i.text = i.text[idx + 1..].to_owned();
+                        i.text = i.text[idx + 1..].to_string();
                     }
                     "elseif" => {
                         i.level = level;
@@ -607,25 +621,19 @@ impl Html {
         if level != 0 {
             return Err("No closing tag found".to_owned());
         }
-
         // build tree
         let vec = match Html::build_tree(&vec, &mut 0, 1) {
             Some(v) => v,
             None => return Err("The nesting structure does not match".to_owned()),
         };
-
         // create template
         let mut vec = match Html::build_vec(&vec, &html) {
             Ok(vec) => vec,
             Err(e) => return Err(format!("An error occurred while creating the template nodes: {}", e)),
         };
-
         // Clear templates
         let mut remove = false;
         if let Node::Text(node) = unsafe { vec.get_unchecked_mut(0) } {
-            if unsafe { node.get_unchecked(..1) } == "_" {
-                node.remove(0);
-            }
             if node.is_empty() {
                 remove = true;
             }
@@ -636,12 +644,6 @@ impl Html {
         }
         let len = vec.len() - 1;
         if let Node::Text(node) = unsafe { vec.get_unchecked_mut(len) } {
-            let len = node.len();
-            if unsafe { node.get_unchecked(len - 3..) } == "___" {
-                node.pop();
-                node.pop();
-                node.pop();
-            }
             if node.is_empty() {
                 remove = true;
             }
@@ -818,33 +820,34 @@ impl Html {
     }
 
     /// Parse text for searching `echo` conditions
-    fn get_echo(val: &str) -> Result<Nodes, usize> {
-        let mut shift = 0;
-        let mut c;
-        let mut l;
-        let mut last = 0;
+    fn get_echo(orig: &str) -> Result<Nodes, usize> {
+        let len = orig.len();
+        let mut val = String::with_capacity(len + 4);
+        val.push('_');
+        val.push_str(orig);
+        val.push_str("___");
+
+        let mut shift = 1;
+        let mut last = 1;
+        let mut current;
+        let mut prev;
         let mut idx = 0;
 
         let mut ignore = false;
         let mut ignore_idx = 0;
-        let mut res = Vec::new();
+        let mut result = Vec::new();
         let mut order = false;
         let mut vl;
         let mut trim_begin = false;
         let mut trim_end = false;
         let mut val = val.to_owned();
-
-        while shift < val.len() {
+        while shift < len + 1 {
             // Get the initial condition and ignore symbol
-            c = unsafe { val.get_unchecked(shift..shift + 2) };
-            if shift > 0 {
-                l = unsafe { val.get_unchecked(shift - 1..shift) };
-            } else {
-                l = "";
-            }
-            match (c, order) {
+            current = unsafe { val.get_unchecked(shift..shift + 2) };
+            prev = unsafe { val.get_unchecked(shift - 1..shift) };
+            match (current, order) {
                 ("{{", false) => {
-                    if l == "@" {
+                    if prev == "@" {
                         ignore = true;
                         ignore_idx = shift - 1;
                     } else {
@@ -858,7 +861,7 @@ impl Html {
                         val.remove(ignore_idx);
                         ignore = false;
                     } else {
-                        res.push(Node::Text(val[last..idx - 2].to_owned()));
+                        result.push(Node::Text(val[last..idx - 2].to_owned()));
                         vl = val[idx..shift].trim().to_owned();
                         if vl.is_empty() {
                             return Err(shift);
@@ -882,7 +885,7 @@ impl Html {
                         // Save begin/end trim
                         match (trim_begin, trim_end) {
                             (true, true) => {
-                                res.push(Node::Value(EchoValue {
+                                result.push(Node::Value(EchoValue {
                                     val: Html::get_val(&vl, None).ok_or(shift)?,
                                     begin: true,
                                     end: true,
@@ -891,7 +894,7 @@ impl Html {
                                 trim_end = false;
                             }
                             (true, false) => {
-                                res.push(Node::Value(EchoValue {
+                                result.push(Node::Value(EchoValue {
                                     val: Html::get_val(&vl, None).ok_or(shift)?,
                                     begin: true,
                                     end: false,
@@ -899,14 +902,14 @@ impl Html {
                                 trim_begin = false;
                             }
                             (false, true) => {
-                                res.push(Node::Value(EchoValue {
+                                result.push(Node::Value(EchoValue {
                                     val: Html::get_val(&vl, None).ok_or(shift)?,
                                     begin: false,
                                     end: true,
                                 }));
                                 trim_end = false;
                             }
-                            (false, false) => res.push(Node::Value(EchoValue {
+                            (false, false) => result.push(Node::Value(EchoValue {
                                 val: Html::get_val(&vl, None).ok_or(shift)?,
                                 begin: false,
                                 end: false,
@@ -921,8 +924,8 @@ impl Html {
                 _ => shift += 1,
             }
         }
-        res.push(Node::Text(val[last..].to_owned()));
-        Ok(res)
+        result.push(Node::Text(val[last..len + 1].to_owned()));
+        Ok(result)
     }
 
     /// Check if expressions
@@ -964,7 +967,6 @@ impl Html {
         let mut for_local = String::new();
         let mut for_name = None;
         let mut sub_nodes;
-
         for item in vec {
             match item.cond {
                 ItemCondition::None => {

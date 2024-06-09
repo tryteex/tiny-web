@@ -15,7 +15,7 @@ This library works only with FastCGI, SCGI, and UWSGI (modifier1=0) protocols.
 
 This library works with Postgresql, MS Sql Server and MySql databases.
 
-The `lib-install-***.sql` file is in the root of the project as a temporary solution so that the server can start. In the future, the `install` and `update` command will be added to the library to install and update the database.
+The `lib-install-***.sql` file is in the root of the project as a temporary solution so that the server can start. Or start project without `config` file as [First-Time start.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md).
 
 ## Contributing
 

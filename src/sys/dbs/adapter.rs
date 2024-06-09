@@ -31,6 +31,7 @@ use tokio::sync::{Mutex, Semaphore};
 /// Supported databases
 #[derive(Debug, Clone)]
 pub enum DBEngine {
+    None,
     Pgsql,
     Mssql,
 }
@@ -73,6 +74,8 @@ pub struct DB {
     semaphore: Arc<Semaphore>,
     /// Number of connected databases.
     pub size: usize,
+    /// Supported databases
+    pub engine: DBEngine,
 }
 
 impl DB {
@@ -112,11 +115,17 @@ impl DB {
                         return None;
                     }
                 }
+                _ => return None,
             };
         }
         let semaphore = Arc::new(Semaphore::new(asize));
 
-        Some(DB { connections, semaphore, size: asize })
+        Some(DB {
+            connections,
+            semaphore,
+            size: asize,
+            engine: config.engine.clone(),
+        })
     }
 
     /// Execute query to database synchronously
@@ -134,6 +143,10 @@ impl DB {
     /// * `Option::Some(Vec<Data::Map>)` - Results, if assoc = true.
     /// * `Option::Some(Vec<Data::Vec>)` - Results, if assoc = false.
     pub async fn query(&self, query: impl KeyOrQuery, params: &[&dyn ToSql], assoc: bool) -> Option<Vec<Data>> {
+        if let DBEngine::None = self.engine {
+            return None;
+        }
+
         let permit = match self.semaphore.acquire().await {
             Ok(p) => p,
             Err(e) => {
@@ -169,6 +182,10 @@ impl DB {
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(())` - Successed.
     pub async fn execute(&self, query: impl KeyOrQuery, params: &[&dyn ToSql]) -> Option<()> {
+        if let DBEngine::None = self.engine {
+            return None;
+        }
+
         let permit = match self.semaphore.acquire().await {
             Ok(p) => p,
             Err(e) => {
@@ -276,6 +293,10 @@ impl DB {
         assoc: bool,
         conds: &[&[impl StrOrI64OrUSize]],
     ) -> Option<Data> {
+        if let DBEngine::None = self.engine {
+            return None;
+        }
+
         let permit = match self.semaphore.acquire().await {
             Ok(p) => p,
             Err(e) => {

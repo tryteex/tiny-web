@@ -22,7 +22,7 @@ use tokio::{
 use super::{
     action::{ActMap, Data},
     cache::CacheSys,
-    dbs::adapter::DB,
+    dbs::adapter::{DBEngine, DB},
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
     lang::{Lang, LangItem},
@@ -36,7 +36,7 @@ pub struct Go;
 
 impl Go {
     /// Run server in tokio runtime
-    pub fn run(init: &Init, func: impl Fn() -> ActMap) {
+    pub fn run(init: &Init, func: &impl Fn() -> ActMap) {
         let runtime = match Builder::new_multi_thread().worker_threads(init.conf.max).enable_all().build() {
             Ok(r) => r,
             Err(e) => {
@@ -64,7 +64,7 @@ impl Go {
     ///
     /// `None` - The server cannot listen on the bind port
     /// `Some(JoinHandle)` - Handler for main tokio thread
-    async fn listen(init: &Init, stop: Arc<AtomicBool>, func: impl Fn() -> ActMap) -> Option<JoinHandle<()>> {
+    async fn listen(init: &Init, stop: Arc<AtomicBool>, func: &impl Fn() -> ActMap) -> Option<JoinHandle<()>> {
         // Open bind port
         let bind = match &init.conf.bind {
             Addr::SocketAddr(a) => TcpListener::bind(a).await,
@@ -299,6 +299,16 @@ impl Go {
 
     /// Get list of enabled langs from database
     async fn get_langs(db: &mut DB) -> Vec<LangItem> {
+        if let DBEngine::None = db.engine {
+            let vec = vec![LangItem {
+                id: 0,
+                lang: "en".to_owned(),
+                name: "English".to_owned(),
+                index: 0,
+            }];
+            return vec;
+        }
+
         let res = match db.query(fnv1a_64!("lib_get_langs"), &[], false).await {
             Some(r) => r,
             None => {

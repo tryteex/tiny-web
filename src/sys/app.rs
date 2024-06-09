@@ -29,13 +29,13 @@ pub struct App {
 
 impl App {
     /// Initializes application
-    pub fn new(name: &str, version: &str, desc: &str) -> Option<App> {
-        let init = Init::new(name, version, desc)?;
+    pub fn new(name: &str, version: &str, desc: &str, allow_no_config: bool) -> Option<App> {
+        let init = Init::new(name, version, desc, allow_no_config)?;
         Some(App { init })
     }
 
     /// Run application
-    pub fn run(&self, func: impl Fn() -> ActMap) {
+    pub fn run(&self, func: &impl Fn() -> ActMap) {
         Log::info(17, Some(format!("{:?}", self.init.mode)));
         match self.init.mode {
             Mode::Start => self.start(),

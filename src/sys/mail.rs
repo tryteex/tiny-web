@@ -13,7 +13,11 @@ use serde_json::Value;
 use tiny_web_macro::fnv1a_64;
 use tokio::fs::create_dir_all;
 
-use super::{action::Data, dbs::adapter::DB, log::Log};
+use super::{
+    action::Data,
+    dbs::adapter::{DBEngine, DB},
+    log::Log,
+};
 
 /// Add file to the message struct.
 ///
@@ -122,6 +126,9 @@ impl Mail {
 
     /// Get provider from database
     async fn get_provider(db: Arc<DB>) -> MailProvider {
+        if let DBEngine::None = db.engine {
+            return MailProvider::None;
+        }
         match db.query(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:provider")], false).await {
             Some(res) => {
                 if !res.is_empty() {
@@ -495,6 +502,9 @@ impl Mail {
 
     /// Send email
     pub async fn send(provider: MailProvider, db: Arc<DB>, message: MailMessage, user_id: i64, host: String) -> bool {
+        if let DBEngine::None = db.engine {
+            return true;
+        }
         let json = match serde_json::to_value(&message) {
             Ok(json) => json,
             Err(e) => {
@@ -630,6 +640,9 @@ impl Mail {
         id: &mut i64,
         transport: &str,
     ) -> Result<Message, String> {
+        if let DBEngine::None = db.engine {
+            return Err(String::new());
+        }
         let message_id = match db.query(fnv1a_64!("lib_mail_new"), &[&user_id, &json.to_string(), &transport], false).await {
             Some(r) => {
                 if r.len() != 1 {
