@@ -331,7 +331,7 @@ CREATE TABLE "route" (
   "url" text NOT NULL,
   "controller_id" int8 NOT NULL,
   "params" text,
-  "lang_id" int8 NOT NULL
+  "lang_id" int8
 );
 COMMENT ON COLUMN "route"."route_id" IS 'Identifier';
 COMMENT ON COLUMN "route"."url" IS 'Request URL';

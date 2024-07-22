@@ -567,7 +567,7 @@ CREATE TABLE [route] (
   [url] VARCHAR(4000) NOT NULL,
   [controller_id] BIGINT NOT NULL,
   [params] VARCHAR(255),
-  [lang_id] BIGINT NOT NULL,
+  [lang_id] BIGINT,
   PRIMARY KEY CLUSTERED ([route_id])
 );
 

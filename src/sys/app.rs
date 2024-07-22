@@ -216,7 +216,7 @@ impl App {
         let path = &self.init.exe_path;
         let exe = &self.init.exe_file;
 
-        let args = vec!["go", "-r", &self.init.root_path];
+        let args = ["go", "-r", &self.init.root_path];
         match Command::new(exe).args(&args[..]).current_dir(path).spawn() {
             Ok(c) => Log::info(211, Some(format!("{} {}. PID: {}", &exe, args.join(" "), c.id()))),
             Err(e) => Log::stop(212, Some(format!("{} {}. Error: {}", &exe, args.join(" "), e))),

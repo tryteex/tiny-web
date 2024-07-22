@@ -157,8 +157,12 @@ impl DB {
         for connection_mutex in &self.connections {
             if let Ok(mut db) = connection_mutex.try_lock() {
                 let res = match *db {
-                    DBConnect::Pgsql(ref mut pg) => pg.query(&query, unsafe { transmute(params) }, assoc).await,
-                    DBConnect::Mssql(ref mut ms) => ms.query(&query, unsafe { transmute(params) }, assoc).await,
+                    DBConnect::Pgsql(ref mut pg) => {
+                        pg.query(&query, unsafe { transmute::<&[&dyn ToSql], &[&(dyn pgToSql + Sync)]>(params) }, assoc).await
+                    }
+                    DBConnect::Mssql(ref mut ms) => {
+                        ms.query(&query, unsafe { transmute::<&[&dyn ToSql], &[&dyn msToSql]>(params) }, assoc).await
+                    }
                 };
                 drop(permit);
                 return res;
@@ -196,8 +200,12 @@ impl DB {
         for connection_mutex in &self.connections {
             if let Ok(mut db) = connection_mutex.try_lock() {
                 let res = match *db {
-                    DBConnect::Pgsql(ref mut pg) => pg.execute(&query, unsafe { transmute(params) }).await,
-                    DBConnect::Mssql(ref mut ms) => ms.execute(&query, unsafe { transmute(params) }).await,
+                    DBConnect::Pgsql(ref mut pg) => {
+                        pg.execute(&query, unsafe { transmute::<&[&dyn ToSql], &[&(dyn pgToSql + Sync)]>(params) }).await
+                    }
+                    DBConnect::Mssql(ref mut ms) => {
+                        ms.execute(&query, unsafe { transmute::<&[&dyn ToSql], &[&dyn msToSql]>(params) }).await
+                    }
                 };
                 drop(permit);
                 return res;
@@ -307,8 +315,18 @@ impl DB {
         for connection_mutex in &self.connections {
             if let Ok(mut db) = connection_mutex.try_lock() {
                 let res = match *db {
-                    DBConnect::Pgsql(ref mut pg) => pg.query_group(&query, unsafe { transmute(params) }, assoc, conds).await,
-                    DBConnect::Mssql(ref mut ms) => ms.query_group(&query, unsafe { transmute(params) }, assoc, conds).await,
+                    DBConnect::Pgsql(ref mut pg) => {
+                        pg.query_group(
+                            &query,
+                            unsafe { transmute::<&[&dyn ToSql], &[&(dyn pgToSql + Sync)]>(params) },
+                            assoc,
+                            conds,
+                        )
+                        .await
+                    }
+                    DBConnect::Mssql(ref mut ms) => {
+                        ms.query_group(&query, unsafe { transmute::<&[&dyn ToSql], &[&dyn msToSql]>(params) }, assoc, conds).await
+                    }
                 };
                 drop(permit);
                 return res;

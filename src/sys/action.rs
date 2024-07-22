@@ -801,14 +801,16 @@ impl Action {
                                 } else {
                                     return Ok(Action::error_route());
                                 };
-                                let param = if let Data::String(param) = unsafe { row.get_unchecked(6) } {
-                                    if param.is_empty() {
-                                        None
-                                    } else {
-                                        Some(param.to_owned())
+                                let param = match unsafe { row.get_unchecked(6) } {
+                                    Data::None => None,
+                                    Data::String(param) => {
+                                        if param.is_empty() {
+                                            None
+                                        } else {
+                                            Some(param.to_owned())
+                                        }
                                     }
-                                } else {
-                                    return Ok(Action::error_route());
+                                    _ => return Ok(Action::error_route()),
                                 };
                                 let module_id = if let Data::I64(module_id) = unsafe { row.get_unchecked(3) } {
                                     *module_id
@@ -825,10 +827,10 @@ impl Action {
                                 } else {
                                     return Ok(Action::error_route());
                                 };
-                                let lang_id = if let Data::I64(lang_id) = unsafe { row.get_unchecked(7) } {
-                                    Some(*lang_id)
-                                } else {
-                                    return Ok(Action::error_route());
+                                let lang_id = match unsafe { row.get_unchecked(7) } {
+                                    Data::None => None,
+                                    Data::I64(lang_id) => Some(*lang_id),
+                                    _ => return Ok(Action::error_route()),
                                 };
                                 let r = Route {
                                     module,
@@ -1040,24 +1042,40 @@ impl Action {
     }
 
     /// Get route
-    pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: i64) -> String {
+    pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: Option<i64>) -> String {
         // Read from cache
-        let key = match param {
-            Some(p) => vec![
+        let key = match (param, lang_id) {
+            (Some(p), Some(l)) => vec![
                 fnv1a_64!("route"),
                 fnv1a_64(module.as_bytes()),
                 fnv1a_64(class.as_bytes()),
                 fnv1a_64(action.as_bytes()),
                 fnv1a_64(p.as_bytes()),
-                lang_id,
+                l,
             ],
-            None => vec![
+            (Some(p), None) => vec![
+                fnv1a_64!("route"),
+                fnv1a_64(module.as_bytes()),
+                fnv1a_64(class.as_bytes()),
+                fnv1a_64(action.as_bytes()),
+                fnv1a_64(p.as_bytes()),
+                -1,
+            ],
+            (None, Some(l)) => vec![
                 fnv1a_64!("route"),
                 fnv1a_64(module.as_bytes()),
                 fnv1a_64(class.as_bytes()),
                 fnv1a_64(action.as_bytes()),
                 0,
-                lang_id,
+                l,
+            ],
+            (None, None) => vec![
+                fnv1a_64!("route"),
+                fnv1a_64(module.as_bytes()),
+                fnv1a_64(class.as_bytes()),
+                fnv1a_64(action.as_bytes()),
+                0,
+                -1,
             ],
         };
         let (data, key) = self.cache.get(key).await;

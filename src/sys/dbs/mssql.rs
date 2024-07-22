@@ -207,7 +207,7 @@ impl MsSql {
                 "#;
                 map.insert(
                     fnv1a_64!("lib_get_url"),
-                    ("@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 BIGINT, @P5 VARCHAR(255)".to_owned(), sql.to_owned()),
+                    ("@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 VARCHAR(255), @P5 BIGINT".to_owned(), sql.to_owned()),
                 );
 
                 // Get auth permissions
