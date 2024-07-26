@@ -13,7 +13,7 @@ use crate::sys::{
 /// * `content_length: u16` - Content length.
 /// * `padding_length: u8` - Padding length.
 #[derive(Debug)]
-pub struct Header {
+pub(crate) struct Header {
     /// FastCGI header type.
     pub header_type: u8,
     /// Content length.
@@ -29,7 +29,7 @@ pub struct Header {
 /// * `header: Header` - FastCGI header.
 /// * `data: Vec<u8>` - Data.
 #[derive(Debug)]
-pub struct Record {
+pub(crate) struct Record {
     /// FastCGI header.
     pub header: Header,
     /// Data.
@@ -44,11 +44,9 @@ pub struct Record {
 /// * `Error(Vec<u8>)` - Error recognizing FastCGI record.
 /// * `StreamClose` - The stream was closed.
 #[derive(Debug)]
-pub enum RecordType {
+pub(crate) enum RecordType {
     /// Some FastCGI value.
     Some(Record),
-    /// Error recognizing FastCGI record.
-    Error(Vec<u8>),
     /// The stream was closed.
     StreamClose,
 }
@@ -75,18 +73,18 @@ pub const U16_BE_1: [u8; 2] = u16::to_be_bytes(1);
 pub const U16_BE_8: [u8; 2] = u16::to_be_bytes(8);
 
 /// FastCGI protocol
-pub struct Net;
+pub(crate) struct Net;
 /// Alias for FastCGI protocol
 type FastCGI = Net;
 
 impl Net {
     /// The entry point in the FastCGI protocol
-    pub async fn run(mut stream_read: StreamRead, mut stream_write: StreamWrite, data: WorkerData) {
+    pub async fn run(mut stream_read: StreamRead, stream_write: Arc<StreamWrite>, data: WorkerData) {
         loop {
             // Gets one Record
             let record = match FastCGI::read_record_raw(&mut stream_read, 0).await {
                 RecordType::Some(r) => r,
-                RecordType::Error(_) | RecordType::StreamClose => break,
+                RecordType::StreamClose => break,
             };
             // Start parsing the protocol, only if it starts with BEGIN_REQUEST
             if FASTCGI_BEGIN_REQUEST == record.header.header_type {
@@ -100,7 +98,7 @@ impl Net {
                     // Gets next Record
                     let record = match FastCGI::read_record_raw(&mut stream_read, 1000).await {
                         RecordType::Some(r) => r,
-                        RecordType::Error(_) | RecordType::StreamClose => break,
+                        RecordType::StreamClose => break,
                     };
                     match record.header.header_type {
                         FASTCGI_PARAMS => {
@@ -125,6 +123,7 @@ impl Net {
                 }
                 // Reads params
                 let (mut request, content_type, session) = FastCGI::read_param(params, Arc::clone(&data.session_key));
+
                 // Reads POST data
                 let (post, file) = Worker::read_input(stdin, content_type).await;
                 request.input.file = file;
@@ -140,12 +139,12 @@ impl Net {
                     mail: Arc::clone(&data.mail),
                     request,
                     session,
+                    tx: Arc::clone(&stream_write.tx),
                 };
+
                 // Run main controller
                 let answer = Worker::call_action(data).await;
-                if FastCGI::write(&mut stream_write, answer).await.is_err() {
-                    return;
-                }
+                stream_write.write(answer).await;
             } else {
                 break;
             }
@@ -388,7 +387,7 @@ impl Net {
     }
 
     /// Writes answer to server
-    async fn write(stream: &mut StreamWrite, answer: Vec<u8>) -> Result<(), ()> {
+    pub fn write(answer: Vec<u8>, end: bool) -> Vec<u8> {
         let mut seek: usize = 0;
         let len = answer.len();
         let capacity = len + FASTCGI_HEADER_LEN * (4 + len / FASTCGI_MAX_CONTENT_LEN);
@@ -412,43 +411,34 @@ impl Net {
             data.extend_from_slice(unsafe { answer.get_unchecked(seek..seek + size) });
             seek += size;
         }
-        // Empty FASTCGI_STDOUT
-        data.push(1_u8);
-        data.push(FASTCGI_STDOUT);
-        data.extend_from_slice(&U16_BE_1);
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0);
+        if end {
+            // Empty FASTCGI_STDOUT
+            data.push(1_u8);
+            data.push(FASTCGI_STDOUT);
+            data.extend_from_slice(&U16_BE_1);
+            data.push(0);
+            data.push(0);
+            data.push(0);
+            data.push(0);
 
-        // Empty FASTCGI_END_REQUEST
-        data.push(1_u8);
-        data.push(FASTCGI_END_REQUEST);
-        data.extend_from_slice(&U16_BE_1);
-        data.extend_from_slice(&U16_BE_8);
-        data.push(0);
-        data.push(0);
+            // Empty FASTCGI_END_REQUEST
+            data.push(1_u8);
+            data.push(FASTCGI_END_REQUEST);
+            data.extend_from_slice(&U16_BE_1);
+            data.extend_from_slice(&U16_BE_8);
+            data.push(0);
+            data.push(0);
 
-        // FASTCGI_END_REQUEST data
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0);
-        data.push(0);
-
-        match stream.write(&data).await {
-            Ok(i) => {
-                if i != data.len() {
-                    return Err(());
-                }
-            }
-            Err(_) => {
-                return Err(());
-            }
+            // FASTCGI_END_REQUEST data
+            data.push(0);
+            data.push(0);
+            data.push(0);
+            data.push(0);
+            data.push(0);
+            data.push(0);
+            data.push(0);
+            data.push(0);
         }
-        Ok(())
+        data
     }
 }

@@ -22,7 +22,7 @@ use super::{
 ///
 /// * `init: Init` - Server configuration.
 #[derive(Debug)]
-pub struct App {
+pub(crate) struct App {
     /// Server configuration.
     pub init: Init,
 }
@@ -81,7 +81,7 @@ impl App {
                 };
             }
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(path) => {
+            Addr::Uds(path) => {
                 let mut tcp = match UnixStream::connect(path) {
                     Ok(t) => t,
                     Err(e) => {
@@ -154,7 +154,7 @@ impl App {
                 };
             }
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(path) => {
+            Addr::Uds(path) => {
                 let mut tcp = match UnixStream::connect(path) {
                     Ok(t) => t,
                     Err(e) => {

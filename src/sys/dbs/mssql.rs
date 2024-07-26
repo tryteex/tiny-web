@@ -33,7 +33,7 @@ enum DBResult {
 }
 
 /// Responsible for working with MsSql database
-pub struct MsSql {
+pub(crate) struct MsSql {
     config: Config,
     client: Option<Client<Compat<TcpStream>>>,
     prepare: BTreeMap<i64, MsStatement>,
@@ -41,7 +41,7 @@ pub struct MsSql {
 }
 
 /// Statement to database
-pub struct MsStatement {
+pub(crate) struct MsStatement {
     /// Statement to database
     statement: i64,
     /// Sql query to database

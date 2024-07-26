@@ -12,7 +12,7 @@ use crate::fnv1a_64;
 use super::log::Log;
 
 /// Empty struct for working temp file
-pub struct TempFile;
+pub(crate) struct TempFile;
 
 impl TempFile {
     /// Creates a unique new temporary file name

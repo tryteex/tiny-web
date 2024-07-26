@@ -31,7 +31,7 @@ use super::action::Data;
 ///
 /// With a large cache, the `del` operation can block it for a long time.
 #[derive(Debug)]
-pub struct CacheSys {
+pub(crate) struct CacheSys {
     /// Cache data.
     data: CacheKey,
 }
@@ -190,7 +190,7 @@ impl CacheSys {
 
     pub async fn show(cache: Arc<Mutex<CacheSys>>) {
         let c = cache.lock().await;
-        println!("show all {:?}", c.data)
+        println!("{:?}", c.data)
     }
 }
 
@@ -217,7 +217,7 @@ pub struct Cache {
 
 impl Cache {
     /// Create new Cache instanse
-    pub fn new(cache: Arc<Mutex<CacheSys>>) -> Cache {
+    pub(crate) fn new(cache: Arc<Mutex<CacheSys>>) -> Cache {
         Cache { cache }
     }
 

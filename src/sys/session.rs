@@ -31,9 +31,11 @@ pub struct Session {
     /// user_id from database
     pub user_id: i64,
     /// role_id from database
-    pub(crate) role_id: i64,
-    /// Cookie key
+    pub role_id: i64,
+    /// Cookie key (session value)
     pub key: String,
+    /// Session key
+    pub(crate) session_key: Arc<String>,
     /// User data from database
     data: BTreeMap<i64, Data>,
     /// User data is changed
@@ -42,33 +44,35 @@ pub struct Session {
 
 impl Session {
     /// Create new session
-    pub(crate) fn new(lang_id: i64, salt: &str, ip: &str, agent: &str, host: &str) -> Session {
+    pub(crate) fn new(lang_id: i64, salt: &str, ip: &str, agent: &str, host: &str, session_key: Arc<String>) -> Session {
         Session {
             id: 0,
             lang_id,
             user_id: 0,
             role_id: 0,
             key: Session::generate_session(salt, ip, agent, host),
+            session_key,
             data: BTreeMap::new(),
             change: false,
         }
     }
 
     /// Create new session by cookie (session) key
-    pub(crate) fn with_key(lang_id: i64, key: String) -> Session {
+    pub(crate) fn with_key(lang_id: i64, key: String, session_key: Arc<String>) -> Session {
         Session {
             id: 0,
             lang_id,
             user_id: 0,
             role_id: 0,
             key,
+            session_key,
             data: BTreeMap::new(),
             change: false,
         }
     }
 
     /// Load session from database
-    pub(crate) async fn load_session(key: String, db: Arc<DB>, lang_id: i64) -> Session {
+    pub(crate) async fn load_session(key: String, db: Arc<DB>, lang_id: i64, session_key: Arc<String>) -> Session {
         if let DBEngine::None = db.engine {
             return Session {
                 id: 0,
@@ -76,38 +80,51 @@ impl Session {
                 user_id: 0,
                 role_id: 0,
                 key,
+                session_key,
                 data: BTreeMap::new(),
                 change: false,
             };
         }
         let res = match db.query(fnv1a_64!("lib_get_session"), &[&key], false).await {
             Some(r) => r,
-            None => return Session::with_key(lang_id, key),
+            None => return Session::with_key(lang_id, key, session_key),
         };
         if res.is_empty() {
-            return Session::with_key(lang_id, key);
+            return Session::with_key(lang_id, key, session_key);
         }
         let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
             row
         } else {
-            return Session::with_key(lang_id, key);
+            return Session::with_key(lang_id, key, session_key);
         };
         if row.len() != 5 {
-            return Session::with_key(lang_id, key);
+            return Session::with_key(lang_id, key, session_key);
         }
-        let session_id =
-            if let Data::I64(val) = unsafe { row.get_unchecked(0) } { *val } else { return Session::with_key(lang_id, key) };
-        let user_id =
-            if let Data::I64(val) = unsafe { row.get_unchecked(1) } { *val } else { return Session::with_key(lang_id, key) };
-        let role_id =
-            if let Data::I64(val) = unsafe { row.get_unchecked(2) } { *val } else { return Session::with_key(lang_id, key) };
+        let session_id = if let Data::I64(val) = unsafe { row.get_unchecked(0) } {
+            *val
+        } else {
+            return Session::with_key(lang_id, key, session_key);
+        };
+        let user_id = if let Data::I64(val) = unsafe { row.get_unchecked(1) } {
+            *val
+        } else {
+            return Session::with_key(lang_id, key, session_key);
+        };
+        let role_id = if let Data::I64(val) = unsafe { row.get_unchecked(2) } {
+            *val
+        } else {
+            return Session::with_key(lang_id, key, session_key);
+        };
         let data = if let Data::Raw(val) = unsafe { row.get_unchecked(2) } {
             val.to_owned()
         } else {
-            return Session::with_key(lang_id, key);
+            return Session::with_key(lang_id, key, session_key);
         };
-        let lang_id =
-            if let Data::I64(val) = unsafe { row.get_unchecked(4) } { *val } else { return Session::with_key(lang_id, key) };
+        let lang_id = if let Data::I64(val) = unsafe { row.get_unchecked(4) } {
+            *val
+        } else {
+            return Session::with_key(lang_id, key, session_key);
+        };
 
         let res = if data.is_empty() {
             BTreeMap::new()
@@ -123,6 +140,7 @@ impl Session {
             user_id,
             role_id,
             key,
+            session_key,
             data: res,
             change: false,
         }

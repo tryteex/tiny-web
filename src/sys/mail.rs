@@ -113,7 +113,7 @@ pub enum MailProvider {
 
 /// Send email struct
 #[derive(Debug)]
-pub struct Mail {
+pub(crate) struct Mail {
     /// Provider
     pub provider: MailProvider,
 }

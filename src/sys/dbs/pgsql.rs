@@ -34,7 +34,7 @@ enum DBResult {
 }
 
 /// Responsible for working with postgresql database
-pub struct PgSql {
+pub(crate) struct PgSql {
     /// Client for connection to database.
     client: Option<Client>,
     /// Connection config.
@@ -48,17 +48,11 @@ pub struct PgSql {
 }
 
 /// Statement to database
-pub struct PgStatement {
+pub(crate) struct PgStatement {
     /// Statement to database
     statement: Statement,
     /// Sql query to database
     sql: String,
-}
-
-/// Search correct type to query
-pub enum PgKeyStatement<'a> {
-    Key(&'a PgStatement),
-    Query(&'a str),
 }
 
 /// Names of columns

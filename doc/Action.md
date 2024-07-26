@@ -21,6 +21,8 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | set_lang | no || Setting data for rendering an HTML page from translation |
 | 𝑓 | set_lang_arr | no || Setting the array data for rendering an HTML page from translation |
 | 𝑓 | route | yes | String | Get the URL for the controller |
+| 𝑓 | write | yes | | Write data to the output stream |
+| 𝑓 | spawn | no | | Spawns a new asynchronous task |
 | 𝑓 | render | no | Answer | Rendering an HTML page |
 | 𝑓 | mail | yes | bool| Sending an email |
 | . | request || Request | Request parameters from the client and web server. More details [Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md) |
@@ -176,6 +178,46 @@ pub async fn get(this: &mut Action) -> Answer {
     let url = this.route("index", "article", "get", this.param, this.session.lang_id).await;
     this.set("show_more", url);
     this.render("short_article")
+}
+```
+___
+### write
+Write data to the output stream.  
+This function must be called if you want not to wait for the end of the execution of the entire controller, but to pass a partial response to the output stream for the client.  
+
+It is important to remember that after calling this function, no http headers can be passed.
+```rust
+async fn write(&mut self, answer: Answer)
+```
+* `answer: Answer` - intermediate data    
+More about __Answer__ [Answer.md](https://github.com/tryteex/tiny-web/blob/main/doc/Answer.md)  
+#### Example
+```rust
+pub async fn get(this: &mut Action) -> Answer {
+    this.write(Answer::String("Please wait a few seconds ....".to_owner())).await;
+    ...
+}
+```
+___
+### spawn
+Spawns a new asynchronous task, returning a [`tokio::task::JoinHandle`](https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html) for it.  
+The provided future will start running in the background immediately when `spawn` is called, even if you don't await the returned `JoinHandle`.
+```rust
+fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+```
+* `answer: Answer` - intermediate data    
+More about __Answer__ [Answer.md](https://github.com/tryteex/tiny-web/blob/main/doc/Answer.md)  
+#### Example
+```rust
+pub async fn get(this: &mut Action) -> Answer {
+
+    this.write(Answer::String("calc fibonacci(45)<br>".to_owned())).await;
+
+    let res = this.spawn(async move {
+        return fibonacci(45);
+    }).await.unwrap();
+
+    Answer::String(format!("res={}", res))
 }
 ```
 ___

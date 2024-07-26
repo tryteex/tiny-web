@@ -21,7 +21,7 @@ pub fn run(name: &str, version: &str, desc: &str, func: impl Fn() -> ActMap) {
 }
 
 /// Run application
-pub fn execute(name: &str, version: &str, desc: &str, func: &impl Fn() -> ActMap, allow_no_config: bool) -> Option<App> {
+fn execute(name: &str, version: &str, desc: &str, func: &impl Fn() -> ActMap, allow_no_config: bool) -> Option<App> {
     let app = match App::new(name, version, desc, allow_no_config) {
         Some(a) => a,
         None => return None,

@@ -1,5 +1,5 @@
 /// Responsible for simple help message:
-pub struct Help;
+pub(crate) struct Help;
 
 impl Help {
     /// Show imple help message in console.

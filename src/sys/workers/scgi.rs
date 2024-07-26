@@ -8,13 +8,13 @@ use crate::sys::{
 pub const SCGI_LEN_PACKAGE_SIZE: usize = 7;
 
 /// SCGI protocol
-pub struct Net;
+pub(crate) struct Net;
 /// Alias for SCGI protocol
 type Scgi = Net;
 
 impl Net {
     /// The entry point in the SCGI protocol
-    pub async fn run(mut stream_read: StreamRead, mut stream_write: StreamWrite, data: WorkerData) {
+    pub async fn run(mut stream_read: StreamRead, stream_write: Arc<StreamWrite>, data: WorkerData) {
         // Check package size
         let mut buf = stream_read.get(SCGI_LEN_PACKAGE_SIZE);
         while buf.len() < SCGI_LEN_PACKAGE_SIZE {
@@ -84,6 +84,7 @@ impl Net {
                 Some(c) => c,
                 None => return,
             };
+
         // Reads POST data
         let (post, file) = match Scgi::read_input(&mut stream_read, content_type, content_len).await {
             Some(c) => c,
@@ -102,10 +103,16 @@ impl Net {
             mail: Arc::clone(&data.mail),
             request,
             session,
+            tx: Arc::clone(&stream_write.tx),
         };
+
         // Run main controller
         let answer = Worker::call_action(data).await;
-        stream_write.write(&answer).await.unwrap_or(0);
+        stream_write.write(answer).await;
+    }
+
+    pub fn write(answer: Vec<u8>, _end: bool) -> Vec<u8> {
+        answer
     }
 
     /// Read post and file datas from SCGI record.

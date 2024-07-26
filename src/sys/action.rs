@@ -11,7 +11,11 @@ use tiny_web_macro::fnv1a_64;
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::{fs::remove_file, sync::Mutex};
+use tokio::{
+    fs::remove_file,
+    sync::{mpsc::Sender, Mutex},
+    task::{yield_now, JoinHandle},
+};
 
 use crate::{fnv1a_64, StrOrI64};
 
@@ -23,6 +27,7 @@ use super::{
     log::Log,
     mail::{Mail, MailMessage, MailProvider},
     session::Session,
+    worker::{MessageWrite, Worker},
 };
 
 /// Type of one controler. Use in engine.
@@ -238,7 +243,7 @@ pub struct Response {
 
 /// Data to run Action (Main controler)
 #[derive(Debug)]
-pub struct ActionData {
+pub(crate) struct ActionData {
     /// Engine - binary tree of controller functions.
     pub engine: Arc<ActMap>,
     /// I18n system.
@@ -259,6 +264,8 @@ pub struct ActionData {
     pub request: Request,
     /// Session value.
     pub session: Option<String>,
+    /// Sender data to output stream
+    pub(crate) tx: Arc<Sender<MessageWrite>>,
 }
 
 /// Route of request
@@ -370,6 +377,11 @@ pub struct Action {
 
     /// Internal call of controller
     pub internal: bool,
+
+    /// Sender data to output stream
+    pub(crate) tx: Arc<Sender<MessageWrite>>,
+    /// Header was sended
+    pub(crate) header_send: bool,
 }
 
 impl Action {
@@ -391,9 +403,9 @@ impl Action {
         };
         let lang_id = data.lang.default as i64;
         let mut session = if let Some(session) = data.session {
-            Session::load_session(session.clone(), Arc::clone(&data.db), lang_id).await
+            Session::load_session(session.clone(), Arc::clone(&data.db), lang_id, data.session_key).await
         } else {
-            Session::new(lang_id, &data.salt, &data.request.ip, &data.request.agent, &data.request.host)
+            Session::new(lang_id, &data.salt, &data.request.ip, &data.request.agent, &data.request.host, data.session_key)
         };
         // Module, class and action (controller) from URL
         let route = match Action::extract_route(&data.request, Arc::clone(&data.cache), Arc::clone(&data.db)).await {
@@ -445,7 +457,11 @@ impl Action {
             cache: Cache::new(data.cache),
             db: data.db,
             mail: data.mail,
+
             internal: false,
+
+            tx: data.tx,
+            header_send: false,
         })
     }
 
@@ -992,6 +1008,32 @@ impl Action {
             }
             self.data.insert(idkey, Data::String(key.to_str().to_owned()));
         }
+    }
+
+    /// Spawns a new asynchronous task, returning a
+    /// [`tokio::task::JoinHandle`](tokio::task::JoinHandle) for it.
+    ///
+    /// The provided future will start running in the background immediately
+    /// when `spawn` is called, even if you don't await the returned
+    /// `JoinHandle`.
+    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        tokio::spawn(future)
+    }
+
+    /// Write data to the output stream
+    pub async fn write(&mut self, answer: Answer) {
+        let vec = match answer {
+            Answer::None => return,
+            Answer::String(str) => str.as_bytes().to_vec(),
+            Answer::Raw(raw) => raw,
+        };
+        Worker::write(self, vec).await;
+        self.header_send = true;
+        yield_now().await;
     }
 
     /// Render template

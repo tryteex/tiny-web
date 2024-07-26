@@ -27,14 +27,14 @@ use super::{
 /// * `IpAddr: IpAddr` - Accepts a specific IP address;
 /// * `UDS` - Accepts only from Unix Domain Socket.
 #[derive(Debug, Clone)]
-pub enum AcceptAddr {
+pub(crate) enum AcceptAddr {
     /// Accepts any IP address.
     Any,
     /// Accepts a specific IP address;
     IpAddr(IpAddr),
     /// Accepts only from Unix Domain Socket.
     #[cfg(not(target_family = "windows"))]
-    UDS,
+    Uds,
 }
 
 /// Responsible for the IP address.
@@ -44,12 +44,12 @@ pub enum AcceptAddr {
 /// * `SocketAddr` - Accepts any socket address;
 /// * `UDS: String` - Accepts only from Unix Domain Socket.
 #[derive(Debug, Clone)]
-pub enum Addr {
+pub(crate) enum Addr {
     /// Accepts any IP address.
     SocketAddr(SocketAddr),
     /// Accepts only from Unix Domain Socket.
     #[cfg(not(target_family = "windows"))]
-    UDS(String),
+    Uds(String),
 }
 
 /// Responsible for database configuration data.
@@ -65,7 +65,7 @@ pub enum Addr {
 /// * `sslmode: bool` - Use for sslmode=require when connecting to the database;
 /// * `max: SysCount` - The number of connections that will be used in the pool;
 #[derive(Debug, Clone)]
-pub struct DBConfig {
+pub(crate) struct DBConfig {
     /// Engine of database.
     pub engine: DBEngine,
     /// Host of database.
@@ -86,7 +86,7 @@ pub struct DBConfig {
 
 /// Describes the server configuration.
 #[derive(Debug, Clone)]
-pub struct Config {
+pub(crate) struct Config {
     pub is_default: bool,
     /// Name server from env!("CARGO_PKG_NAME") primary project.
     pub name: String,
@@ -96,8 +96,6 @@ pub struct Config {
     pub version: String,
     /// Default language.
     pub lang: Arc<String>,
-    /// Path to log file.
-    pub log: String,
     /// Number of work processes in async operations.
     pub max: usize,
     /// The address from which we accept working connections.
@@ -150,7 +148,6 @@ impl Config {
             desc: desc.to_owned(),
             version: version.to_owned(),
             lang: Arc::new("en".to_owned()),
-            log,
             max: num_cpus,
             bind_accept: Arc::new(bind_accept),
             bind,
@@ -177,7 +174,7 @@ impl Config {
 /// * `Help` - Display a short help on starting the server;
 /// * `Go` - Start the server in interactive mode.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Mode {
+pub(crate) enum Mode {
     /// Start the server.
     Start,
     /// Stop the server.
@@ -201,7 +198,7 @@ pub enum Mode {
 /// * `conf_file: String` - The full path to configuration file;
 /// * `root_path: String` - The full path to the folder where the server was started.
 #[derive(Debug, Clone)]
-pub struct Init {
+pub(crate) struct Init {
     /// Running mode of server.
     pub mode: Mode,
     /// Server configuration.
@@ -210,8 +207,6 @@ pub struct Init {
     pub exe_path: String,
     /// The full path to this executable file.
     pub exe_file: String,
-    /// The full path to configuration file.
-    pub conf_file: Option<String>,
     /// The full path to the folder where the server was started.
     pub root_path: Arc<String>,
 }
@@ -296,7 +291,6 @@ impl Init {
                                             desc,
                                             allow_no_config,
                                         )?;
-                                        conf_file = Some(file);
                                     }
                                     None => {
                                         Log::stop(13, None);
@@ -323,7 +317,6 @@ impl Init {
                         }
                     };
                 } else {
-                    conf_file = None;
                     root_path = String::new();
                     conf = Config::default(name, version, desc);
                 }
@@ -335,7 +328,6 @@ impl Init {
             conf,
             exe_file,
             exe_path,
-            conf_file,
             root_path: Arc::new(root_path),
         })
     }
@@ -527,7 +519,7 @@ impl Init {
                             if val.is_empty() {
                                 #[cfg(not(target_family = "windows"))]
                                 {
-                                    bind_accept = AcceptAddr::UDS;
+                                    bind_accept = AcceptAddr::Uds;
                                 }
                                 #[cfg(target_family = "windows")]
                                 {
@@ -565,7 +557,7 @@ impl Init {
                                 if val.is_empty() || &val[..1] != "/" {
                                     Log::warning(54, None);
                                 } else {
-                                    bind = Addr::UDS(val);
+                                    bind = Addr::Uds(val);
                                 }
                             }
                         } else {
@@ -577,7 +569,7 @@ impl Init {
                             if val.is_empty() {
                                 #[cfg(not(target_family = "windows"))]
                                 {
-                                    rpc_accept = AcceptAddr::UDS;
+                                    rpc_accept = AcceptAddr::Uds;
                                 }
                                 #[cfg(target_family = "windows")]
                                 {
@@ -615,7 +607,7 @@ impl Init {
                                 if val.is_empty() || &val[..1] != "/" {
                                     Log::warning(56, None);
                                 } else {
-                                    rpc = Addr::UDS(val);
+                                    rpc = Addr::Uds(val);
                                 }
                             }
                         } else {
@@ -778,7 +770,6 @@ impl Init {
             desc: desc.to_owned(),
             version: version.to_owned(),
             lang: Arc::new(lang),
-            log,
             max,
             bind_accept: Arc::new(bind_accept),
             bind,

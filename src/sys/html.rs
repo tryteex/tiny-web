@@ -23,7 +23,7 @@ use super::{
 /// * `Index` - Index of loop.
 /// * `Dump` - Dump of value.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Filter {
+pub(crate) enum Filter {
     /// None filter
     None,
     /// Do not escape the output
@@ -47,7 +47,7 @@ pub enum Filter {
 /// * `Number(i64)` - i64 value.
 /// * `Value { name: Vec<String>, filter: Filter }` - Variable name and its filter.
 #[derive(Debug, Clone)]
-pub enum Value {
+pub(crate) enum Value {
     /// i64 value
     Number(i64),
     /// Variable name and its filter
@@ -63,7 +63,7 @@ pub enum Value {
 /// * `nodes: Nodes` - Nodes inside a loop.
 /// * `empty: Option<Nodes>` - Nodes that will be executed if the cycle is empty.
 #[derive(Debug, Clone)]
-pub struct For {
+pub(crate) struct For {
     /// The value
     name: Value,
     /// Local (inside) name of value
@@ -86,21 +86,21 @@ pub struct For {
 /// * `Gt` - `>`.
 /// * `Ge` - `>=`.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Eq {
+pub(crate) enum Eq {
     /// None comparisons
     None,
     /// `==`
-    Eq,
+    Equal,
     /// `!=`
-    Ne,
+    NotEqual,
     /// `<`
-    Lt,
+    LessThan,
     /// `<=`
-    Le,
+    LessThanOrEqual,
     /// `>`
-    Gt,
+    GreaterThan,
     /// `>=`
-    Ge,
+    GreaterThanOrEqual,
 }
 
 /// Condition for `If`
@@ -111,7 +111,7 @@ pub enum Eq {
 /// * `eq: Eq` - Equality comparisons.
 /// * `other: Option<Value>` - Second values if needed.
 #[derive(Debug, Clone)]
-pub struct ExpValue {
+pub(crate) struct ExpValue {
     /// Value
     val: Value,
     /// Equality comparisons
@@ -127,7 +127,7 @@ pub struct ExpValue {
 /// * `val: ExpValue` - Condition for `If`.
 /// * `nodes: Nodes` - Nodes if true.
 #[derive(Debug, Clone)]
-pub struct Exp {
+pub(crate) struct Exp {
     /// Condition for `If`
     val: ExpValue,
     /// Nodes if true
@@ -141,7 +141,7 @@ pub struct Exp {
 /// * `exp: Vec<Exp>` - List of expression for `If`.
 /// * `else_exp: Option<Nodes>` - Nodes if else.
 #[derive(Debug, Clone)]
-pub struct If {
+pub(crate) struct If {
     /// List of expression for `If`
     exp: Vec<Exp>,
     /// Nodes if else
@@ -156,7 +156,7 @@ pub struct If {
 /// * `begin: bool` - Trim text in front.
 /// * `end: bool` - Trim the text at the back.
 #[derive(Debug, Clone)]
-pub struct EchoValue {
+pub(crate) struct EchoValue {
     /// Value
     val: Value,
     /// Trim text in front
@@ -174,7 +174,7 @@ pub struct EchoValue {
 /// * `For(For)` - For value.
 /// * `IF(If)` - If value.
 #[derive(Debug, Clone)]
-pub enum Node {
+pub(crate) enum Node {
     /// Simple text
     Text(String),
     /// Echo value
@@ -226,7 +226,7 @@ struct Item {
 }
 
 /// Template nodes
-pub type Nodes = Vec<Node>;
+pub(crate) type Nodes = Vec<Node>;
 
 /// Html template marker
 ///
@@ -234,7 +234,7 @@ pub type Nodes = Vec<Node>;
 ///
 /// * `list: BTreeMap<i64, BTreeMap<i64, Arc<BTreeMap<i64, Nodes>>>>` - List of templates.
 #[derive(Debug)]
-pub struct Html {
+pub(crate) struct Html {
     /// List of templates
     ///
     /// # Index
@@ -802,13 +802,13 @@ impl Html {
             let val = unsafe { res.get_unchecked(0).to_string() };
             let val = Html::get_val(&val, Some(true))?;
             let eq = match unsafe { *res.get_unchecked(1) } {
-                ">" => Eq::Gt,
-                ">=" => Eq::Ge,
-                "<" => Eq::Lt,
-                "<=" => Eq::Le,
-                "=" => Eq::Eq,
-                "==" => Eq::Eq,
-                "!=" => Eq::Ne,
+                ">" => Eq::GreaterThan,
+                ">=" => Eq::GreaterThanOrEqual,
+                "<" => Eq::LessThan,
+                "<=" => Eq::LessThanOrEqual,
+                "=" => Eq::Equal,
+                "==" => Eq::Equal,
+                "!=" => Eq::NotEqual,
                 _ => return None,
             };
             let other = unsafe { res.get_unchecked(2).to_string() };
@@ -1330,66 +1330,66 @@ impl Html {
         match first {
             Data::Usize(u1) => match second {
                 Data::Usize(u2) => match eq {
-                    Eq::Eq => *u1 == *u2,
-                    Eq::Ne => *u1 != *u2,
-                    Eq::Lt => *u1 < *u2,
-                    Eq::Le => *u1 <= *u2,
-                    Eq::Gt => *u1 > *u2,
-                    Eq::Ge => *u1 >= *u2,
+                    Eq::Equal => *u1 == *u2,
+                    Eq::NotEqual => *u1 != *u2,
+                    Eq::LessThan => *u1 < *u2,
+                    Eq::LessThanOrEqual => *u1 <= *u2,
+                    Eq::GreaterThan => *u1 > *u2,
+                    Eq::GreaterThanOrEqual => *u1 >= *u2,
                     _ => false,
                 },
                 Data::I16(i2) => match usize::try_from(*i2) {
                     Ok(u2) => match eq {
-                        Eq::Eq => *u1 == u2,
-                        Eq::Ne => *u1 != u2,
-                        Eq::Lt => *u1 < u2,
-                        Eq::Le => *u1 <= u2,
-                        Eq::Gt => *u1 > u2,
-                        Eq::Ge => *u1 >= u2,
+                        Eq::Equal => *u1 == u2,
+                        Eq::NotEqual => *u1 != u2,
+                        Eq::LessThan => *u1 < u2,
+                        Eq::LessThanOrEqual => *u1 <= u2,
+                        Eq::GreaterThan => *u1 > u2,
+                        Eq::GreaterThanOrEqual => *u1 >= u2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::I32(i2) => match usize::try_from(*i2) {
                     Ok(u2) => match eq {
-                        Eq::Eq => *u1 == u2,
-                        Eq::Ne => *u1 != u2,
-                        Eq::Lt => *u1 < u2,
-                        Eq::Le => *u1 <= u2,
-                        Eq::Gt => *u1 > u2,
-                        Eq::Ge => *u1 >= u2,
+                        Eq::Equal => *u1 == u2,
+                        Eq::NotEqual => *u1 != u2,
+                        Eq::LessThan => *u1 < u2,
+                        Eq::LessThanOrEqual => *u1 <= u2,
+                        Eq::GreaterThan => *u1 > u2,
+                        Eq::GreaterThanOrEqual => *u1 >= u2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::I64(i2) => match usize::try_from(*i2) {
                     Ok(u2) => match eq {
-                        Eq::Eq => *u1 == u2,
-                        Eq::Ne => *u1 != u2,
-                        Eq::Lt => *u1 < u2,
-                        Eq::Le => *u1 <= u2,
-                        Eq::Gt => *u1 > u2,
-                        Eq::Ge => *u1 >= u2,
+                        Eq::Equal => *u1 == u2,
+                        Eq::NotEqual => *u1 != u2,
+                        Eq::LessThan => *u1 < u2,
+                        Eq::LessThanOrEqual => *u1 <= u2,
+                        Eq::GreaterThan => *u1 > u2,
+                        Eq::GreaterThanOrEqual => *u1 >= u2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::F32(f2) => match eq {
-                    Eq::Eq => *u1 == ((*f2).floor() as usize),
-                    Eq::Ne => *u1 != ((*f2).floor() as usize),
-                    Eq::Lt => *u1 < ((*f2).floor() as usize),
-                    Eq::Le => *u1 <= ((*f2).floor() as usize),
-                    Eq::Gt => *u1 > ((*f2).floor() as usize),
-                    Eq::Ge => *u1 >= ((*f2).floor() as usize),
+                    Eq::Equal => *u1 == ((*f2).floor() as usize),
+                    Eq::NotEqual => *u1 != ((*f2).floor() as usize),
+                    Eq::LessThan => *u1 < ((*f2).floor() as usize),
+                    Eq::LessThanOrEqual => *u1 <= ((*f2).floor() as usize),
+                    Eq::GreaterThan => *u1 > ((*f2).floor() as usize),
+                    Eq::GreaterThanOrEqual => *u1 >= ((*f2).floor() as usize),
                     _ => false,
                 },
                 Data::F64(f2) => match eq {
-                    Eq::Eq => *u1 == ((*f2).floor() as usize),
-                    Eq::Ne => *u1 != ((*f2).floor() as usize),
-                    Eq::Lt => *u1 < ((*f2).floor() as usize),
-                    Eq::Le => *u1 <= ((*f2).floor() as usize),
-                    Eq::Gt => *u1 > ((*f2).floor() as usize),
-                    Eq::Ge => *u1 >= ((*f2).floor() as usize),
+                    Eq::Equal => *u1 == ((*f2).floor() as usize),
+                    Eq::NotEqual => *u1 != ((*f2).floor() as usize),
+                    Eq::LessThan => *u1 < ((*f2).floor() as usize),
+                    Eq::LessThanOrEqual => *u1 <= ((*f2).floor() as usize),
+                    Eq::GreaterThan => *u1 > ((*f2).floor() as usize),
+                    Eq::GreaterThanOrEqual => *u1 >= ((*f2).floor() as usize),
                     _ => false,
                 },
                 _ => false,
@@ -1397,65 +1397,65 @@ impl Html {
             Data::I16(i1) => match second {
                 Data::Usize(u2) => match i16::try_from(*u2) {
                     Ok(i2) => match eq {
-                        Eq::Eq => *i1 == i2,
-                        Eq::Ne => *i1 != i2,
-                        Eq::Lt => *i1 < i2,
-                        Eq::Le => *i1 <= i2,
-                        Eq::Gt => *i1 > i2,
-                        Eq::Ge => *i1 >= i2,
+                        Eq::Equal => *i1 == i2,
+                        Eq::NotEqual => *i1 != i2,
+                        Eq::LessThan => *i1 < i2,
+                        Eq::LessThanOrEqual => *i1 <= i2,
+                        Eq::GreaterThan => *i1 > i2,
+                        Eq::GreaterThanOrEqual => *i1 >= i2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::I16(i2) => match eq {
-                    Eq::Eq => *i1 == *i2,
-                    Eq::Ne => *i1 != *i2,
-                    Eq::Lt => *i1 < *i2,
-                    Eq::Le => *i1 <= *i2,
-                    Eq::Gt => *i1 > *i2,
-                    Eq::Ge => *i1 >= *i2,
+                    Eq::Equal => *i1 == *i2,
+                    Eq::NotEqual => *i1 != *i2,
+                    Eq::LessThan => *i1 < *i2,
+                    Eq::LessThanOrEqual => *i1 <= *i2,
+                    Eq::GreaterThan => *i1 > *i2,
+                    Eq::GreaterThanOrEqual => *i1 >= *i2,
                     _ => false,
                 },
                 Data::I32(i2) => match i16::try_from(*i2) {
                     Ok(i2) => match eq {
-                        Eq::Eq => *i1 == i2,
-                        Eq::Ne => *i1 != i2,
-                        Eq::Lt => *i1 < i2,
-                        Eq::Le => *i1 <= i2,
-                        Eq::Gt => *i1 > i2,
-                        Eq::Ge => *i1 >= i2,
+                        Eq::Equal => *i1 == i2,
+                        Eq::NotEqual => *i1 != i2,
+                        Eq::LessThan => *i1 < i2,
+                        Eq::LessThanOrEqual => *i1 <= i2,
+                        Eq::GreaterThan => *i1 > i2,
+                        Eq::GreaterThanOrEqual => *i1 >= i2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::I64(i2) => match i16::try_from(*i2) {
                     Ok(i2) => match eq {
-                        Eq::Eq => *i1 == i2,
-                        Eq::Ne => *i1 != i2,
-                        Eq::Lt => *i1 < i2,
-                        Eq::Le => *i1 <= i2,
-                        Eq::Gt => *i1 > i2,
-                        Eq::Ge => *i1 >= i2,
+                        Eq::Equal => *i1 == i2,
+                        Eq::NotEqual => *i1 != i2,
+                        Eq::LessThan => *i1 < i2,
+                        Eq::LessThanOrEqual => *i1 <= i2,
+                        Eq::GreaterThan => *i1 > i2,
+                        Eq::GreaterThanOrEqual => *i1 >= i2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::F32(f2) => match eq {
-                    Eq::Eq => *i1 == ((*f2).floor() as i16),
-                    Eq::Ne => *i1 != ((*f2).floor() as i16),
-                    Eq::Lt => *i1 < ((*f2).floor() as i16),
-                    Eq::Le => *i1 <= ((*f2).floor() as i16),
-                    Eq::Gt => *i1 > ((*f2).floor() as i16),
-                    Eq::Ge => *i1 >= ((*f2).floor() as i16),
+                    Eq::Equal => *i1 == ((*f2).floor() as i16),
+                    Eq::NotEqual => *i1 != ((*f2).floor() as i16),
+                    Eq::LessThan => *i1 < ((*f2).floor() as i16),
+                    Eq::LessThanOrEqual => *i1 <= ((*f2).floor() as i16),
+                    Eq::GreaterThan => *i1 > ((*f2).floor() as i16),
+                    Eq::GreaterThanOrEqual => *i1 >= ((*f2).floor() as i16),
                     _ => false,
                 },
                 Data::F64(f2) => match eq {
-                    Eq::Eq => *i1 == ((*f2).floor() as i16),
-                    Eq::Ne => *i1 != ((*f2).floor() as i16),
-                    Eq::Lt => *i1 < ((*f2).floor() as i16),
-                    Eq::Le => *i1 <= ((*f2).floor() as i16),
-                    Eq::Gt => *i1 > ((*f2).floor() as i16),
-                    Eq::Ge => *i1 >= ((*f2).floor() as i16),
+                    Eq::Equal => *i1 == ((*f2).floor() as i16),
+                    Eq::NotEqual => *i1 != ((*f2).floor() as i16),
+                    Eq::LessThan => *i1 < ((*f2).floor() as i16),
+                    Eq::LessThanOrEqual => *i1 <= ((*f2).floor() as i16),
+                    Eq::GreaterThan => *i1 > ((*f2).floor() as i16),
+                    Eq::GreaterThanOrEqual => *i1 >= ((*f2).floor() as i16),
                     _ => false,
                 },
                 _ => false,
@@ -1463,62 +1463,62 @@ impl Html {
             Data::I32(i1) => match second {
                 Data::Usize(u2) => match i32::try_from(*u2) {
                     Ok(i2) => match eq {
-                        Eq::Eq => *i1 == i2,
-                        Eq::Ne => *i1 != i2,
-                        Eq::Lt => *i1 < i2,
-                        Eq::Le => *i1 <= i2,
-                        Eq::Gt => *i1 > i2,
-                        Eq::Ge => *i1 >= i2,
+                        Eq::Equal => *i1 == i2,
+                        Eq::NotEqual => *i1 != i2,
+                        Eq::LessThan => *i1 < i2,
+                        Eq::LessThanOrEqual => *i1 <= i2,
+                        Eq::GreaterThan => *i1 > i2,
+                        Eq::GreaterThanOrEqual => *i1 >= i2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::I16(i2) => match eq {
-                    Eq::Eq => *i1 == (*i2 as i32),
-                    Eq::Ne => *i1 != (*i2 as i32),
-                    Eq::Lt => *i1 < (*i2 as i32),
-                    Eq::Le => *i1 <= (*i2 as i32),
-                    Eq::Gt => *i1 > (*i2 as i32),
-                    Eq::Ge => *i1 >= (*i2 as i32),
+                    Eq::Equal => *i1 == (*i2 as i32),
+                    Eq::NotEqual => *i1 != (*i2 as i32),
+                    Eq::LessThan => *i1 < (*i2 as i32),
+                    Eq::LessThanOrEqual => *i1 <= (*i2 as i32),
+                    Eq::GreaterThan => *i1 > (*i2 as i32),
+                    Eq::GreaterThanOrEqual => *i1 >= (*i2 as i32),
                     _ => false,
                 },
                 Data::I32(i2) => match eq {
-                    Eq::Eq => *i1 == *i2,
-                    Eq::Ne => *i1 != *i2,
-                    Eq::Lt => *i1 < *i2,
-                    Eq::Le => *i1 <= *i2,
-                    Eq::Gt => *i1 > *i2,
-                    Eq::Ge => *i1 >= *i2,
+                    Eq::Equal => *i1 == *i2,
+                    Eq::NotEqual => *i1 != *i2,
+                    Eq::LessThan => *i1 < *i2,
+                    Eq::LessThanOrEqual => *i1 <= *i2,
+                    Eq::GreaterThan => *i1 > *i2,
+                    Eq::GreaterThanOrEqual => *i1 >= *i2,
                     _ => false,
                 },
                 Data::I64(i2) => match i32::try_from(*i2) {
                     Ok(i2) => match eq {
-                        Eq::Eq => *i1 == i2,
-                        Eq::Ne => *i1 != i2,
-                        Eq::Lt => *i1 < i2,
-                        Eq::Le => *i1 <= i2,
-                        Eq::Gt => *i1 > i2,
-                        Eq::Ge => *i1 >= i2,
+                        Eq::Equal => *i1 == i2,
+                        Eq::NotEqual => *i1 != i2,
+                        Eq::LessThan => *i1 < i2,
+                        Eq::LessThanOrEqual => *i1 <= i2,
+                        Eq::GreaterThan => *i1 > i2,
+                        Eq::GreaterThanOrEqual => *i1 >= i2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::F32(f2) => match eq {
-                    Eq::Eq => *i1 == ((*f2).floor() as i32),
-                    Eq::Ne => *i1 != ((*f2).floor() as i32),
-                    Eq::Lt => *i1 < ((*f2).floor() as i32),
-                    Eq::Le => *i1 <= ((*f2).floor() as i32),
-                    Eq::Gt => *i1 > ((*f2).floor() as i32),
-                    Eq::Ge => *i1 >= ((*f2).floor() as i32),
+                    Eq::Equal => *i1 == ((*f2).floor() as i32),
+                    Eq::NotEqual => *i1 != ((*f2).floor() as i32),
+                    Eq::LessThan => *i1 < ((*f2).floor() as i32),
+                    Eq::LessThanOrEqual => *i1 <= ((*f2).floor() as i32),
+                    Eq::GreaterThan => *i1 > ((*f2).floor() as i32),
+                    Eq::GreaterThanOrEqual => *i1 >= ((*f2).floor() as i32),
                     _ => false,
                 },
                 Data::F64(f2) => match eq {
-                    Eq::Eq => *i1 == ((*f2).floor() as i32),
-                    Eq::Ne => *i1 != ((*f2).floor() as i32),
-                    Eq::Lt => *i1 < ((*f2).floor() as i32),
-                    Eq::Le => *i1 <= ((*f2).floor() as i32),
-                    Eq::Gt => *i1 > ((*f2).floor() as i32),
-                    Eq::Ge => *i1 >= ((*f2).floor() as i32),
+                    Eq::Equal => *i1 == ((*f2).floor() as i32),
+                    Eq::NotEqual => *i1 != ((*f2).floor() as i32),
+                    Eq::LessThan => *i1 < ((*f2).floor() as i32),
+                    Eq::LessThanOrEqual => *i1 <= ((*f2).floor() as i32),
+                    Eq::GreaterThan => *i1 > ((*f2).floor() as i32),
+                    Eq::GreaterThanOrEqual => *i1 >= ((*f2).floor() as i32),
                     _ => false,
                 },
                 _ => false,
@@ -1526,205 +1526,205 @@ impl Html {
             Data::I64(i1) => match second {
                 Data::Usize(u2) => match i64::try_from(*u2) {
                     Ok(i2) => match eq {
-                        Eq::Eq => *i1 == i2,
-                        Eq::Ne => *i1 != i2,
-                        Eq::Lt => *i1 < i2,
-                        Eq::Le => *i1 <= i2,
-                        Eq::Gt => *i1 > i2,
-                        Eq::Ge => *i1 >= i2,
+                        Eq::Equal => *i1 == i2,
+                        Eq::NotEqual => *i1 != i2,
+                        Eq::LessThan => *i1 < i2,
+                        Eq::LessThanOrEqual => *i1 <= i2,
+                        Eq::GreaterThan => *i1 > i2,
+                        Eq::GreaterThanOrEqual => *i1 >= i2,
                         _ => false,
                     },
                     Err(_) => false,
                 },
                 Data::I16(i2) => match eq {
-                    Eq::Eq => *i1 == (*i2 as i64),
-                    Eq::Ne => *i1 != (*i2 as i64),
-                    Eq::Lt => *i1 < (*i2 as i64),
-                    Eq::Le => *i1 <= (*i2 as i64),
-                    Eq::Gt => *i1 > (*i2 as i64),
-                    Eq::Ge => *i1 >= (*i2 as i64),
+                    Eq::Equal => *i1 == (*i2 as i64),
+                    Eq::NotEqual => *i1 != (*i2 as i64),
+                    Eq::LessThan => *i1 < (*i2 as i64),
+                    Eq::LessThanOrEqual => *i1 <= (*i2 as i64),
+                    Eq::GreaterThan => *i1 > (*i2 as i64),
+                    Eq::GreaterThanOrEqual => *i1 >= (*i2 as i64),
                     _ => false,
                 },
                 Data::I32(i2) => match eq {
-                    Eq::Eq => *i1 == (*i2 as i64),
-                    Eq::Ne => *i1 != (*i2 as i64),
-                    Eq::Lt => *i1 < (*i2 as i64),
-                    Eq::Le => *i1 <= (*i2 as i64),
-                    Eq::Gt => *i1 > (*i2 as i64),
-                    Eq::Ge => *i1 >= (*i2 as i64),
+                    Eq::Equal => *i1 == (*i2 as i64),
+                    Eq::NotEqual => *i1 != (*i2 as i64),
+                    Eq::LessThan => *i1 < (*i2 as i64),
+                    Eq::LessThanOrEqual => *i1 <= (*i2 as i64),
+                    Eq::GreaterThan => *i1 > (*i2 as i64),
+                    Eq::GreaterThanOrEqual => *i1 >= (*i2 as i64),
                     _ => false,
                 },
                 Data::I64(i2) => match eq {
-                    Eq::Eq => *i1 == *i2,
-                    Eq::Ne => *i1 != *i2,
-                    Eq::Lt => *i1 < *i2,
-                    Eq::Le => *i1 <= *i2,
-                    Eq::Gt => *i1 > *i2,
-                    Eq::Ge => *i1 >= *i2,
+                    Eq::Equal => *i1 == *i2,
+                    Eq::NotEqual => *i1 != *i2,
+                    Eq::LessThan => *i1 < *i2,
+                    Eq::LessThanOrEqual => *i1 <= *i2,
+                    Eq::GreaterThan => *i1 > *i2,
+                    Eq::GreaterThanOrEqual => *i1 >= *i2,
                     _ => false,
                 },
                 Data::F32(f2) => match eq {
-                    Eq::Eq => *i1 == ((*f2).floor() as i64),
-                    Eq::Ne => *i1 != ((*f2).floor() as i64),
-                    Eq::Lt => *i1 < ((*f2).floor() as i64),
-                    Eq::Le => *i1 <= ((*f2).floor() as i64),
-                    Eq::Gt => *i1 > ((*f2).floor() as i64),
-                    Eq::Ge => *i1 >= ((*f2).floor() as i64),
+                    Eq::Equal => *i1 == ((*f2).floor() as i64),
+                    Eq::NotEqual => *i1 != ((*f2).floor() as i64),
+                    Eq::LessThan => *i1 < ((*f2).floor() as i64),
+                    Eq::LessThanOrEqual => *i1 <= ((*f2).floor() as i64),
+                    Eq::GreaterThan => *i1 > ((*f2).floor() as i64),
+                    Eq::GreaterThanOrEqual => *i1 >= ((*f2).floor() as i64),
                     _ => false,
                 },
                 Data::F64(f2) => match eq {
-                    Eq::Eq => *i1 == ((*f2).floor() as i64),
-                    Eq::Ne => *i1 != ((*f2).floor() as i64),
-                    Eq::Lt => *i1 < ((*f2).floor() as i64),
-                    Eq::Le => *i1 <= ((*f2).floor() as i64),
-                    Eq::Gt => *i1 > ((*f2).floor() as i64),
-                    Eq::Ge => *i1 >= ((*f2).floor() as i64),
+                    Eq::Equal => *i1 == ((*f2).floor() as i64),
+                    Eq::NotEqual => *i1 != ((*f2).floor() as i64),
+                    Eq::LessThan => *i1 < ((*f2).floor() as i64),
+                    Eq::LessThanOrEqual => *i1 <= ((*f2).floor() as i64),
+                    Eq::GreaterThan => *i1 > ((*f2).floor() as i64),
+                    Eq::GreaterThanOrEqual => *i1 >= ((*f2).floor() as i64),
                     _ => false,
                 },
                 _ => false,
             },
             Data::F32(f1) => match second {
                 Data::Usize(u2) => match eq {
-                    Eq::Eq => *f1 == (*u2 as f32),
-                    Eq::Ne => *f1 != (*u2 as f32),
-                    Eq::Lt => *f1 < (*u2 as f32),
-                    Eq::Le => *f1 <= (*u2 as f32),
-                    Eq::Gt => *f1 > (*u2 as f32),
-                    Eq::Ge => *f1 >= (*u2 as f32),
+                    Eq::Equal => *f1 == (*u2 as f32),
+                    Eq::NotEqual => *f1 != (*u2 as f32),
+                    Eq::LessThan => *f1 < (*u2 as f32),
+                    Eq::LessThanOrEqual => *f1 <= (*u2 as f32),
+                    Eq::GreaterThan => *f1 > (*u2 as f32),
+                    Eq::GreaterThanOrEqual => *f1 >= (*u2 as f32),
                     _ => false,
                 },
                 Data::I16(i2) => match eq {
-                    Eq::Eq => *f1 == (*i2 as f32),
-                    Eq::Ne => *f1 != (*i2 as f32),
-                    Eq::Lt => *f1 < (*i2 as f32),
-                    Eq::Le => *f1 <= (*i2 as f32),
-                    Eq::Gt => *f1 > (*i2 as f32),
-                    Eq::Ge => *f1 >= (*i2 as f32),
+                    Eq::Equal => *f1 == (*i2 as f32),
+                    Eq::NotEqual => *f1 != (*i2 as f32),
+                    Eq::LessThan => *f1 < (*i2 as f32),
+                    Eq::LessThanOrEqual => *f1 <= (*i2 as f32),
+                    Eq::GreaterThan => *f1 > (*i2 as f32),
+                    Eq::GreaterThanOrEqual => *f1 >= (*i2 as f32),
                     _ => false,
                 },
                 Data::I32(i2) => match eq {
-                    Eq::Eq => *f1 == (*i2 as f32),
-                    Eq::Ne => *f1 != (*i2 as f32),
-                    Eq::Lt => *f1 < (*i2 as f32),
-                    Eq::Le => *f1 <= (*i2 as f32),
-                    Eq::Gt => *f1 > (*i2 as f32),
-                    Eq::Ge => *f1 >= (*i2 as f32),
+                    Eq::Equal => *f1 == (*i2 as f32),
+                    Eq::NotEqual => *f1 != (*i2 as f32),
+                    Eq::LessThan => *f1 < (*i2 as f32),
+                    Eq::LessThanOrEqual => *f1 <= (*i2 as f32),
+                    Eq::GreaterThan => *f1 > (*i2 as f32),
+                    Eq::GreaterThanOrEqual => *f1 >= (*i2 as f32),
                     _ => false,
                 },
                 Data::I64(i2) => match eq {
-                    Eq::Eq => *f1 == (*i2 as f32),
-                    Eq::Ne => *f1 != (*i2 as f32),
-                    Eq::Lt => *f1 < (*i2 as f32),
-                    Eq::Le => *f1 <= (*i2 as f32),
-                    Eq::Gt => *f1 > (*i2 as f32),
-                    Eq::Ge => *f1 >= (*i2 as f32),
+                    Eq::Equal => *f1 == (*i2 as f32),
+                    Eq::NotEqual => *f1 != (*i2 as f32),
+                    Eq::LessThan => *f1 < (*i2 as f32),
+                    Eq::LessThanOrEqual => *f1 <= (*i2 as f32),
+                    Eq::GreaterThan => *f1 > (*i2 as f32),
+                    Eq::GreaterThanOrEqual => *f1 >= (*i2 as f32),
                     _ => false,
                 },
                 Data::F32(f2) => match eq {
-                    Eq::Eq => *f1 == *f2,
-                    Eq::Ne => *f1 != *f2,
-                    Eq::Lt => *f1 < *f2,
-                    Eq::Le => *f1 <= *f2,
-                    Eq::Gt => *f1 > *f2,
-                    Eq::Ge => *f1 >= *f2,
+                    Eq::Equal => *f1 == *f2,
+                    Eq::NotEqual => *f1 != *f2,
+                    Eq::LessThan => *f1 < *f2,
+                    Eq::LessThanOrEqual => *f1 <= *f2,
+                    Eq::GreaterThan => *f1 > *f2,
+                    Eq::GreaterThanOrEqual => *f1 >= *f2,
                     _ => false,
                 },
                 Data::F64(f2) => match eq {
-                    Eq::Eq => *f1 == (*f2 as f32),
-                    Eq::Ne => *f1 != (*f2 as f32),
-                    Eq::Lt => *f1 < (*f2 as f32),
-                    Eq::Le => *f1 <= (*f2 as f32),
-                    Eq::Gt => *f1 > (*f2 as f32),
-                    Eq::Ge => *f1 >= (*f2 as f32),
+                    Eq::Equal => *f1 == (*f2 as f32),
+                    Eq::NotEqual => *f1 != (*f2 as f32),
+                    Eq::LessThan => *f1 < (*f2 as f32),
+                    Eq::LessThanOrEqual => *f1 <= (*f2 as f32),
+                    Eq::GreaterThan => *f1 > (*f2 as f32),
+                    Eq::GreaterThanOrEqual => *f1 >= (*f2 as f32),
                     _ => false,
                 },
                 _ => false,
             },
             Data::F64(f1) => match second {
                 Data::Usize(u2) => match eq {
-                    Eq::Eq => *f1 == (*u2 as f64),
-                    Eq::Ne => *f1 != (*u2 as f64),
-                    Eq::Lt => *f1 < (*u2 as f64),
-                    Eq::Le => *f1 <= (*u2 as f64),
-                    Eq::Gt => *f1 > (*u2 as f64),
-                    Eq::Ge => *f1 >= (*u2 as f64),
+                    Eq::Equal => *f1 == (*u2 as f64),
+                    Eq::NotEqual => *f1 != (*u2 as f64),
+                    Eq::LessThan => *f1 < (*u2 as f64),
+                    Eq::LessThanOrEqual => *f1 <= (*u2 as f64),
+                    Eq::GreaterThan => *f1 > (*u2 as f64),
+                    Eq::GreaterThanOrEqual => *f1 >= (*u2 as f64),
                     _ => false,
                 },
                 Data::I16(i2) => match eq {
-                    Eq::Eq => *f1 == (*i2 as f64),
-                    Eq::Ne => *f1 != (*i2 as f64),
-                    Eq::Lt => *f1 < (*i2 as f64),
-                    Eq::Le => *f1 <= (*i2 as f64),
-                    Eq::Gt => *f1 > (*i2 as f64),
-                    Eq::Ge => *f1 >= (*i2 as f64),
+                    Eq::Equal => *f1 == (*i2 as f64),
+                    Eq::NotEqual => *f1 != (*i2 as f64),
+                    Eq::LessThan => *f1 < (*i2 as f64),
+                    Eq::LessThanOrEqual => *f1 <= (*i2 as f64),
+                    Eq::GreaterThan => *f1 > (*i2 as f64),
+                    Eq::GreaterThanOrEqual => *f1 >= (*i2 as f64),
                     _ => false,
                 },
                 Data::I32(i2) => match eq {
-                    Eq::Eq => *f1 == (*i2 as f64),
-                    Eq::Ne => *f1 != (*i2 as f64),
-                    Eq::Lt => *f1 < (*i2 as f64),
-                    Eq::Le => *f1 <= (*i2 as f64),
-                    Eq::Gt => *f1 > (*i2 as f64),
-                    Eq::Ge => *f1 >= (*i2 as f64),
+                    Eq::Equal => *f1 == (*i2 as f64),
+                    Eq::NotEqual => *f1 != (*i2 as f64),
+                    Eq::LessThan => *f1 < (*i2 as f64),
+                    Eq::LessThanOrEqual => *f1 <= (*i2 as f64),
+                    Eq::GreaterThan => *f1 > (*i2 as f64),
+                    Eq::GreaterThanOrEqual => *f1 >= (*i2 as f64),
                     _ => false,
                 },
                 Data::I64(i2) => match eq {
-                    Eq::Eq => *f1 == (*i2 as f64),
-                    Eq::Ne => *f1 != (*i2 as f64),
-                    Eq::Lt => *f1 < (*i2 as f64),
-                    Eq::Le => *f1 <= (*i2 as f64),
-                    Eq::Gt => *f1 > (*i2 as f64),
-                    Eq::Ge => *f1 >= (*i2 as f64),
+                    Eq::Equal => *f1 == (*i2 as f64),
+                    Eq::NotEqual => *f1 != (*i2 as f64),
+                    Eq::LessThan => *f1 < (*i2 as f64),
+                    Eq::LessThanOrEqual => *f1 <= (*i2 as f64),
+                    Eq::GreaterThan => *f1 > (*i2 as f64),
+                    Eq::GreaterThanOrEqual => *f1 >= (*i2 as f64),
                     _ => false,
                 },
                 Data::F32(f2) => match eq {
-                    Eq::Eq => *f1 == (*f2 as f64),
-                    Eq::Ne => *f1 != (*f2 as f64),
-                    Eq::Lt => *f1 < (*f2 as f64),
-                    Eq::Le => *f1 <= (*f2 as f64),
-                    Eq::Gt => *f1 > (*f2 as f64),
-                    Eq::Ge => *f1 >= (*f2 as f64),
+                    Eq::Equal => *f1 == (*f2 as f64),
+                    Eq::NotEqual => *f1 != (*f2 as f64),
+                    Eq::LessThan => *f1 < (*f2 as f64),
+                    Eq::LessThanOrEqual => *f1 <= (*f2 as f64),
+                    Eq::GreaterThan => *f1 > (*f2 as f64),
+                    Eq::GreaterThanOrEqual => *f1 >= (*f2 as f64),
                     _ => false,
                 },
                 Data::F64(f2) => match eq {
-                    Eq::Eq => *f1 == *f2,
-                    Eq::Ne => *f1 != *f2,
-                    Eq::Lt => *f1 < *f2,
-                    Eq::Le => *f1 <= *f2,
-                    Eq::Gt => *f1 > *f2,
-                    Eq::Ge => *f1 >= *f2,
+                    Eq::Equal => *f1 == *f2,
+                    Eq::NotEqual => *f1 != *f2,
+                    Eq::LessThan => *f1 < *f2,
+                    Eq::LessThanOrEqual => *f1 <= *f2,
+                    Eq::GreaterThan => *f1 > *f2,
+                    Eq::GreaterThanOrEqual => *f1 >= *f2,
                     _ => false,
                 },
                 _ => false,
             },
             Data::Bool(b1) => match second {
                 Data::Bool(b2) => match eq {
-                    Eq::Eq => *b1 == *b2,
-                    Eq::Ne => *b1 != *b2,
+                    Eq::Equal => *b1 == *b2,
+                    Eq::NotEqual => *b1 != *b2,
                     _ => false,
                 },
                 _ => false,
             },
             Data::Date(d1) => match second {
                 Data::Date(d2) => match eq {
-                    Eq::Eq => *d1 == *d2,
-                    Eq::Ne => *d1 != *d2,
-                    Eq::Lt => *d1 < *d2,
-                    Eq::Le => *d1 <= *d2,
-                    Eq::Gt => *d1 > *d2,
-                    Eq::Ge => *d1 >= *d2,
+                    Eq::Equal => *d1 == *d2,
+                    Eq::NotEqual => *d1 != *d2,
+                    Eq::LessThan => *d1 < *d2,
+                    Eq::LessThanOrEqual => *d1 <= *d2,
+                    Eq::GreaterThan => *d1 > *d2,
+                    Eq::GreaterThanOrEqual => *d1 >= *d2,
                     _ => false,
                 },
                 _ => false,
             },
             Data::String(s1) => match second {
                 Data::String(s2) => match eq {
-                    Eq::Eq => (*s1).eq(s2),
-                    Eq::Ne => (*s1).ne(s2),
-                    Eq::Lt => (*s1).lt(s2),
-                    Eq::Le => (*s1).le(s2),
-                    Eq::Gt => (*s1).gt(s2),
-                    Eq::Ge => (*s1).ge(s2),
+                    Eq::Equal => (*s1).eq(s2),
+                    Eq::NotEqual => (*s1).ne(s2),
+                    Eq::LessThan => (*s1).lt(s2),
+                    Eq::LessThanOrEqual => (*s1).le(s2),
+                    Eq::GreaterThan => (*s1).gt(s2),
+                    Eq::GreaterThanOrEqual => (*s1).ge(s2),
                     _ => false,
                 },
                 _ => false,

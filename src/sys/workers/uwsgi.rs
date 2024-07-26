@@ -8,13 +8,13 @@ use crate::sys::{
 pub const UWSGI_LEN_PACKAGE_SIZE: usize = 4;
 
 /// UWSGI protocol
-pub struct Net;
+pub(crate) struct Net;
 /// Alias for UWSGI protocol
 type Uwsgi = Net;
 
 impl Net {
     /// The entry point in the UWSGI protocol
-    pub async fn run(mut stream_read: StreamRead, mut stream_write: StreamWrite, data: WorkerData) {
+    pub async fn run(mut stream_read: StreamRead, stream_write: Arc<StreamWrite>, data: WorkerData) {
         loop {
             // Check package size
             let mut buf = stream_read.get(UWSGI_LEN_PACKAGE_SIZE);
@@ -37,6 +37,7 @@ impl Net {
                     Some(c) => c,
                     None => return,
                 };
+
             // Reads POST data
             let (post, file) = match Uwsgi::read_input(&mut stream_read, content_type, content_len).await {
                 Some(c) => c,
@@ -55,13 +56,17 @@ impl Net {
                 mail: Arc::clone(&data.mail),
                 request,
                 session,
+                tx: Arc::clone(&stream_write.tx),
             };
+
             // Run main controller
             let answer = Worker::call_action(data).await;
-            if stream_write.write(&answer).await.is_err() {
-                return;
-            }
+            stream_write.write(answer).await;
         }
+    }
+
+    pub fn write(answer: Vec<u8>, _end: bool) -> Vec<u8> {
+        answer
     }
 
     /// Read post and file datas from UWSGI record.

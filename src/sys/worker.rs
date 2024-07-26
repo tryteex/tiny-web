@@ -7,7 +7,11 @@ use tokio::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
     },
-    sync::Mutex,
+    sync::{
+        mpsc::{self, Sender},
+        Mutex,
+    },
+    task::JoinHandle,
 };
 
 use super::{
@@ -29,7 +33,8 @@ pub const BUFFER_SIZE: usize = 8192;
 const ONE_YEAR: i64 = 31622400;
 
 /// Connection processing workflow
-pub struct Worker;
+#[derive(Debug)]
+pub(crate) struct Worker;
 
 /// Worker type
 ///
@@ -42,7 +47,7 @@ pub struct Worker;
 /// * `Http` - HTTP protocol.
 /// * `WebSocket` - WebSocket protocol.
 #[derive(Debug, Clone)]
-pub enum WorkerType {
+pub(crate) enum WorkerType {
     /// FastCGI protocol.
     FastCGI,
     /// UWSGI protocol.
@@ -55,13 +60,11 @@ pub enum WorkerType {
     Http,
     /// WebSocket
     WebSocket,
-    /// Error
-    Error,
 }
 
 /// General data
 #[derive(Debug)]
-pub struct WorkerData {
+pub(crate) struct WorkerData {
     /// Engine - binary tree of controller functions.
     pub engine: Arc<ActMap>,
     /// I18n system.
@@ -80,26 +83,8 @@ pub struct WorkerData {
     pub mail: Arc<Mutex<Mail>>,
 }
 
-/// Half of the network to read
-pub struct StreamRead {
-    /// A Tokio network stream
-    tcp: OwnedReadHalf,
-    /// Reading buffer
-    buf: [u8; BUFFER_SIZE],
-    /// The number of bytes in the buffer
-    len: usize,
-    // Reading shift
-    shift: usize,
-}
-
-/// Half of the network to write
-pub struct StreamWrite {
-    /// A Tokio network stream
-    tcp: OwnedWriteHalf,
-}
-
 /// A network stream errors
-pub enum StreamError {
+pub(crate) enum StreamError {
     /// Stream are closed
     Closed,
     /// Error reading from stream
@@ -108,6 +93,18 @@ pub enum StreamError {
     Buffer,
     /// Read timeout
     Timeout,
+}
+
+/// Half of the network to read
+pub(crate) struct StreamRead {
+    /// A Tokio network stream
+    tcp: OwnedReadHalf,
+    /// Reading buffer
+    buf: [u8; BUFFER_SIZE],
+    /// The number of bytes in the buffer
+    len: usize,
+    // Reading shift
+    shift: usize,
 }
 
 impl StreamRead {
@@ -187,10 +184,60 @@ impl StreamRead {
     }
 }
 
+/// Half of the network to write
+pub(crate) struct StreamWrite {
+    /// Sender
+    pub tx: Arc<Sender<MessageWrite>>,
+}
+
+#[derive(Debug)]
+pub(crate) enum MessageWrite {
+    Message(Vec<u8>, bool),
+    End,
+}
+
 impl StreamWrite {
+    pub async fn new(mut tcp: OwnedWriteHalf, protocol: Arc<WorkerType>) -> (Arc<StreamWrite>, JoinHandle<()>) {
+        let (tx, mut rx) = mpsc::channel(32);
+        let stream = Arc::new(StreamWrite { tx: Arc::new(tx) });
+
+        let handle = tokio::spawn(async move {
+            while let Some(message) = rx.recv().await {
+                match message {
+                    MessageWrite::Message(message, end) => {
+                        let data = match protocol.as_ref() {
+                            WorkerType::FastCGI => fastcgi::Net::write(message, end),
+                            WorkerType::Uwsgi => uwsgi::Net::write(message, end),
+                            WorkerType::Grpc => grpc::Net::write(message, end),
+                            WorkerType::Scgi => scgi::Net::write(message, end),
+                            WorkerType::Http => http::Net::write(message, end),
+                            WorkerType::WebSocket => websocket::Net::write(message, end),
+                        };
+                        if let Err(e) = tcp.write_all(&data).await {
+                            Log::warning(101, Some(e.to_string()));
+                        }
+                    }
+                    MessageWrite::End => break,
+                }
+            }
+        });
+        (stream, handle)
+    }
+
     /// Write unswer to the stream
-    pub async fn write(&mut self, src: &[u8]) -> Result<usize, Error> {
-        self.tcp.write(src).await
+    pub async fn write(&self, data: Vec<u8>) {
+        if let Err(e) = self.tx.send(MessageWrite::Message(data, true)).await {
+            Log::warning(100, Some(e.to_string()));
+        }
+    }
+
+    async fn end(handle: JoinHandle<()>, tx: Arc<Sender<MessageWrite>>) {
+        if let Err(e) = tx.send(MessageWrite::End).await {
+            Log::warning(100, Some(e.to_string()));
+        }
+        if let Err(e) = handle.await {
+            Log::warning(102, Some(e.to_string()));
+        }
     }
 }
 
@@ -210,8 +257,8 @@ impl Worker {
             len: 0,
             shift: 0,
         };
-        let stream_write = StreamWrite { tcp: write };
-
+        let (stream_write, handle) = StreamWrite::new(write, Arc::clone(&protocol)).await;
+        let tx = Arc::clone(&stream_write.tx);
         if let Err(e) = stream_read.read(1000).await {
             match e {
                 StreamError::Closed => {}
@@ -234,8 +281,8 @@ impl Worker {
             WorkerType::Scgi => scgi::Net::run(stream_read, stream_write, data).await,
             WorkerType::Http => http::Net::run(stream_read, stream_write, data).await,
             WorkerType::WebSocket => websocket::Net::run(stream_read, stream_write, data).await,
-            WorkerType::Error => {}
         }
+        StreamWrite::end(handle, tx).await;
     }
 
     /// Return a text description of the return code
@@ -313,8 +360,7 @@ impl Worker {
     /// # Return
     ///
     /// Vector with a binary data
-    pub async fn call_action(data: ActionData) -> Vec<u8> {
-        let session_key = Arc::clone(&data.session_key);
+    pub(crate) async fn call_action(data: ActionData) -> Vec<u8> {
         let mut action = match Action::new(data).await {
             Ok(action) => action,
             Err((redirect, files)) => {
@@ -349,10 +395,25 @@ impl Worker {
             Answer::None => Vec::new(),
         };
 
-        // + Status + Cookie + Keep-alive + Content-Type + Content-Length + headers
-        // max length
-        let capacity = result.len() + 4096;
+        let answer = if !action.header_send {
+            // + Status + Cookie + Keep-alive + Content-Type + Content-Length + headers
+            // max length
+            let capacity = result.len() + 4096;
+            let mut answer = Worker::get_header(capacity, &action, Some(result.len()));
+            answer.extend_from_slice(&result);
+            answer
+        } else {
+            result
+        };
 
+        // Stopping a call in a parallel thread
+        tokio::spawn(async move {
+            Action::end(action).await;
+        });
+        answer
+    }
+
+    fn get_header(capacity: usize, action: &Action, content_length: Option<usize>) -> Vec<u8> {
         // Write status
         let mut answer: Vec<u8> = Vec::with_capacity(capacity);
         if let Some(redirect) = action.response.redirect.as_ref() {
@@ -380,7 +441,7 @@ impl Worker {
         answer.extend_from_slice(
             format!(
                 "Set-Cookie: {}={}; Expires={}; Max-Age={}; path=/; domain={}; {}SameSite=none\r\n",
-                session_key, &action.session.key, date, ONE_YEAR, action.request.host, secure
+                action.session.session_key, &action.session.key, date, ONE_YEAR, action.request.host, secure
             )
             .as_bytes(),
         );
@@ -395,14 +456,25 @@ impl Worker {
             answer.extend_from_slice(format!("{}: {}\r\n", name, val).as_bytes());
         }
         // Write Content-Length
-        answer.extend_from_slice(format!("Content-Length: {}\r\n\r\n", result.len()).as_bytes());
-        answer.extend_from_slice(&result);
+        if let Some(len) = content_length {
+            answer.extend_from_slice(format!("Content-Length: {}\r\n", len).as_bytes());
+        }
+        answer.extend_from_slice(b"\r\n");
 
-        // Stopping a call in a parallel thread
-        tokio::spawn(async move {
-            Action::end(action).await;
-        });
         answer
+    }
+
+    pub async fn write(action: &Action, src: Vec<u8>) {
+        let src = if !action.header_send {
+            let mut vec = Worker::get_header(src.len() + 4096, action, None);
+            vec.extend_from_slice(&src);
+            vec
+        } else {
+            src
+        };
+        if let Err(e) = action.tx.send(MessageWrite::Message(src, false)).await {
+            Log::warning(100, Some(e.to_string()));
+        }
     }
 
     /// Read post and file datas.
@@ -490,7 +562,7 @@ impl Worker {
     }
 
     /// Gets post and file records from multipart/form-data
-    pub async fn get_post_file(
+    async fn get_post_file(
         header: &str,
         data: &[u8],
         post: &mut HashMap<String, String>,

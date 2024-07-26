@@ -30,7 +30,7 @@ use tokio::sync::{Mutex, Semaphore};
 
 /// Supported databases
 #[derive(Debug, Clone)]
-pub enum DBEngine {
+pub(crate) enum DBEngine {
     None,
     Pgsql,
     Mssql,
@@ -54,7 +54,7 @@ pub struct DBPrepare {
 
 /// Adapter to databases
 #[derive(Debug)]
-pub enum DBConnect {
+pub(crate) enum DBConnect {
     Pgsql(PgSql),
     Mssql(MsSql),
 }
@@ -72,10 +72,8 @@ pub struct DB {
     connections: Vec<Arc<Mutex<DBConnect>>>,
     /// Semaphore for finding free connection.
     semaphore: Arc<Semaphore>,
-    /// Number of connected databases.
-    pub size: usize,
     /// Supported databases
-    pub engine: DBEngine,
+    pub(crate) engine: DBEngine,
 }
 
 impl DB {
@@ -90,7 +88,7 @@ impl DB {
     /// # Return
     ///
     /// New poll of database connections for asynchronous work.
-    pub async fn new(size: usize, config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<DB> {
+    pub(crate) async fn new(size: usize, config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<DB> {
         let mut connections = Vec::with_capacity(size);
         let mut asize = 0;
         for _ in 0..size {
@@ -123,7 +121,6 @@ impl DB {
         Some(DB {
             connections,
             semaphore,
-            size: asize,
             engine: config.engine.clone(),
         })
     }
@@ -231,6 +228,7 @@ impl DB {
     /// * The number of elements in the first-level array corresponds to the hierarchy levels in the group.
     /// * The number of elements in the second-level array corresponds to the number of items in one hierarchy. The first element of the group (index=0) is considered unique.
     /// * &str - field names for `Data::Vec<Data::Map<...>>`.
+    ///
     /// The first value in the second-level array must be of type `Data::I64`.
     ///
     /// For each group, a new field with the name `sub` (encoded using `fnv1a_64`) will be created, where child groups will be located.
@@ -244,6 +242,7 @@ impl DB {
     /// * Option::None - If the fields failed to group.  
     /// ## if assoc = true  
     /// * `Some(Data::Map<cond[0][0], Data::Map<...>>)` in hierarchical structure.  
+    ///
     /// `struct
     /// value=Data::Map
     /// ├── [value1 from column_name=cond[0][0]] => [value=Data::Map]  : The unique value of the grouping field
@@ -270,6 +269,7 @@ impl DB {
     /// `
     /// ## if assoc = false  
     /// * `Some(Data::Map<cond[0][0], Data::Map<...>>)` in hierarchical structure.  
+    ///
     /// `struct
     /// value=Data::Map
     /// ├── [value1 from column_name=cond[0][0]] => [value=Data::Vec]  : The unique value of the grouping field
@@ -429,7 +429,7 @@ pub trait ToSql: pgToSql + msToSql + Sync {}
 impl<T: pgToSql + msToSql + Sync> ToSql for T {}
 
 #[derive(Clone)]
-pub struct MakeTinyTlsConnect {
+pub(crate) struct MakeTinyTlsConnect {
     config: Arc<ClientConfig>,
 }
 
@@ -457,7 +457,7 @@ where
     }
 }
 
-pub struct TinyTlsConnect(TinyTlsConnectData);
+pub(crate) struct TinyTlsConnect(TinyTlsConnectData);
 
 struct TinyTlsConnectData {
     hostname: ServerName<'static>,
@@ -477,7 +477,7 @@ where
     }
 }
 
-pub struct TinyTlsStream<S>(Pin<Box<TlsStream<S>>>);
+pub(crate) struct TinyTlsStream<S>(Pin<Box<TlsStream<S>>>);
 
 impl<S> tokio_postgres::tls::TlsStream for TinyTlsStream<S>
 where

@@ -32,7 +32,7 @@ use super::{
 };
 
 /// Server management
-pub struct Go;
+pub(crate) struct Go;
 
 impl Go {
     /// Run server in tokio runtime
@@ -69,7 +69,7 @@ impl Go {
         let bind = match &init.conf.bind {
             Addr::SocketAddr(a) => TcpListener::bind(a).await,
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(s) => TcpListener::bind(s).await,
+            Addr::Uds(s) => TcpListener::bind(s).await,
         };
         let bind = match bind {
             Ok(i) => i,
@@ -202,7 +202,7 @@ impl Go {
         let rpc = match &conf.rpc {
             Addr::SocketAddr(a) => TcpListener::bind(a).await,
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(s) => TcpListener::bind(s).await,
+            Addr::Uds(s) => TcpListener::bind(s).await,
         };
         let rpc = match rpc {
             Ok(i) => i,
@@ -284,7 +284,7 @@ impl Go {
                 }
             },
             #[cfg(not(target_family = "windows"))]
-            Addr::UDS(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {
+            Addr::Uds(s) => match time::timeout(Duration::from_secs(1), TcpStream::connect(s)).await {
                 Ok(stream) => {
                     if let Err(e) = stream {
                         Log::warning(222, Some(e.to_string()));

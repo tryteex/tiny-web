@@ -224,6 +224,11 @@ impl Log {
             72 => "The 'db_type' parameter in the configuration file must be a string",
             73 => "The 'db_type' parameter in the configuration file must have the following values: postgresql, mysql, mssql.",
 
+            100 => "Error sending message",
+            101 => "Error write message to the tcp stream",
+            102 => "Error wait join handle",
+            // 103 => "Error wait join handle",
+
             200 => "Start",
             201 => "Stop",
             202 => "Unable to open rpc port",
