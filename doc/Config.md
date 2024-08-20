@@ -136,15 +136,27 @@ Example:
 * `protocol = "HTTP"`
 * `protocol = "WebSocket"`
 
-### prepare
-Prepare sql queries.  
-Each item contain key, query and types of parameters
+
+### action_index
+Default controller for request "/" or default class or default action.
 
 Example:
-* `key_name1.query = "SELECT name FROM user WHERE id=$1"`
-* `key_name1.types = ["INT4"]`
-* `key_name2.query = "INSERT INTO user(name) VALUES ($1)"`
-* `key_name2.types = ["TEXT"]`
+* `action_index = "/index/index/index"`
+* `action_index = "/main/main/main"`
+
+### action_not_found
+Default controller for 404 Not Found.
+
+Example:
+* `action_not_found = "/index/index/not_found"`
+* `action_not_found = "/main/main/not_found"`
+
+### action_error_route
+Default controller for error_route.
+
+Example:
+* `action_error_route = "/index/index/err"`
+* `action_error_route = "/main/route/err"`
 
 ___
 Next => Controller [Controller.md](https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md)  

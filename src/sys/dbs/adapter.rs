@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     future::Future,
     io,
     mem::transmute,
@@ -30,26 +29,10 @@ use tokio::sync::{Mutex, Semaphore};
 
 /// Supported databases
 #[derive(Debug, Clone)]
-pub(crate) enum DBEngine {
+pub enum DBEngine {
     None,
     Pgsql,
     Mssql,
-}
-
-/// Prepare filed type
-#[derive(Debug, Clone)]
-pub enum DBFieldType {
-    Pgsql(Vec<postgres::types::Type>),
-    Mssql(Vec<String>),
-}
-
-/// External prepare statements
-#[derive(Debug, Clone)]
-pub struct DBPrepare {
-    /// Query string
-    pub query: String,
-    /// Prepare types
-    pub types: DBFieldType,
 }
 
 /// Adapter to databases
@@ -73,7 +56,7 @@ pub struct DB {
     /// Semaphore for finding free connection.
     semaphore: Arc<Semaphore>,
     /// Supported databases
-    pub(crate) engine: DBEngine,
+    engine: DBEngine,
 }
 
 impl DB {
@@ -83,18 +66,17 @@ impl DB {
     ///
     /// * `size: usize` - Pool size;
     /// * `config: Arc<DBConfig>` - Configuration.
-    /// * `prepare: BTreeMap<i64, DBPrepare>` - Prepare sql queries.
     ///
     /// # Return
     ///
     /// New poll of database connections for asynchronous work.
-    pub(crate) async fn new(size: usize, config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<DB> {
+    pub(crate) async fn new(size: usize, config: Arc<DBConfig>) -> Option<DB> {
         let mut connections = Vec::with_capacity(size);
         let mut asize = 0;
         for _ in 0..size {
             match &config.engine {
                 DBEngine::Pgsql => {
-                    let mut db = PgSql::new(Arc::clone(&config), Arc::clone(&prepare))?;
+                    let mut db = PgSql::new(Arc::clone(&config))?;
                     if db.connect().await {
                         asize += 1;
                         connections.push(Arc::new(Mutex::new(DBConnect::Pgsql(db))));
@@ -104,7 +86,7 @@ impl DB {
                     }
                 }
                 DBEngine::Mssql => {
-                    let mut db = MsSql::new(Arc::clone(&config), Arc::clone(&prepare))?;
+                    let mut db = MsSql::new(Arc::clone(&config))?;
                     if db.connect().await {
                         asize += 1;
                         connections.push(Arc::new(Mutex::new(DBConnect::Mssql(db))));
@@ -125,12 +107,16 @@ impl DB {
         })
     }
 
+    /// Is library uses database
+    pub fn in_use(&self) -> bool {
+        !matches!(self.engine, DBEngine::None)
+    }
+
     /// Execute query to database synchronously
     ///
     /// # Parmeters
     ///
     /// * `query: &str` - SQL query;
-    /// * `query: i64` - Key of Statement;
     /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
     /// * `assoc: bool` - Return columns as associate array if True or Vecor id False.
     ///
@@ -139,7 +125,38 @@ impl DB {
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(Vec<Data::Map>)` - Results, if assoc = true.
     /// * `Option::Some(Vec<Data::Vec>)` - Results, if assoc = false.
-    pub async fn query(&self, query: impl KeyOrQuery, params: &[&dyn ToSql], assoc: bool) -> Option<Vec<Data>> {
+    pub async fn query(&self, query: &str, params: &[&dyn ToSql], assoc: bool) -> Option<Vec<Data>> {
+        if let DBEngine::None = self.engine {
+            return None;
+        }
+
+        let permit = match self.semaphore.acquire().await {
+            Ok(p) => p,
+            Err(e) => {
+                Log::warning(606, Some(e.to_string()));
+                return None;
+            }
+        };
+        for connection_mutex in &self.connections {
+            if let Ok(mut db) = connection_mutex.try_lock() {
+                let res = match *db {
+                    DBConnect::Pgsql(ref mut pg) => {
+                        pg.query(&query, unsafe { transmute::<&[&dyn ToSql], &[&(dyn pgToSql + Sync)]>(params) }, assoc).await
+                    }
+                    DBConnect::Mssql(ref mut ms) => {
+                        ms.query(&query, unsafe { transmute::<&[&dyn ToSql], &[&dyn msToSql]>(params) }, assoc).await
+                    }
+                };
+                drop(permit);
+                return res;
+            };
+        }
+        drop(permit);
+        Log::warning(607, None);
+        None
+    }
+
+    pub(crate) async fn query_prepare(&self, query: i64, params: &[&dyn ToSql], assoc: bool) -> Option<Vec<Data>> {
         if let DBEngine::None = self.engine {
             return None;
         }
@@ -175,14 +192,44 @@ impl DB {
     /// # Parmeters
     ///
     /// * `query: &str` - SQL query;
-    /// * `query: i64` - Key of Statement;
     /// * `params: &[&(dyn ToSql + Sync)]` - Array of params.
     ///
     /// # Return
     ///
     /// * `Option::None` - When error query or diconnected;
     /// * `Option::Some(())` - Successed.
-    pub async fn execute(&self, query: impl KeyOrQuery, params: &[&dyn ToSql]) -> Option<()> {
+    pub async fn execute(&self, query: &str, params: &[&dyn ToSql]) -> Option<()> {
+        if let DBEngine::None = self.engine {
+            return None;
+        }
+
+        let permit = match self.semaphore.acquire().await {
+            Ok(p) => p,
+            Err(e) => {
+                Log::warning(606, Some(e.to_string()));
+                return None;
+            }
+        };
+        for connection_mutex in &self.connections {
+            if let Ok(mut db) = connection_mutex.try_lock() {
+                let res = match *db {
+                    DBConnect::Pgsql(ref mut pg) => {
+                        pg.execute(&query, unsafe { transmute::<&[&dyn ToSql], &[&(dyn pgToSql + Sync)]>(params) }).await
+                    }
+                    DBConnect::Mssql(ref mut ms) => {
+                        ms.execute(&query, unsafe { transmute::<&[&dyn ToSql], &[&dyn msToSql]>(params) }).await
+                    }
+                };
+                drop(permit);
+                return res;
+            };
+        }
+        drop(permit);
+        Log::warning(607, None);
+        None
+    }
+
+    pub(crate) async fn execute_prepare(&self, query: i64, params: &[&dyn ToSql]) -> Option<()> {
         if let DBEngine::None = self.engine {
             return None;
         }
@@ -219,7 +266,6 @@ impl DB {
     /// # Parmeters
     ///
     /// * `query: &str` - SQL query;
-    /// * `query: i64` - Key of Statement;
     /// * `params: &[&dyn ToSql]` - Array of params.
     /// * `assoc: bool` - Return columns as associate array if True or Vecor id False.
     /// * `conds: Vec<Vec<&str>>` - Grouping condition.  
@@ -296,7 +342,7 @@ impl DB {
     /// `
     pub async fn query_group(
         &self,
-        query: impl KeyOrQuery,
+        query: &str,
         params: &[&dyn ToSql],
         assoc: bool,
         conds: &[&[impl StrOrI64OrUSize]],
@@ -339,7 +385,7 @@ impl DB {
 }
 
 /// Trait representing types that can be converted to a query or a key statement.
-pub trait KeyOrQuery {
+pub(crate) trait KeyOrQuery {
     /// Return key
     fn to_i64(&self) -> i64;
     /// Return text of query

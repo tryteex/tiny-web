@@ -14,7 +14,7 @@ use tiny_web_macro::fnv1a_64;
 
 use crate::sys::{action::Data, init::DBConfig, log::Log};
 
-use super::adapter::{DBFieldType, DBPrepare, KeyOrQuery, MakeTinyTlsConnect, StrOrI64OrUSize};
+use super::adapter::{KeyOrQuery, MakeTinyTlsConnect, StrOrI64OrUSize};
 
 /// Response to the result of the query
 #[derive(Debug)]
@@ -43,8 +43,6 @@ pub(crate) struct PgSql {
     tls: Option<MakeTinyTlsConnect>,
     /// Prepare statements to database.
     prepare: BTreeMap<i64, PgStatement>,
-    /// External prepare statements to database.
-    external: Arc<BTreeMap<i64, DBPrepare>>,
 }
 
 /// Statement to database
@@ -60,7 +58,7 @@ type PgColumnName = (usize, fn(&Row, usize) -> Data);
 
 impl PgSql {
     /// Initializes a new object `PgSql`
-    pub fn new(config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<PgSql> {
+    pub fn new(config: Arc<DBConfig>) -> Option<PgSql> {
         let mut conn_str = String::with_capacity(512);
         //host
         conn_str.push_str("host='");
@@ -121,7 +119,6 @@ impl PgSql {
             sql_conn,
             tls,
             prepare: BTreeMap::new(),
-            external: prepare,
         })
     }
 
@@ -342,13 +339,6 @@ impl PgSql {
                     WHERE mail_id=$1
                 "#;
                 map.insert(fnv1a_64!("lib_mail_ok"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
-
-                // Add config prepare
-                for (key, sql) in self.external.as_ref() {
-                    if let DBFieldType::Pgsql(vec) = &sql.types {
-                        map.insert(*key, (client.prepare_typed(&sql.query, vec), sql.query.to_owned()));
-                    }
-                }
 
                 // Prepare statements
                 for (key, (prepare, sql)) in map {
@@ -929,19 +919,12 @@ impl std::fmt::Debug for PgSql {
     /// Formats the value using the given formatter.
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         let tls = self.tls.clone().map(|_| "TlsConnector");
-        let PgSql {
-            client,
-            sql_conn,
-            tls: _,
-            prepare,
-            external,
-        } = self;
+        let PgSql { client, sql_conn, tls: _, prepare } = self;
         f.debug_struct("DB")
             .field("client", &client)
             .field("sql_conn", &sql_conn)
             .field("tls", &tls)
             .field("prepare", &prepare)
-            .field("external", &external)
             .finish()
     }
 }

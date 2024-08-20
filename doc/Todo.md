@@ -8,7 +8,6 @@
 * Monitoring.
 * Authorization.
 * Smart logging.
-* Initialization via Builder.
 * Update Wizard.
 * Operating System Setup Wizard.
 * Adapter for mysql databases.

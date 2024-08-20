@@ -8,7 +8,7 @@ use crate::StrOrI64;
 
 use super::{
     action::{Data, Request},
-    dbs::adapter::{DBEngine, DB},
+    dbs::adapter::DB,
 };
 
 /// User session
@@ -73,7 +73,7 @@ impl Session {
 
     /// Load session from database
     pub(crate) async fn load_session(key: String, db: Arc<DB>, lang_id: i64, session_key: Arc<String>) -> Session {
-        if let DBEngine::None = db.engine {
+        if !db.in_use() {
             return Session {
                 id: 0,
                 lang_id,
@@ -85,7 +85,7 @@ impl Session {
                 change: false,
             };
         }
-        let res = match db.query(fnv1a_64!("lib_get_session"), &[&key], false).await {
+        let res = match db.query_prepare(fnv1a_64!("lib_get_session"), &[&key], false).await {
             Some(r) => r,
             None => return Session::with_key(lang_id, key, session_key),
         };
@@ -148,7 +148,7 @@ impl Session {
 
     /// Save session into database
     pub(crate) async fn save_session(db: Arc<DB>, session: &Session, request: &Request) {
-        if let DBEngine::None = db.engine {
+        if !db.in_use() {
             return;
         }
         if session.change {
@@ -157,13 +157,13 @@ impl Session {
                 Err(_) => Vec::new(),
             };
             if session.id > 0 {
-                db.execute(
+                db.execute_prepare(
                     fnv1a_64!("lib_set_session"),
                     &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
                 )
                 .await;
             } else {
-                db.execute(
+                db.execute_prepare(
                     fnv1a_64!("lib_add_session"),
                     &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent],
                 )

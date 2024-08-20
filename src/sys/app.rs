@@ -2,6 +2,7 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
     process::Command,
+    sync::Arc,
     time::Duration,
 };
 
@@ -39,7 +40,7 @@ impl App {
         Log::info(17, Some(format!("{:?}", self.init.mode)));
         match self.init.mode {
             Mode::Start => self.start(),
-            Mode::Stop => self.stop(),
+            Mode::Stop => App::stop(Arc::clone(&self.init.conf.rpc), self.init.conf.stop_signal),
             Mode::Help => Help::show(&self.init.conf.name, &self.init.conf.version, &self.init.conf.desc),
             Mode::Go => Go::run(&self.init, func),
             Mode::Status => self.status(),
@@ -51,7 +52,7 @@ impl App {
         let mut buf: [u8; 8] = [0; 8];
         let mut status = Vec::with_capacity(1024);
         #[allow(clippy::infallible_destructuring_match)]
-        match &self.init.conf.rpc {
+        match self.init.conf.rpc.as_ref() {
             Addr::SocketAddr(socket) => {
                 let mut tcp = match TcpStream::connect_timeout(socket, Duration::from_secs(2)) {
                     Ok(t) => t,
@@ -61,7 +62,7 @@ impl App {
                     }
                 };
                 // Send status to server into rpc channal
-                if let Err(e) = tcp.write(&self.init.conf.status.to_be_bytes()) {
+                if let Err(e) = tcp.write(&self.init.conf.status_signal.to_be_bytes()) {
                     Log::stop(224, Some(e.to_string()));
                     return;
                 };
@@ -93,7 +94,7 @@ impl App {
                     Log::stop(223, Some(e.to_string()));
                     return;
                 };
-                if let Err(e) = tcp.write(&self.init.conf.status.to_be_bytes()) {
+                if let Err(e) = tcp.write(&self.init.conf.status_signal.to_be_bytes()) {
                     Log::stop(224, Some(e.to_string()));
                     return;
                 };
@@ -125,10 +126,10 @@ impl App {
     }
 
     /// Send stop signal
-    fn stop(&self) {
+    pub(crate) fn stop(rpc: Arc<Addr>, stop: i64) {
         let mut buf: [u8; 8] = [0; 8];
         #[allow(clippy::infallible_destructuring_match)]
-        match &self.init.conf.rpc {
+        match rpc.as_ref() {
             Addr::SocketAddr(socket) => {
                 let mut tcp = match TcpStream::connect_timeout(socket, Duration::from_secs(2)) {
                     Ok(t) => t,
@@ -138,7 +139,7 @@ impl App {
                     }
                 };
                 // Send stop to server into rpc channal
-                if let Err(e) = tcp.write(&self.init.conf.stop.to_be_bytes()) {
+                if let Err(e) = tcp.write(&stop.to_be_bytes()) {
                     Log::stop(214, Some(e.to_string()));
                     return;
                 };
@@ -166,7 +167,7 @@ impl App {
                     Log::stop(223, Some(e.to_string()));
                     return;
                 };
-                if let Err(e) = tcp.write(&self.init.conf.stop.to_be_bytes()) {
+                if let Err(e) = tcp.write(&stop.to_be_bytes()) {
                     Log::stop(214, Some(e.to_string()));
                     return;
                 };
@@ -217,7 +218,7 @@ impl App {
         let exe = &self.init.exe_file;
 
         let args = ["go", "-r", &self.init.root_path];
-        match Command::new(exe).args(&args[..]).current_dir(path).spawn() {
+        match Command::new(exe).args(&args[..]).current_dir(path.as_ref()).spawn() {
             Ok(c) => Log::info(211, Some(format!("{} {}. PID: {}", &exe, args.join(" "), c.id()))),
             Err(e) => Log::stop(212, Some(format!("{} {}. Error: {}", &exe, args.join(" "), e))),
         };

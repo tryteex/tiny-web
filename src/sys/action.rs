@@ -1,7 +1,9 @@
 use chrono::Utc;
 use std::{
     collections::{BTreeMap, HashMap},
+    fs::File,
     future::Future,
+    io::{Error, Write},
     path::PathBuf,
     pin::Pin,
     sync::Arc,
@@ -20,9 +22,11 @@ use tokio::{
 use crate::{fnv1a_64, StrOrI64};
 
 use super::{
+    app::App,
     cache::{Cache, CacheSys},
-    dbs::adapter::{DBEngine, DB},
+    dbs::adapter::DB,
     html::{Html, Nodes},
+    init::Addr,
     lang::{Lang, LangItem},
     log::Log,
     mail::{Mail, MailMessage, MailProvider},
@@ -266,6 +270,14 @@ pub(crate) struct ActionData {
     pub session: Option<String>,
     /// Sender data to output stream
     pub(crate) tx: Arc<Sender<MessageWrite>>,
+    /// Default controller for request "/" or default class or default action
+    pub(crate) action_index: Arc<Route>,
+    /// Default controller for 404 Not Found
+    pub(crate) action_not_found: Arc<Route>,
+    /// Default controller for error_route
+    pub(crate) action_err: Arc<Route>,
+    /// Stop signal
+    pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
 }
 
 /// Route of request
@@ -283,21 +295,119 @@ pub(crate) struct ActionData {
 #[derive(Debug, Clone)]
 pub struct Route {
     /// Start module
-    module: String,
+    pub module: String,
     /// Start class
-    class: String,
+    pub class: String,
     /// Start action (controller)
-    action: String,
+    pub action: String,
     /// Module id
-    module_id: i64,
+    pub module_id: i64,
     /// Class id
-    class_id: i64,
+    pub class_id: i64,
     /// Action id
-    action_id: i64,
+    pub action_id: i64,
     /// Controller param
-    param: Option<String>,
+    pub param: Option<String>,
     /// Set lang id
-    lang_id: Option<i64>,
+    pub lang_id: Option<i64>,
+}
+
+impl Route {
+    pub fn default_index() -> Route {
+        Route {
+            module: "index".to_owned(),
+            class: "index".to_owned(),
+            action: "index".to_owned(),
+            module_id: fnv1a_64!("index"),
+            class_id: fnv1a_64!("index"),
+            action_id: fnv1a_64!("index"),
+            param: None,
+            lang_id: None,
+        }
+    }
+    pub fn default_not_found() -> Route {
+        Route {
+            module: "index".to_owned(),
+            class: "index".to_owned(),
+            action: "not_found".to_owned(),
+            module_id: fnv1a_64!("index"),
+            class_id: fnv1a_64!("index"),
+            action_id: fnv1a_64!("not_found"),
+            param: None,
+            lang_id: None,
+        }
+    }
+    pub fn default_err() -> Route {
+        Route {
+            module: "index".to_owned(),
+            class: "index".to_owned(),
+            action: "err".to_owned(),
+            module_id: fnv1a_64!("index"),
+            class_id: fnv1a_64!("index"),
+            action_id: fnv1a_64!("err"),
+            param: None,
+            lang_id: None,
+        }
+    }
+    pub fn default_install() -> Route {
+        Route {
+            module: "index".to_owned(),
+            class: "install".to_owned(),
+            action: "index".to_owned(),
+            module_id: fnv1a_64!("index"),
+            class_id: fnv1a_64!("install"),
+            action_id: fnv1a_64!("index"),
+            param: None,
+            lang_id: None,
+        }
+    }
+
+    pub fn parse(val: &str) -> Option<Route> {
+        let vec: Vec<&str> = val.split('/').collect();
+        if vec.len() < 4 || vec.len() > 5 {
+            return None;
+        }
+        if !unsafe { *vec.get_unchecked(0) }.is_empty() {
+            return None;
+        }
+        let module = unsafe { *vec.get_unchecked(1) };
+        if module.is_empty() {
+            return None;
+        }
+        let class = unsafe { *vec.get_unchecked(2) };
+        if class.is_empty() {
+            return None;
+        }
+        let action = unsafe { *vec.get_unchecked(3) };
+        if action.is_empty() {
+            return None;
+        }
+        let param = if vec.len() == 5 {
+            let param = unsafe { *vec.get_unchecked(4) };
+            if param.is_empty() {
+                return None;
+            }
+            Some(param.to_owned())
+        } else {
+            None
+        };
+        let module = module.to_owned();
+        let module_id = fnv1a_64(module.as_bytes());
+        let class: String = class.to_owned();
+        let class_id = fnv1a_64(class.as_bytes());
+        let action = action.to_owned();
+        let action_id = fnv1a_64(action.as_bytes());
+        Some(Route {
+            module,
+            class,
+            action,
+            module_id,
+            class_id,
+            action_id,
+            param,
+            lang_id: None,
+        })
+    }
 }
 
 /// Main struct to run web engine
@@ -380,8 +490,15 @@ pub struct Action {
 
     /// Sender data to output stream
     pub(crate) tx: Arc<Sender<MessageWrite>>,
+
     /// Header was sended
     pub(crate) header_send: bool,
+
+    /// Default controller for 404 Not Found
+    not_found: Arc<Route>,
+
+    /// Stop signal
+    stop: Option<(Arc<Addr>, i64, Arc<String>)>,
 }
 
 impl Action {
@@ -408,7 +525,15 @@ impl Action {
             Session::new(lang_id, &data.salt, &data.request.ip, &data.request.agent, &data.request.host, data.session_key)
         };
         // Module, class and action (controller) from URL
-        let route = match Action::extract_route(&data.request, Arc::clone(&data.cache), Arc::clone(&data.db)).await {
+        let route = match Action::extract_route(
+            &data.request,
+            Arc::clone(&data.cache),
+            Arc::clone(&data.db),
+            Arc::clone(&data.action_index),
+            Arc::clone(&data.action_err),
+        )
+        .await
+        {
             Ok(r) => r,
             Err(redirect) => return Err((redirect, data.request.input.file)),
         };
@@ -436,7 +561,7 @@ impl Action {
             request: data.request,
             response,
             session,
-            salt: Arc::clone(&data.salt),
+            salt: data.salt,
             data: BTreeMap::new(),
 
             module,
@@ -462,6 +587,9 @@ impl Action {
 
             tx: data.tx,
             header_send: false,
+            not_found: data.action_not_found,
+
+            stop: data.stop,
         })
     }
 
@@ -509,7 +637,8 @@ impl Action {
         }
 
         // If not /index/index/not_found - then redirect
-        if !(module_id == fnv1a_64!("index") && class_id == fnv1a_64!("index") && action_id == fnv1a_64!("not_found")) {
+        if !(module_id == self.not_found.module_id && class_id == self.not_found.class_id && class_id == self.not_found.action_id)
+        {
             self.response.redirect = Some(Redirect {
                 url: self.not_found().await,
                 permanently: false,
@@ -624,7 +753,7 @@ impl Action {
 
     /// Get access to run controller
     pub async fn get_access(&mut self, module: impl StrOrI64, class: impl StrOrI64, action: impl StrOrI64) -> bool {
-        if let DBEngine::None = self.db.engine {
+        if !self.db.in_use() {
             return true;
         }
         let module_id = module.to_i64();
@@ -639,7 +768,7 @@ impl Action {
         // Prepare sql query
         match self
             .db
-            .query(
+            .query_prepare(
                 fnv1a_64!("lib_get_auth"),
                 &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id],
                 false,
@@ -674,23 +803,37 @@ impl Action {
 
     /// Get not_found url
     pub async fn not_found(&mut self) -> String {
-        if let DBEngine::None = self.db.engine {
-            return "/index/index/not_found".to_owned();
+        if !self.db.in_use() {
+            let install = Route::default_install();
+            return format!("/{}/{}/not_found", install.module, install.class);
         }
         let key = vec![fnv1a_64!("404"), self.session.get_lang_id()];
         let (data, key) = self.cache.get(key).await;
         match data {
             Some(d) => match d {
                 Data::String(url) => url,
-                _ => "/index/index/not_found".to_owned(),
+                _ => match &self.not_found.param {
+                    Some(param) => {
+                        format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                    }
+                    None => {
+                        format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
+                    }
+                },
             },
             None => {
                 // Load from database
-                match self.db.query(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()], false).await {
+                match self.db.query_prepare(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()], false).await {
                     Some(v) => {
                         if v.is_empty() {
                             self.cache.set(key, Data::None).await;
-                            "/index/index/not_found".to_owned()
+                            match &self.not_found.param {
+                                Some(param) => format!(
+                                    "/{}/{}/{}/{}",
+                                    self.not_found.module, self.not_found.class, self.not_found.action, param
+                                ),
+                                None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
+                            }
                         } else if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
                             if !row.is_empty() {
                                 if let Data::String(url) = unsafe { row.get_unchecked(0) } {
@@ -698,40 +841,64 @@ impl Action {
                                     url.clone()
                                 } else {
                                     self.cache.set(key, Data::None).await;
-                                    "/index/index/not_found".to_owned()
+                                    match &self.not_found.param {
+                                        Some(param) => format!(
+                                            "/{}/{}/{}/{}",
+                                            self.not_found.module, self.not_found.class, self.not_found.action, param
+                                        ),
+                                        None => format!(
+                                            "/{}/{}/{}",
+                                            self.not_found.module, self.not_found.class, self.not_found.action
+                                        ),
+                                    }
                                 }
                             } else {
                                 self.cache.set(key, Data::None).await;
-                                "/index/index/not_found".to_owned()
+                                match &self.not_found.param {
+                                    Some(param) => format!(
+                                        "/{}/{}/{}/{}",
+                                        self.not_found.module, self.not_found.class, self.not_found.action, param
+                                    ),
+                                    None => {
+                                        format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
+                                    }
+                                }
                             }
                         } else {
                             self.cache.set(key, Data::None).await;
-                            "/index/index/not_found".to_owned()
+                            match &self.not_found.param {
+                                Some(param) => format!(
+                                    "/{}/{}/{}/{}",
+                                    self.not_found.module, self.not_found.class, self.not_found.action, param
+                                ),
+                                None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
+                            }
                         }
                     }
-                    None => "/index/index/not_found".to_owned(),
+                    None => match &self.not_found.param {
+                        Some(param) => {
+                            format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                        }
+                        None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
+                    },
                 }
             }
         }
     }
 
-    fn error_route() -> Route {
-        Route {
-            module: "index".to_owned(),
-            class: "index".to_owned(),
-            action: "err".to_owned(),
-            module_id: fnv1a_64!("index"),
-            class_id: fnv1a_64!("index"),
-            action_id: fnv1a_64!("err"),
-            param: None,
-            lang_id: None,
-        }
+    fn error_route(action_err: Arc<Route>) -> Route {
+        Route::clone(&action_err)
     }
 
     /// Extract route from url
-    async fn extract_route(request: &Request, cache: Arc<Mutex<CacheSys>>, db: Arc<DB>) -> Result<Route, Redirect> {
-        if let DBEngine::None = db.engine {
-        } else {
+    async fn extract_route(
+        request: &Request,
+        cache: Arc<Mutex<CacheSys>>,
+        db: Arc<DB>,
+        action_index: Arc<Route>,
+        action_err: Arc<Route>,
+    ) -> Result<Route, Redirect> {
+        if db.in_use() {
             // Get redirect
             let key = vec![fnv1a_64!("redirect"), fnv1a_64(request.url.as_bytes())];
             match CacheSys::get(Arc::clone(&cache), &key).await {
@@ -744,7 +911,7 @@ impl Action {
                 },
                 None => {
                     // Load from database
-                    match db.query(fnv1a_64!("lib_get_redirect"), &[&request.url], false).await {
+                    match db.query_prepare(fnv1a_64!("lib_get_redirect"), &[&request.url], false).await {
                         Some(v) => {
                             if v.is_empty() {
                                 CacheSys::set(Arc::clone(&cache), &key, Data::None).await;
@@ -752,27 +919,27 @@ impl Action {
                                 let row = if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
                                     row
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 if row.len() != 2 {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 }
                                 let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
                                     url.to_owned()
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let permanently = if let Data::Bool(permanently) = unsafe { row.get_unchecked(1) } {
                                     *permanently
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let r = Redirect { url, permanently };
                                 CacheSys::set(Arc::clone(&cache), &key, Data::Redirect(r.clone())).await;
                                 return Err(r);
                             }
                         }
-                        None => return Ok(Action::error_route()),
+                        None => return Ok(Action::error_route(action_err)),
                     }
                 }
             }
@@ -789,7 +956,7 @@ impl Action {
                 },
                 None => {
                     // Load from database
-                    match db.query(fnv1a_64!("lib_get_route"), &[&request.url], false).await {
+                    match db.query_prepare(fnv1a_64!("lib_get_route"), &[&request.url], false).await {
                         Some(v) => {
                             if v.is_empty() {
                                 CacheSys::set(Arc::clone(&cache), &key, Data::None).await;
@@ -797,25 +964,25 @@ impl Action {
                                 let row = if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
                                     row
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 if row.len() != 8 {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 }
                                 let module = if let Data::String(module) = unsafe { row.get_unchecked(0) } {
                                     module.to_owned()
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let class = if let Data::String(class) = unsafe { row.get_unchecked(1) } {
                                     class.to_owned()
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let action = if let Data::String(action) = unsafe { row.get_unchecked(2) } {
                                     action.to_owned()
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let param = match unsafe { row.get_unchecked(6) } {
                                     Data::None => None,
@@ -826,27 +993,27 @@ impl Action {
                                             Some(param.to_owned())
                                         }
                                     }
-                                    _ => return Ok(Action::error_route()),
+                                    _ => return Ok(Action::error_route(action_err)),
                                 };
                                 let module_id = if let Data::I64(module_id) = unsafe { row.get_unchecked(3) } {
                                     *module_id
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let class_id = if let Data::I64(class_id) = unsafe { row.get_unchecked(4) } {
                                     *class_id
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let action_id = if let Data::I64(action_id) = unsafe { row.get_unchecked(5) } {
                                     *action_id
                                 } else {
-                                    return Ok(Action::error_route());
+                                    return Ok(Action::error_route(action_err));
                                 };
                                 let lang_id = match unsafe { row.get_unchecked(7) } {
                                     Data::None => None,
                                     Data::I64(lang_id) => Some(*lang_id),
-                                    _ => return Ok(Action::error_route()),
+                                    _ => return Ok(Action::error_route(action_err)),
                                 };
                                 let r = Route {
                                     module,
@@ -862,7 +1029,7 @@ impl Action {
                                 return Ok(r);
                             }
                         }
-                        None => return Ok(Action::error_route()),
+                        None => return Ok(Action::error_route(action_err)),
                     }
                 }
             }
@@ -873,86 +1040,115 @@ impl Action {
             load.retain(|&x| !x.is_empty());
             let r = match load.len() {
                 1 => {
-                    let module = unsafe { *load.get_unchecked(0) };
-                    Route {
-                        module: module.to_owned(),
-                        class: "index".to_owned(),
-                        action: "index".to_owned(),
-                        module_id: fnv1a_64(module.as_bytes()),
-                        class_id: fnv1a_64!("index"),
-                        action_id: fnv1a_64!("index"),
-                        param: None,
-                        lang_id: None,
+                    if db.in_use() {
+                        let module = unsafe { *load.get_unchecked(0) };
+                        Route {
+                            module: module.to_owned(),
+                            class: action_index.class.clone(),
+                            action: action_index.action.clone(),
+                            module_id: fnv1a_64(module.as_bytes()),
+                            class_id: action_index.class_id,
+                            action_id: action_index.action_id,
+                            param: None,
+                            lang_id: None,
+                        }
+                    } else {
+                        Route::default_install()
                     }
                 }
                 2 => {
-                    let module = unsafe { *load.get_unchecked(0) };
-                    let class = unsafe { *load.get_unchecked(1) };
-                    Route {
-                        module: module.to_owned(),
-                        class: class.to_owned(),
-                        action: "index".to_owned(),
-                        module_id: fnv1a_64(module.as_bytes()),
-                        class_id: fnv1a_64(class.as_bytes()),
-                        action_id: fnv1a_64!("index"),
-                        param: None,
-                        lang_id: None,
+                    if db.in_use() {
+                        let module = unsafe { *load.get_unchecked(0) };
+                        let class = unsafe { *load.get_unchecked(1) };
+                        Route {
+                            module: module.to_owned(),
+                            class: class.to_owned(),
+                            action: action_index.action.clone(),
+                            module_id: fnv1a_64(module.as_bytes()),
+                            class_id: fnv1a_64(class.as_bytes()),
+                            action_id: action_index.action_id,
+                            param: None,
+                            lang_id: None,
+                        }
+                    } else {
+                        Route::default_install()
                     }
                 }
                 3 => {
-                    let module = unsafe { *load.get_unchecked(0) };
-                    let class = unsafe { *load.get_unchecked(1) };
-                    let action = unsafe { *load.get_unchecked(2) };
-                    Route {
-                        module: module.to_owned(),
-                        class: class.to_owned(),
-                        action: action.to_owned(),
-                        module_id: fnv1a_64(module.as_bytes()),
-                        class_id: fnv1a_64(class.as_bytes()),
-                        action_id: fnv1a_64(action.as_bytes()),
-                        param: None,
-                        lang_id: None,
+                    if db.in_use() {
+                        let module = unsafe { *load.get_unchecked(0) };
+                        let class = unsafe { *load.get_unchecked(1) };
+                        let action = unsafe { *load.get_unchecked(2) };
+                        Route {
+                            module: module.to_owned(),
+                            class: class.to_owned(),
+                            action: action.to_owned(),
+                            module_id: fnv1a_64(module.as_bytes()),
+                            class_id: fnv1a_64(class.as_bytes()),
+                            action_id: fnv1a_64(action.as_bytes()),
+                            param: None,
+                            lang_id: None,
+                        }
+                    } else {
+                        let install = Route::default_install();
+                        let action = unsafe { *load.get_unchecked(2) };
+                        Route {
+                            module: install.module.to_owned(),
+                            class: install.class.to_owned(),
+                            action: action.to_owned(),
+                            module_id: install.module_id,
+                            class_id: install.class_id,
+                            action_id: fnv1a_64(action.as_bytes()),
+                            param: None,
+                            lang_id: None,
+                        }
                     }
                 }
                 4 => {
-                    let module = unsafe { *load.get_unchecked(0) };
-                    let class = unsafe { *load.get_unchecked(1) };
-                    let action = unsafe { *load.get_unchecked(2) };
-                    let param = unsafe { *load.get_unchecked(3) };
-                    Route {
-                        module: module.to_owned(),
-                        class: class.to_owned(),
-                        action: action.to_owned(),
-                        module_id: fnv1a_64(module.as_bytes()),
-                        class_id: fnv1a_64(class.as_bytes()),
-                        action_id: fnv1a_64(action.as_bytes()),
-                        param: Some(param.to_owned()),
-                        lang_id: None,
+                    if db.in_use() {
+                        let module = unsafe { *load.get_unchecked(0) };
+                        let class = unsafe { *load.get_unchecked(1) };
+                        let action = unsafe { *load.get_unchecked(2) };
+                        let param = unsafe { *load.get_unchecked(3) };
+                        Route {
+                            module: module.to_owned(),
+                            class: class.to_owned(),
+                            action: action.to_owned(),
+                            module_id: fnv1a_64(module.as_bytes()),
+                            class_id: fnv1a_64(class.as_bytes()),
+                            action_id: fnv1a_64(action.as_bytes()),
+                            param: Some(param.to_owned()),
+                            lang_id: None,
+                        }
+                    } else {
+                        let install = Route::default_install();
+                        let action = unsafe { *load.get_unchecked(2) };
+                        let param = unsafe { *load.get_unchecked(3) };
+                        Route {
+                            module: install.module.to_owned(),
+                            class: install.class.to_owned(),
+                            action: action.to_owned(),
+                            module_id: install.module_id,
+                            class_id: install.class_id,
+                            action_id: fnv1a_64(action.as_bytes()),
+                            param: Some(param.to_owned()),
+                            lang_id: None,
+                        }
                     }
                 }
-                _ => Route {
-                    module: "index".to_owned(),
-                    class: "index".to_owned(),
-                    action: "index".to_owned(),
-                    module_id: fnv1a_64!("index"),
-                    class_id: fnv1a_64!("index"),
-                    action_id: fnv1a_64!("index"),
-                    param: None,
-                    lang_id: None,
-                },
+                _ => {
+                    if db.in_use() {
+                        Route::clone(&action_index)
+                    } else {
+                        Route::default_install()
+                    }
+                }
             };
             Ok(r)
+        } else if db.in_use() {
+            Ok(Route::clone(&action_index))
         } else {
-            Ok(Route {
-                module: "index".to_owned(),
-                class: "index".to_owned(),
-                action: "index".to_owned(),
-                module_id: fnv1a_64!("index"),
-                class_id: fnv1a_64!("index"),
-                action_id: fnv1a_64!("index"),
-                param: None,
-                lang_id: None,
-            })
+            Ok(Route::default_install())
         }
     }
 
@@ -1034,6 +1230,19 @@ impl Action {
         Worker::write(self, vec).await;
         self.header_send = true;
         yield_now().await;
+    }
+
+    /// Restart the web server after creating the configuration file
+    pub fn install_end(&mut self, conf: String) -> Result<(), Error> {
+        if !self.db.in_use() {
+            if let Some((rpc, stop, path)) = self.stop.take() {
+                let mut file = File::create(format!("{}/tiny.toml", path))?;
+                file.write_all(conf.as_bytes())?;
+
+                App::stop(rpc, stop);
+            }
+        }
+        Ok(())
     }
 
     /// Render template
@@ -1127,7 +1336,7 @@ impl Action {
         // Prepare sql query
         match self
             .db
-            .query(
+            .query_prepare(
                 fnv1a_64!("lib_get_url"),
                 &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
                 false,

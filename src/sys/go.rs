@@ -22,7 +22,7 @@ use tokio::{
 use super::{
     action::{ActMap, Data},
     cache::CacheSys,
-    dbs::adapter::{DBEngine, DB},
+    dbs::adapter::DB,
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
     lang::{Lang, LangItem},
@@ -86,8 +86,20 @@ impl Go {
         let salt = Arc::clone(&init.conf.salt);
         let engine_data = func();
         let protocol = init.conf.protocol.clone();
+
+        let action_index = Arc::clone(&init.conf.action_index);
+        let action_not_found = Arc::clone(&init.conf.action_not_found);
+        let action_err = Arc::clone(&init.conf.action_err);
+
         let max = db.max;
-        let mut db = DB::new(max, db, Arc::clone(&init.conf.prepare)).await?;
+        let mut db = DB::new(max, db).await?;
+
+        let signal_stop = if db.in_use() {
+            None
+        } else {
+            Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal, Arc::clone(&init.exe_path)))
+        };
+
         let main = tokio::spawn(async move {
             let langs = Go::get_langs(&mut db).await;
             let lang = Arc::new(Lang::new(&root_path, &lang, langs));
@@ -100,6 +112,15 @@ impl Go {
             let salt = Arc::clone(&salt);
             let mail = Arc::new(Mutex::new(Mail::new(Arc::clone(&db)).await));
             let protocol = Arc::new(protocol);
+
+            let action_index = Arc::clone(&action_index);
+            let action_not_found = Arc::clone(&action_not_found);
+            let action_err = Arc::clone(&action_err);
+
+            let signal_stop = match signal_stop {
+                Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
+                None => None,
+            };
 
             // Started (accepted) threads
             let handles = Arc::new(Mutex::new(BTreeMap::new()));
@@ -127,6 +148,7 @@ impl Go {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
+                //
                 let (tx, rx) = oneshot::channel();
 
                 let lang = Arc::clone(&lang);
@@ -139,6 +161,13 @@ impl Go {
                 let salt = Arc::clone(&salt);
                 let mail = Arc::clone(&mail);
                 let protocol = Arc::clone(&protocol);
+                let action_index = Arc::clone(&action_index);
+                let action_not_found = Arc::clone(&action_not_found);
+                let action_err = Arc::clone(&action_err);
+                let signal_stop = match signal_stop {
+                    Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
+                    None => None,
+                };
 
                 let handle = tokio::spawn(async move {
                     let id = counter;
@@ -153,6 +182,7 @@ impl Go {
                             return;
                         }
                     }
+
                     // Starting one main thread from the client connection
                     let data = WorkerData {
                         engine,
@@ -163,6 +193,10 @@ impl Go {
                         session_key,
                         salt,
                         mail,
+                        action_index,
+                        action_not_found,
+                        action_err,
+                        stop: signal_stop,
                     };
                     Worker::run(stream, data, protocol).await;
                     if let Err(i) = tx.send(id) {
@@ -199,7 +233,7 @@ impl Go {
     /// Listens for rcp connection
     async fn listen_rpc(conf: &Config, stop: Arc<AtomicBool>, main: JoinHandle<()>) {
         // Open rpc port
-        let rpc = match &conf.rpc {
+        let rpc = match conf.rpc.as_ref() {
             Addr::SocketAddr(a) => TcpListener::bind(a).await,
             #[cfg(not(target_family = "windows"))]
             Addr::Uds(s) => TcpListener::bind(s).await,
@@ -239,7 +273,7 @@ impl Go {
                     continue;
                 }
             };
-            if signal == conf.stop {
+            if signal == conf.stop_signal {
                 // set stop
                 stop.store(true, Ordering::Relaxed);
                 // push current thread id
@@ -255,7 +289,7 @@ impl Go {
                     Log::stop(220, Some(e.to_string()));
                 }
                 break;
-            } else if signal == conf.status {
+            } else if signal == conf.status_signal {
                 Log::info(227, None);
                 let pid = process::id() as u64;
                 if let Err(e) = stream.write_u64(pid).await {
@@ -299,7 +333,7 @@ impl Go {
 
     /// Get list of enabled langs from database
     async fn get_langs(db: &mut DB) -> Vec<LangItem> {
-        if let DBEngine::None = db.engine {
+        if !db.in_use() {
             let vec = vec![LangItem {
                 id: 0,
                 lang: "en".to_owned(),
@@ -309,7 +343,7 @@ impl Go {
             return vec;
         }
 
-        let res = match db.query(fnv1a_64!("lib_get_langs"), &[], false).await {
+        let res = match db.query_prepare(fnv1a_64!("lib_get_langs"), &[], false).await {
             Some(r) => r,
             None => {
                 Log::warning(1150, None);

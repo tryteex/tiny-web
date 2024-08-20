@@ -128,6 +128,12 @@ impl Net {
                 let (post, file) = Worker::read_input(stdin, content_type).await;
                 request.input.file = file;
                 request.input.post = post;
+
+                let stop = match data.stop {
+                    Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
+                    None => None,
+                };
+
                 let data = ActionData {
                     engine: Arc::clone(&data.engine),
                     lang: Arc::clone(&data.lang),
@@ -140,6 +146,10 @@ impl Net {
                     request,
                     session,
                     tx: Arc::clone(&stream_write.tx),
+                    action_index: Arc::clone(&data.action_index),
+                    action_not_found: Arc::clone(&data.action_not_found),
+                    action_err: Arc::clone(&data.action_err),
+                    stop,
                 };
 
                 // Run main controller

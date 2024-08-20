@@ -3,7 +3,6 @@ The library uses PostgreSQL DBMS version 15 and above via adapter. However, you 
 or
 The library uses MsSql Server DBMS version 16 and above via adapter. However, you can also try lower versions.
 
-
 Access to the database is mandatory when starting the server. In case of connection loss during operation, the library will attempt to restore it with each request. The corresponding event will be logged.
 
 ___
@@ -29,16 +28,6 @@ Can be empty.
 * `db_max` - Number of connections to the database for all work threads in async.  
 Usually set from 2 to 4 on one work thread.  
 Set "auto" to detect automatically.
-* `[prepare]` - Prepare sql queries.  
-For Postgresql types can be `BOOL`, `INT8`, `INT2`, `INT4`, `TEXT`, `VARCHAR`, `FLOAT4`, `FLOAT8`, `JSON`, `TIMESTAMPTZ`, `UUID`, `BYTEA`.
-For MsSql types can be `BIT`, `BIGINT`, `INT`, `SMALLINT`, `TINYINT`, `NVARCHAR(MAX)`, `NVARCHAR(N_int <= 4000)`, `VARCHAR(MAX)`, `VARCHAR(N_int <= 4000)`, `FLOAT`, `REAL`, `DATETIMEOFFSET`, `UNIQUEIDENTIFIER`, `VARBINARY(MAX)`, `VARBINARY(N_int <= 8000)`.
-```toml
-[prepare]
-key_name1.query = "SELECT name FROM user WHERE id=$1"
-key_name1.types = ["INT4"]
-key_name2.query = "INSERT INTO user(name) VALUES ($1)"
-key_name2.types = ["TEXT"]
-```
 During the library startup, a connection pool is created with the database. The number of connections can be specified by the parameter `db_max`. When executing a query, the library automatically selects an available connection.
 > **Note**  
 > Do not use session temporary tables for database queries.
@@ -49,15 +38,6 @@ To execute a request from the controller, you need to use the functions this.`db
 #### Example 
 ```rust
 pub async fn index(this: &mut Action) -> Answer {
-    // Execute prepare query from config file
-    // 
-    // In config file `tiny.toml`:
-    //[prepare]
-    //prepare_key.query = "SELECT name FROM users"
-    //#prepare_key.types = []
-    let prepare = this.db.query(tiny_web_macro::fnv1a_64!("prepare_key"), &[], false).await.unwrap();
-    this.set("value", Data::Vec(prepare));
-
     // Execute simple query from config file
     let users = this.db.query("SELECT name FROM users", &[], false).await.unwrap();
     this.set("users", Data::Vec(users));

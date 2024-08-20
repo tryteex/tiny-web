@@ -15,11 +15,12 @@ use tokio::{
 };
 
 use super::{
-    action::{ActMap, Action, ActionData, Answer, WebFile},
+    action::{ActMap, Action, ActionData, Answer, Route, WebFile},
     cache::CacheSys,
     dbs::adapter::DB,
     file::TempFile,
     html::Html,
+    init::Addr,
     lang::Lang,
     log::Log,
     mail::Mail,
@@ -81,6 +82,14 @@ pub(crate) struct WorkerData {
     pub salt: Arc<String>,
     /// Mail provider.
     pub mail: Arc<Mutex<Mail>>,
+    /// Default controller for request "/" or default class or default action
+    pub action_index: Arc<Route>,
+    /// Default controller for 404 Not Found
+    pub action_not_found: Arc<Route>,
+    /// Default controller for error_route
+    pub action_err: Arc<Route>,
+    /// Stop signal
+    pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
 }
 
 /// A network stream errors

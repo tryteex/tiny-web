@@ -14,7 +14,7 @@ use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use crate::sys::{action::Data, init::DBConfig, log::Log};
 
-use super::adapter::{DBFieldType, DBPrepare, KeyOrQuery, StrOrI64OrUSize};
+use super::adapter::{KeyOrQuery, StrOrI64OrUSize};
 
 /// Response to the result of the query
 enum DBResult {
@@ -37,7 +37,6 @@ pub(crate) struct MsSql {
     config: Config,
     client: Option<Client<Compat<TcpStream>>>,
     prepare: BTreeMap<i64, MsStatement>,
-    external: Arc<BTreeMap<i64, DBPrepare>>,
 }
 
 /// Statement to database
@@ -53,7 +52,7 @@ type MsColumnName = (usize, fn(&Row, usize) -> Data);
 
 impl MsSql {
     /// Initializes a new object `PgSql`
-    pub fn new(config: Arc<DBConfig>, prepare: Arc<BTreeMap<i64, DBPrepare>>) -> Option<MsSql> {
+    pub fn new(config: Arc<DBConfig>) -> Option<MsSql> {
         let mut cfg = Config::new();
         cfg.host(&config.host);
         if let Some(p) = &config.port {
@@ -77,7 +76,6 @@ impl MsSql {
             config: cfg,
             client: None,
             prepare: BTreeMap::new(),
-            external: prepare,
         })
     }
 
@@ -280,19 +278,6 @@ impl MsSql {
                     WHERE [mail_id]=@P1
                 "#;
                 map.insert(fnv1a_64!("lib_mail_ok"), ("@P1 BIGINT".to_owned(), sql.to_owned()));
-
-                // Add config prepare
-                for (key, sql) in self.external.as_ref() {
-                    if let DBFieldType::Mssql(vec) = &sql.types {
-                        let res = vec
-                            .iter()
-                            .enumerate()
-                            .map(|(index, s)| format!("@P{} {}", index, s))
-                            .collect::<Vec<String>>()
-                            .join(", ");
-                        map.insert(*key, (res, sql.query.to_owned()));
-                    }
-                }
 
                 // Prepare statements
                 for (key, (types, sql)) in map {
@@ -910,13 +895,8 @@ impl MsSql {
 impl std::fmt::Debug for MsSql {
     /// Formats the value using the given formatter.
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        let MsSql { client, prepare, external, config } = self;
-        f.debug_struct("DB")
-            .field("client", &client)
-            .field("config", &config)
-            .field("prepare", &prepare)
-            .field("external", &external)
-            .finish()
+        let MsSql { client, prepare, config } = self;
+        f.debug_struct("DB").field("client", &client).field("config", &config).field("prepare", &prepare).finish()
     }
 }
 

@@ -15,38 +15,3 @@ db_pwd = "tiny"
 db_max = 5
 sslmode = false
 protocol = "FastCGI"
-[prepare]
-list_review.query = """
-	WITH 
-		list AS (
-			SELECT review_id, name, review, created, session, count(*) OVER() AS total
-			FROM review ORDER BY created DESC LIMIT 10
-		),
-		last AS (
-			SELECT MAX(review_id) AS review_id 
-			FROM list 
-			WHERE created + INTERVAL '5 minutes' > now() AND session = $1
-		)
-	SELECT 
-		list.review_id, name, review, timetz(DATE_TRUNC('second', created))::text created, total,
-		CASE WHEN last.review_id IS NOT NULL THEN TRUE ELSE FALSE END AS edit
-	FROM 
-		list 
-		LEFT JOIN last ON last.review_id=list.review_id
-"""
-list_review.types = ["TEXT"]
-add_review.query = "INSERT INTO review(created, name, ip, agent, session, review) VALUES (now(), $1, $2, $3, $4, $5)"
-add_review.types = ["TEXT","TEXT","TEXT","TEXT","TEXT"]
-edit_review.query = """
-	UPDATE review
-	SET name=$1, review=$2	
-	FROM  (
-		SELECT review_id FROM review 
-		WHERE created + INTERVAL '5 minutes' > now() AND session = $3
-		ORDER BY review_id DESC
-		LIMIT 1
-	) t 
-	WHERE t.review_id=review.review_id AND review.review_id=$4
-	RETURNING review.review_id
-"""
-edit_review.types = ["TEXT","TEXT","TEXT","INT8"]

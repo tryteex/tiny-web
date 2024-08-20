@@ -64,11 +64,3 @@ db_max = "auto"
 # Used net protocol
 # Maybe: FastCGI, SCGI, uWSGI (modifier1=0), gRPC, HTTP or WebSocket.
 protocol = "FastCGI"
-
-# Prepare sql queries
-# Type can be BOOL, INT8, INT2, INT4, TEXT, VARCHAR, FLOAT4, FLOAT8, JSON, TIMESTAMPTZ, UUID, BYTEA
-[prepare]
-#key_name1.query = "SELECT name FROM user WHERE id=$1"
-#key_name1.types = ["INT4"]
-#key_name2.query = "INSERT INTO user(name) VALUES ($1)"
-#key_name2.types = ["TEXT"]
