@@ -174,8 +174,8 @@ EXEC sp_addextendedproperty
 'TABLE', N'lang';
 
 SET IDENTITY_INSERT [lang] ON;
-INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (0, 'English', 0, 'en', 0, null);
-INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (1, 'Ukrainian (Українська)', 0, 'uk', 1, null);
+INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (0, 'English', 1, 'en', 0, null);
+INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (1, 'Ukrainian (Українська)', 1, 'uk', 1, null);
 INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (2, 'Afar (Afaraf)', 0, 'aa', 2, null);
 INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (3, 'Abkhaz (аҧсуа бызшәа, аҧсшәа)', 0, 'ab', 3, null);
 INSERT INTO [lang] ([lang_id], [name], [enable], [lang], [sort], [index]) VALUES (4, 'Avestan (avesta)', 0, 'ae', 4, null);

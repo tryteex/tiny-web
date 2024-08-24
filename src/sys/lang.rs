@@ -1,8 +1,15 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap},
     fs::{read_dir, read_to_string},
+    path::PathBuf,
     sync::Arc,
 };
+
+#[cfg(debug_assertions)]
+use std::time::SystemTime;
+
+#[cfg(debug_assertions)]
+use tokio::fs;
 
 use toml::{Table, Value};
 
@@ -52,11 +59,21 @@ type LangList = BTreeMap<i64, BTreeMap<i64, BTreeMap<i64, Arc<BTreeMap<i64, Stri
 #[derive(Debug)]
 pub struct Lang {
     /// List of languages
-    pub langs: Vec<LangItem>,
+    pub langs: Arc<Vec<Arc<LangItem>>>,
     /// List of translations
-    pub list: LangList,
+    pub list: Arc<LangList>,
     /// Default language
     pub default: usize,
+    /// SystemTime last modification
+    #[cfg(debug_assertions)]
+    last: SystemTime,
+    /// Sum of all filename hashes
+    #[cfg(debug_assertions)]
+    hash: i128,
+    /// Path to langs' files
+    root: Arc<String>,
+    /// List of lang codes
+    codes: BTreeMap<String, i64>,
 }
 
 impl Lang {
@@ -97,17 +114,26 @@ impl Lang {
     /// To get a translation, it is enough to set the `this.lang("contact")` function,
     /// which will return the corresponding translation.<br />
     /// If no translation is found, the key will be returned.
-    pub fn new(root: &str, default_lang: &str, langs: Vec<LangItem>) -> Lang {
+    pub async fn new(root: &str, default_lang: &str, langs: Vec<Arc<LangItem>>) -> Lang {
+        #[cfg(debug_assertions)]
+        let last_time = SystemTime::UNIX_EPOCH;
+        let mut codes = BTreeMap::new();
+
         if langs.is_empty() {
             Log::warning(1151, None);
             return Lang {
-                langs: Vec::new(),
-                list: BTreeMap::new(),
+                langs: Arc::new(Vec::new()),
+                list: Arc::new(BTreeMap::new()),
                 default: 0,
+                #[cfg(debug_assertions)]
+                last: last_time,
+                #[cfg(debug_assertions)]
+                hash: 0,
+                root: Arc::new(root.to_owned()),
+                codes,
             };
         }
 
-        let mut codes = BTreeMap::new();
         let mut default = 0;
         for item in &langs {
             codes.insert(item.lang.clone(), item.id);
@@ -115,18 +141,35 @@ impl Lang {
                 default = item.id as usize;
             }
         }
+        let mut lang = Lang {
+            langs: Arc::new(langs),
+            list: Arc::new(BTreeMap::new()),
+            default,
+            #[cfg(debug_assertions)]
+            last: last_time,
+            #[cfg(debug_assertions)]
+            hash: 0,
+            root: Arc::new(root.to_owned()),
+            codes,
+        };
+        lang.load().await;
+        lang
+    }
+
+    /// Load lang's files
+    async fn get_files(root: &str) -> Vec<(PathBuf, String, String, String)> {
+        let mut vec = Vec::new();
 
         let path = format!("{}/app/", root);
         let read_path = match read_dir(&path) {
             Ok(r) => r,
             Err(e) => {
                 Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
-                return Lang { langs, list: BTreeMap::new(), default };
+                return vec;
             }
         };
 
         // Read first level dir
-        let mut list = BTreeMap::new();
         for entry in read_path {
             let path = match entry {
                 Ok(e) => e.path(),
@@ -199,46 +242,96 @@ impl Lang {
                         None => continue,
                     };
                     if code.starts_with("lang.") && code.len() == 7 {
-                        let code = &code[5..7];
-                        if let Some(id) = codes.get(code) {
-                            if let Ok(text) = read_to_string(&path) {
-                                if !text.is_empty() {
-                                    let text = match text.parse::<Table>() {
-                                        Ok(v) => v,
-                                        Err(e) => {
-                                            Log::warning(19, Some(format!("{:?} {} ", path.to_str(), e)));
-                                            continue;
-                                        }
-                                    };
-                                    for (key, value) in text {
-                                        if let Value::String(val) = value {
-                                            let l1 = match list.entry(*id) {
-                                                Entry::Vacant(v) => v.insert(BTreeMap::new()),
-                                                Entry::Occupied(o) => o.into_mut(),
-                                            };
-                                            // module
-                                            let l2 = match l1.entry(fnv1a_64(module.as_bytes())) {
-                                                Entry::Vacant(v) => v.insert(BTreeMap::new()),
-                                                Entry::Occupied(o) => o.into_mut(),
-                                            };
-                                            // class
-                                            let l3 = match l2.entry(fnv1a_64(class.as_bytes())) {
-                                                Entry::Vacant(v) => v.insert(BTreeMap::new()),
-                                                Entry::Occupied(o) => o.into_mut(),
-                                            };
-                                            l3.insert(fnv1a_64(key.as_bytes()), val);
-                                        } else {
-                                            Log::warning(20, Some(format!("{:?} {} ", path.to_str(), value)));
-                                            continue;
-                                        }
-                                    }
-                                }
+                        let code = code[5..7].to_owned();
+                        vec.push((path, module.to_owned(), class.to_owned(), code));
+                    }
+                }
+            }
+        }
+        vec
+    }
+
+    /// Check system time
+    #[cfg(debug_assertions)]
+    pub(crate) async fn check_time(&self) -> bool {
+        let files = Lang::get_files(&self.root).await;
+        let mut last_time = SystemTime::UNIX_EPOCH;
+        let mut hash: i128 = 0;
+
+        for (path, _, _, _) in files {
+            if let Ok(metadata) = fs::metadata(&path).await {
+                if let Ok(modified_time) = metadata.modified() {
+                    if modified_time > last_time {
+                        last_time = modified_time;
+                    }
+                    if let Some(s) = path.as_os_str().to_str() {
+                        hash += fnv1a_64(s.as_bytes()) as i128;
+                    }
+                }
+            }
+        }
+        last_time != self.last || hash != self.hash
+    }
+
+    /// Load translates
+    pub(crate) async fn load(&mut self) {
+        #[cfg(debug_assertions)]
+        let mut last_time = SystemTime::UNIX_EPOCH;
+        #[cfg(debug_assertions)]
+        let mut hash: i128 = 0;
+
+        let files = Lang::get_files(&self.root).await;
+        let mut list = BTreeMap::new();
+
+        for (path, module, class, code) in files {
+            if let Some(id) = self.codes.get(&code) {
+                if let Ok(text) = read_to_string(&path) {
+                    #[cfg(debug_assertions)]
+                    if let Ok(metadata) = fs::metadata(&path).await {
+                        if let Ok(modified_time) = metadata.modified() {
+                            if modified_time > last_time {
+                                last_time = modified_time;
+                            }
+                            if let Some(s) = path.as_os_str().to_str() {
+                                hash += fnv1a_64(s.as_bytes()) as i128;
+                            }
+                        }
+                    }
+                    if !text.is_empty() {
+                        let text = match text.parse::<Table>() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                Log::warning(19, Some(format!("{:?} {} ", path.to_str(), e)));
+                                continue;
+                            }
+                        };
+                        for (key, value) in text {
+                            if let Value::String(val) = value {
+                                let l1 = match list.entry(*id) {
+                                    Entry::Vacant(v) => v.insert(BTreeMap::new()),
+                                    Entry::Occupied(o) => o.into_mut(),
+                                };
+                                // module
+                                let l2 = match l1.entry(fnv1a_64(module.as_bytes())) {
+                                    Entry::Vacant(v) => v.insert(BTreeMap::new()),
+                                    Entry::Occupied(o) => o.into_mut(),
+                                };
+                                // class
+                                let l3 = match l2.entry(fnv1a_64(class.as_bytes())) {
+                                    Entry::Vacant(v) => v.insert(BTreeMap::new()),
+                                    Entry::Occupied(o) => o.into_mut(),
+                                };
+                                l3.insert(fnv1a_64(key.as_bytes()), val);
+                            } else {
+                                Log::warning(20, Some(format!("{:?} {} ", path.to_str(), value)));
+                                continue;
                             }
                         }
                     }
                 }
             }
         }
+
         // Add Arc to async operation
         let mut list_lang = BTreeMap::new();
         for (key_lang, item_lang) in list {
@@ -252,6 +345,14 @@ impl Lang {
             }
             list_lang.insert(key_lang, list_module);
         }
-        Lang { langs, list: list_lang, default }
+        self.list = Arc::new(list_lang);
+        #[cfg(debug_assertions)]
+        {
+            self.last = last_time;
+        }
+        #[cfg(debug_assertions)]
+        {
+            self.hash = hash;
+        }
     }
 }

@@ -41,6 +41,9 @@ Each template consists of HTML text and special expressions that will be replace
 | {%&nbsp;endfor&nbsp;%} | End of the loop |
 
 ___
+In debug, when the `#[cfg(debug_assertions)]` attribute is set, the library checks for changes in templates files at each new connection, and automatically loads the changes.  
+In the release, when the `#[cfg(debug_assertions)]` attribute does not work, the library loads the templates files only once, when the application starts.
+___
 ### Examples
 ___
 #### Example 1

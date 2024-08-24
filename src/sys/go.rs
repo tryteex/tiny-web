@@ -19,6 +19,9 @@ use tokio::{
     time,
 };
 
+#[cfg(debug_assertions)]
+use tokio::sync::RwLock;
+
 use super::{
     action::{ActMap, Data},
     cache::CacheSys,
@@ -102,8 +105,16 @@ impl Go {
 
         let main = tokio::spawn(async move {
             let langs = Go::get_langs(&mut db).await;
-            let lang = Arc::new(Lang::new(&root_path, &lang, langs));
-            let html = Arc::new(Html::new(&root_path));
+
+            #[cfg(not(debug_assertions))]
+            let lang = Arc::new(Lang::new(&root_path, &lang, langs).await);
+            #[cfg(debug_assertions)]
+            let lang = Arc::new(RwLock::new(Lang::new(&root_path, &lang, langs).await));
+            #[cfg(not(debug_assertions))]
+            let html = Arc::new(Html::new(&root_path).await);
+            #[cfg(debug_assertions)]
+            let html = Arc::new(RwLock::new(Html::new(&root_path).await));
+
             let cache = CacheSys::new().await;
             let engine = Arc::new(engine_data);
 
@@ -148,7 +159,7 @@ impl Go {
                 if stop.load(Ordering::Relaxed) {
                     break;
                 }
-                //
+
                 let (tx, rx) = oneshot::channel();
 
                 let lang = Arc::clone(&lang);
@@ -332,14 +343,14 @@ impl Go {
     }
 
     /// Get list of enabled langs from database
-    async fn get_langs(db: &mut DB) -> Vec<LangItem> {
+    async fn get_langs(db: &mut DB) -> Vec<Arc<LangItem>> {
         if !db.in_use() {
-            let vec = vec![LangItem {
+            let vec = vec![Arc::new(LangItem {
                 id: 0,
                 lang: "en".to_owned(),
                 name: "English".to_owned(),
                 index: 0,
-            }];
+            })];
             return vec;
         }
 
@@ -385,7 +396,7 @@ impl Go {
                     Log::warning(1150, None);
                     return Vec::new();
                 };
-                vec.push(LangItem { id, lang, name, index });
+                vec.push(Arc::new(LangItem { id, lang, name, index }));
             } else {
                 Log::warning(1150, None);
                 return Vec::new();

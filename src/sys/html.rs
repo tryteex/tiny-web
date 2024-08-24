@@ -1,8 +1,15 @@
 use std::{
-    collections::BTreeMap,
+    collections::{btree_map::Entry, BTreeMap},
     fs::{read_dir, read_to_string},
+    path::PathBuf,
     sync::Arc,
 };
+
+#[cfg(debug_assertions)]
+use std::time::SystemTime;
+
+#[cfg(debug_assertions)]
+use tokio::fs;
 
 use crate::fnv1a_64;
 
@@ -245,6 +252,14 @@ pub(crate) struct Html {
     /// * 4 - List of Nodes
     #[allow(clippy::type_complexity)]
     pub list: BTreeMap<i64, BTreeMap<i64, Arc<BTreeMap<i64, Nodes>>>>,
+    /// SystemTime last modification
+    #[cfg(debug_assertions)]
+    pub(crate) last: SystemTime,
+    /// Sum of all filename hashes
+    #[cfg(debug_assertions)]
+    hash: i128,
+    /// Path to templates' files
+    root: Arc<String>,
 }
 
 impl Html {
@@ -297,110 +312,20 @@ impl Html {
     ///   {{ arr.body }}
     /// {% elsefor %} empty or null array
     /// {% endfor %}
-    pub fn new(root: &str) -> Html {
-        let path = format!("{}/app/", root);
-        let read_path = match read_dir(&path) {
-            Ok(r) => r,
-            Err(e) => {
-                Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
-                return Html { list: BTreeMap::new() };
-            }
+    pub async fn new(root: &str) -> Html {
+        #[cfg(debug_assertions)]
+        let last_time = SystemTime::UNIX_EPOCH;
+
+        let mut html = Html {
+            list: BTreeMap::new(),
+            #[cfg(debug_assertions)]
+            last: last_time,
+            #[cfg(debug_assertions)]
+            hash: 0,
+            root: Arc::new(root.to_owned()),
         };
-
-        let mut list = BTreeMap::new();
-        // Read first level dir
-        for entry in read_path {
-            let path = match entry {
-                Ok(e) => e.path(),
-                Err(e) => {
-                    Log::warning(1101, Some(format!("{} ({})", e, path)));
-                    continue;
-                }
-            };
-            if !path.is_dir() {
-                continue;
-            }
-            let module = match path.file_name() {
-                Some(m) => match m.to_str() {
-                    Some(module) => module,
-                    None => continue,
-                },
-                None => continue,
-            };
-            let read_path = match read_dir(&path) {
-                Ok(r) => r,
-                Err(e) => {
-                    Log::warning(1102, Some(format!("{} ({})", e, path.display())));
-                    continue;
-                }
-            };
-            let mut ls = BTreeMap::new();
-            // Read second level dir
-            for entry in read_path {
-                let path = match entry {
-                    Ok(e) => e.path(),
-                    Err(e) => {
-                        Log::warning(1101, Some(format!("{} ({})", e, path.display())));
-                        continue;
-                    }
-                };
-                if !path.is_dir() {
-                    continue;
-                }
-
-                let class = match path.file_name() {
-                    Some(c) => match c.to_str() {
-                        Some(class) => class,
-                        None => continue,
-                    },
-                    None => continue,
-                };
-                let read_path = match read_dir(&path) {
-                    Ok(r) => r,
-                    Err(e) => {
-                        Log::warning(1102, Some(format!("{} ({})", e, path.display())));
-                        continue;
-                    }
-                };
-                let mut l = BTreeMap::new();
-                // Read third level dir
-                for entry in read_path {
-                    let path = match entry {
-                        Ok(e) => e.path(),
-                        Err(e) => {
-                            Log::warning(1101, Some(format!("{} ({})", e, path.display())));
-                            continue;
-                        }
-                    };
-                    if !path.is_file() {
-                        continue;
-                    }
-                    let view = match path.file_name() {
-                        Some(v) => match v.to_str() {
-                            Some(view) => view,
-                            None => continue,
-                        },
-                        None => continue,
-                    };
-                    if view.ends_with(".html") && view.len() > 5 {
-                        if let Ok(html) = read_to_string(&path) {
-                            let view = &view[..view.len() - 5];
-                            // Parse templates
-                            match Html::parse(&html[..]) {
-                                Ok(v) => l.insert(fnv1a_64(view.as_bytes()), v),
-                                Err(e) => {
-                                    Log::warning(700, Some(format!("{} ({})", e, path.display())));
-                                    continue;
-                                }
-                            };
-                        }
-                    }
-                }
-                ls.insert(fnv1a_64(class.as_bytes()), Arc::new(l));
-            }
-            list.insert(fnv1a_64(module.as_bytes()), ls);
-        }
-        Html { list }
+        html.load().await;
+        html
     }
 
     /// Gets temptale from String
@@ -2028,5 +1953,178 @@ impl Html {
             };
         }
         new_text
+    }
+
+    /// Load lang's files
+    async fn get_files(root: &str) -> Vec<(PathBuf, String, String, String)> {
+        let mut vec = Vec::new();
+        let path = format!("{}/app/", root);
+        let read_path = match read_dir(&path) {
+            Ok(r) => r,
+            Err(e) => {
+                Log::warning(1100, Some(format!("Path: {}. Err: {}", path, e)));
+                return vec;
+            }
+        };
+
+        // Read first level dir
+        for entry in read_path {
+            let path = match entry {
+                Ok(e) => e.path(),
+                Err(e) => {
+                    Log::warning(1101, Some(format!("{} ({})", e, path)));
+                    continue;
+                }
+            };
+            if !path.is_dir() {
+                continue;
+            }
+            let module = match path.file_name() {
+                Some(m) => match m.to_str() {
+                    Some(module) => module,
+                    None => continue,
+                },
+                None => continue,
+            };
+            let read_path = match read_dir(&path) {
+                Ok(r) => r,
+                Err(e) => {
+                    Log::warning(1102, Some(format!("{} ({})", e, path.display())));
+                    continue;
+                }
+            };
+            // Read second level dir
+            for entry in read_path {
+                let path = match entry {
+                    Ok(e) => e.path(),
+                    Err(e) => {
+                        Log::warning(1101, Some(format!("{} ({})", e, path.display())));
+                        continue;
+                    }
+                };
+                if !path.is_dir() {
+                    continue;
+                }
+
+                let class = match path.file_name() {
+                    Some(c) => match c.to_str() {
+                        Some(class) => class,
+                        None => continue,
+                    },
+                    None => continue,
+                };
+                let read_path = match read_dir(&path) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        Log::warning(1102, Some(format!("{} ({})", e, path.display())));
+                        continue;
+                    }
+                };
+                // Read third level dir
+                for entry in read_path {
+                    let path = match entry {
+                        Ok(e) => e.path(),
+                        Err(e) => {
+                            Log::warning(1101, Some(format!("{} ({})", e, path.display())));
+                            continue;
+                        }
+                    };
+                    if !path.is_file() {
+                        continue;
+                    }
+                    let view = match path.file_name() {
+                        Some(v) => match v.to_str() {
+                            Some(view) => view,
+                            None => continue,
+                        },
+                        None => continue,
+                    };
+                    if view.ends_with(".html") && view.len() > 5 {
+                        let view = view[..view.len() - 5].to_owned();
+                        vec.push((path, module.to_owned(), class.to_owned(), view));
+                    }
+                }
+            }
+        }
+        vec
+    }
+
+    /// Check system time
+    #[cfg(debug_assertions)]
+    pub(crate) async fn check_time(&self) -> bool {
+        let files = Html::get_files(&self.root).await;
+        let mut last_time = SystemTime::UNIX_EPOCH;
+        let mut hash: i128 = 0;
+
+        for (path, _, _, _) in files {
+            if let Ok(metadata) = fs::metadata(&path).await {
+                if let Ok(modified_time) = metadata.modified() {
+                    if modified_time > last_time {
+                        last_time = modified_time;
+                    }
+                    if let Some(s) = path.as_os_str().to_str() {
+                        hash += fnv1a_64(s.as_bytes()) as i128;
+                    }
+                }
+            }
+        }
+        last_time != self.last || hash != self.hash
+    }
+
+    /// Load translates
+    pub(crate) async fn load(&mut self) {
+        #[cfg(debug_assertions)]
+        let mut last_time = SystemTime::UNIX_EPOCH;
+        #[cfg(debug_assertions)]
+        let mut hash: i128 = 0;
+
+        let mut list = BTreeMap::new();
+        let files = Html::get_files(&self.root).await;
+
+        for (path, module, class, view) in files {
+            if let Ok(html) = read_to_string(&path) {
+                #[cfg(debug_assertions)]
+                if let Ok(metadata) = fs::metadata(&path).await {
+                    if let Ok(modified_time) = metadata.modified() {
+                        if modified_time > last_time {
+                            last_time = modified_time;
+                        }
+                        if let Some(s) = path.as_os_str().to_str() {
+                            hash += fnv1a_64(s.as_bytes()) as i128;
+                        }
+                    }
+                }
+
+                // Parse templates
+                match Html::parse(&html[..]) {
+                    Ok(v) => {
+                        let module = match list.entry(fnv1a_64(module.as_bytes())) {
+                            Entry::Vacant(entry) => entry.insert(BTreeMap::new()),
+                            Entry::Occupied(entry) => entry.into_mut(),
+                        };
+                        let class = match module.entry(fnv1a_64(class.as_bytes())) {
+                            Entry::Vacant(entry) => entry.insert(Arc::new(BTreeMap::new())),
+                            Entry::Occupied(entry) => entry.into_mut(),
+                        };
+                        if let Some(views) = Arc::get_mut(class) {
+                            views.insert(fnv1a_64(view.as_bytes()), v);
+                        }
+                    }
+                    Err(e) => {
+                        Log::warning(700, Some(format!("{} ({})", e, path.display())));
+                        continue;
+                    }
+                }
+            }
+        }
+        self.list = list;
+        #[cfg(debug_assertions)]
+        {
+            self.last = last_time;
+        }
+        #[cfg(debug_assertions)]
+        {
+            self.hash = hash;
+        }
     }
 }

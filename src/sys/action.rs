@@ -19,6 +19,9 @@ use tokio::{
     task::{yield_now, JoinHandle},
 };
 
+#[cfg(debug_assertions)]
+use tokio::sync::RwLock;
+
 use crate::{fnv1a_64, StrOrI64};
 
 use super::{
@@ -251,9 +254,17 @@ pub(crate) struct ActionData {
     /// Engine - binary tree of controller functions.
     pub engine: Arc<ActMap>,
     /// I18n system.
+    #[cfg(not(debug_assertions))]
     pub lang: Arc<Lang>,
+    /// I18n system.
+    #[cfg(debug_assertions)]
+    pub lang: Arc<RwLock<Lang>>,
     /// Template maker.
+    #[cfg(not(debug_assertions))]
     pub html: Arc<Html>,
+    /// Template maker.
+    #[cfg(debug_assertions)]
+    pub html: Arc<RwLock<Html>>,
     /// Cache system.
     pub cache: Arc<Mutex<CacheSys>>,
     /// Database connections pool.
@@ -475,9 +486,17 @@ pub struct Action {
     /// Engine of server
     engine: Arc<ActMap>,
     /// All translates
+    #[cfg(not(debug_assertions))]
     language: Arc<Lang>,
+    /// All translates
+    #[cfg(debug_assertions)]
+    language: Arc<RwLock<Lang>>,
     /// All templates
+    #[cfg(not(debug_assertions))]
     template: Arc<Html>,
+    /// All templates
+    #[cfg(debug_assertions)]
+    template: Arc<RwLock<Html>>,
     /// Cache
     pub cache: Cache,
     /// Database pool
@@ -518,7 +537,11 @@ impl Action {
             js: Vec::new(),
             meta: Vec::new(),
         };
+        #[cfg(not(debug_assertions))]
         let lang_id = data.lang.default as i64;
+        #[cfg(debug_assertions)]
+        let lang_id = data.lang.read().await.default as i64;
+
         let mut session = if let Some(session) = data.session {
             Session::load_session(session.clone(), Arc::clone(&data.db), lang_id, data.session_key).await
         } else {
@@ -548,10 +571,23 @@ impl Action {
         }
         let param = route.param;
         // Load new template list
+        #[cfg(not(debug_assertions))]
         let html = data.html.list.get(&module_id).and_then(|module| module.get(&class_id).cloned());
+        #[cfg(debug_assertions)]
+        let html = data.html.read().await.list.get(&module_id).and_then(|module| module.get(&class_id).cloned());
         // Load new translate list
+        #[cfg(not(debug_assertions))]
         let lang = data
             .lang
+            .list
+            .get(&session.get_lang_id())
+            .and_then(|langs| langs.get(&module_id))
+            .and_then(|module| module.get(&class_id).cloned());
+        #[cfg(debug_assertions)]
+        let lang = data
+            .lang
+            .read()
+            .await
             .list
             .get(&session.get_lang_id())
             .and_then(|langs| langs.get(&module_id))
@@ -667,13 +703,27 @@ impl Action {
     }
 
     /// Get current lang
-    pub fn lang_current(&self) -> &LangItem {
-        unsafe { self.language.langs.get_unchecked(self.session.get_lang_id() as usize) }
+    pub async fn lang_current(&self) -> Arc<LangItem> {
+        #[cfg(not(debug_assertions))]
+        {
+            Arc::clone(unsafe { self.language.langs.get_unchecked(self.session.get_lang_id() as usize) })
+        }
+        #[cfg(debug_assertions)]
+        {
+            Arc::clone(unsafe { self.language.read().await.langs.get_unchecked(self.session.get_lang_id() as usize) })
+        }
     }
 
     /// Get vector of system languages
-    pub fn lang_list(&self) -> &Vec<LangItem> {
-        &self.language.langs
+    pub async fn lang_list(&self) -> Arc<Vec<Arc<LangItem>>> {
+        #[cfg(not(debug_assertions))]
+        {
+            Arc::clone(&self.language.langs)
+        }
+        #[cfg(debug_assertions)]
+        {
+            Arc::clone(&self.language.read().await.langs)
+        }
     }
 
     /// Invoke found controller
@@ -704,6 +754,7 @@ impl Action {
                         // Call from the different module as the current one
 
                         // Load new template list
+                        #[cfg(not(debug_assertions))]
                         let h = match self.template.list.get(&module_id) {
                             Some(h) => match h.get(&class_id) {
                                 Some(h) => self.html.replace(Arc::clone(h)),
@@ -711,8 +762,28 @@ impl Action {
                             },
                             None => self.html.take(),
                         };
+                        #[cfg(debug_assertions)]
+                        let h = match self.template.read().await.list.get(&module_id) {
+                            Some(h) => match h.get(&class_id) {
+                                Some(h) => self.html.replace(Arc::clone(h)),
+                                None => self.html.take(),
+                            },
+                            None => self.html.take(),
+                        };
                         // Load new translate list
+                        #[cfg(not(debug_assertions))]
                         let l = match self.language.list.get(&self.session.get_lang_id()) {
+                            Some(l) => match l.get(&module_id) {
+                                Some(l) => match l.get(&class_id) {
+                                    Some(l) => self.lang.replace(Arc::clone(l)),
+                                    None => self.lang.take(),
+                                },
+                                None => self.lang.take(),
+                            },
+                            None => self.lang.take(),
+                        };
+                        #[cfg(debug_assertions)]
+                        let l = match self.language.read().await.list.get(&self.session.get_lang_id()) {
                             Some(l) => match l.get(&module_id) {
                                 Some(l) => match l.get(&class_id) {
                                     Some(l) => self.lang.replace(Arc::clone(l)),

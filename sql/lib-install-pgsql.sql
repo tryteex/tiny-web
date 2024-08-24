@@ -65,8 +65,8 @@ COMMENT ON COLUMN "lang"."sort" IS 'Sort order';
 COMMENT ON COLUMN "lang"."index" IS 'Index in JSON type field db';
 COMMENT ON TABLE "lang" IS 'Languages';
 
-INSERT INTO "lang" VALUES (0, 'English', 'f', 'en', 0, null);
-INSERT INTO "lang" VALUES (1, 'Ukrainian (Українська)', 'f', 'uk', 1, null);
+INSERT INTO "lang" VALUES (0, 'English', 't', 'en', 0, null);
+INSERT INTO "lang" VALUES (1, 'Ukrainian (Українська)', 't', 'uk', 1, null);
 INSERT INTO "lang" VALUES (2, 'Afar (Afaraf)', 'f', 'aa', 2, null);
 INSERT INTO "lang" VALUES (3, 'Abkhaz (аҧсуа бызшәа, аҧсшәа)', 'f', 'ab', 3, null);
 INSERT INTO "lang" VALUES (4, 'Avestan (avesta)', 'f', 'ae', 4, null);

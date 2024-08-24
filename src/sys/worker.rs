@@ -14,6 +14,9 @@ use tokio::{
     task::JoinHandle,
 };
 
+#[cfg(debug_assertions)]
+use tokio::sync::RwLock;
+
 use super::{
     action::{ActMap, Action, ActionData, Answer, Route, WebFile},
     cache::CacheSys,
@@ -69,9 +72,17 @@ pub(crate) struct WorkerData {
     /// Engine - binary tree of controller functions.
     pub engine: Arc<ActMap>,
     /// I18n system.
+    #[cfg(not(debug_assertions))]
     pub lang: Arc<Lang>,
+    /// I18n system.
+    #[cfg(debug_assertions)]
+    pub lang: Arc<RwLock<Lang>>,
     /// Template maker.
+    #[cfg(not(debug_assertions))]
     pub html: Arc<Html>,
+    /// Template maker.
+    #[cfg(debug_assertions)]
+    pub html: Arc<RwLock<Html>>,
     /// Cache system.
     pub cache: Arc<Mutex<CacheSys>>,
     /// Database connections pool.
@@ -370,6 +381,10 @@ impl Worker {
     ///
     /// Vector with a binary data
     pub(crate) async fn call_action(data: ActionData) -> Vec<u8> {
+        // Check and reload langs and templates
+        #[cfg(debug_assertions)]
+        Worker::reload(Arc::clone(&data.lang), Arc::clone(&data.html)).await;
+
         let mut action = match Action::new(data).await {
             Ok(action) => action,
             Err((redirect, files)) => {
@@ -420,6 +435,21 @@ impl Worker {
             Action::end(action).await;
         });
         answer
+    }
+
+    /// Reload lang and template
+    #[cfg(debug_assertions)]
+    async fn reload(lang: Arc<RwLock<Lang>>, html: Arc<RwLock<Html>>) {
+        let changed = lang.read().await.check_time().await;
+        if changed {
+            let mut lang = lang.write().await;
+            lang.load().await;
+        }
+        let changed = html.read().await.check_time().await;
+        if changed {
+            let mut html = html.write().await;
+            html.load().await;
+        }
     }
 
     fn get_header(capacity: usize, action: &Action, content_length: Option<usize>) -> Vec<u8> {
