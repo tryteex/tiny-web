@@ -169,8 +169,7 @@ impl Net {
                         max_read = min(packet_len, stream.available());
                     }
                     buf = stream.get(2);
-                    param_size =
-                        u16::from_le_bytes([unsafe { *buf.get_unchecked(0) }, unsafe { *buf.get_unchecked(1) }]) as usize;
+                    param_size = u16::from_le_bytes([unsafe { *buf.get_unchecked(0) }, unsafe { *buf.get_unchecked(1) }]) as usize;
                     if param_size == 0 {
                         return None;
                     }
@@ -206,8 +205,7 @@ impl Net {
                         max_read = min(packet_len, stream.available());
                     }
                     buf = stream.get(2);
-                    value_size =
-                        u16::from_le_bytes([unsafe { *buf.get_unchecked(0) }, unsafe { *buf.get_unchecked(1) }]) as usize;
+                    value_size = u16::from_le_bytes([unsafe { *buf.get_unchecked(0) }, unsafe { *buf.get_unchecked(1) }]) as usize;
                     packet_len -= 2;
                     stream.shift(2);
                     if value_size == 0 {
@@ -266,10 +264,9 @@ impl Net {
                                 let key: Vec<&str> = v.splitn(2, '=').collect();
                                 match key.len() {
                                     1 => get.insert(v.to_owned(), String::new()),
-                                    _ => get.insert(
-                                        unsafe { *key.get_unchecked(0) }.to_owned(),
-                                        unsafe { *key.get_unchecked(1) }.to_owned(),
-                                    ),
+                                    _ => {
+                                        get.insert(unsafe { *key.get_unchecked(0) }.to_owned(), unsafe { *key.get_unchecked(1) }.to_owned())
+                                    }
                                 };
                             }
                         }
@@ -292,10 +289,7 @@ impl Net {
                                         session_key = Some(unsafe { *key.get_unchecked(1) }.to_owned());
                                     }
                                 } else {
-                                    cookie.insert(
-                                        unsafe { *key.get_unchecked(0) }.to_owned(),
-                                        unsafe { *key.get_unchecked(1) }.to_owned(),
-                                    );
+                                    cookie.insert(unsafe { *key.get_unchecked(0) }.to_owned(), unsafe { *key.get_unchecked(1) }.to_owned());
                                 }
                             }
                         }

@@ -1,20 +1,35 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap},
+    future::Future,
+    io,
+    pin::Pin,
     sync::Arc,
+    task::{Context, Poll},
 };
 
 use chrono::{DateTime, Utc};
 use futures_util::{pin_mut, TryStreamExt};
-use postgres::{types::ToSql, NoTls, Row, Statement, ToStatement};
-use rustls::{ClientConfig, RootCertStore};
+use postgres::{
+    tls::{ChannelBinding, MakeTlsConnect, TlsConnect},
+    types::{ToSql, Type},
+    Column, NoTls, Row, Statement, ToStatement,
+};
+use ring::digest;
+use rustls::{pki_types::ServerName, ClientConfig, RootCertStore};
 use serde_json::Value;
-use tokio_postgres::{types::Type, Client, Column};
-
 use tiny_web_macro::fnv1a_64;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio_postgres::Client;
+use tokio_rustls::{client::TlsStream, TlsConnector};
+use x509_certificate::{
+    DigestAlgorithm::{Sha1, Sha256, Sha384, Sha512},
+    SignatureAlgorithm::{EcdsaSha256, EcdsaSha384, Ed25519, NoSignature, RsaSha1, RsaSha256, RsaSha384, RsaSha512},
+    X509Certificate,
+};
 
-use crate::sys::{action::Data, init::DBConfig, log::Log};
+use crate::sys::{data::Data, init::DBConfig, log::Log};
 
-use super::adapter::{KeyOrQuery, MakeTinyTlsConnect, StrOrI64OrUSize};
+use super::adapter::{KeyOrQuery, StrOrI64OrUSize};
 
 /// Response to the result of the query
 #[derive(Debug)]
@@ -40,7 +55,7 @@ pub(crate) struct PgSql {
     /// Connection config.
     sql_conn: tokio_postgres::Config,
     /// Use tls for connection when sslmode=require.
-    tls: Option<MakeTinyTlsConnect>,
+    tls: Option<MakeRustTlsConnect>,
     /// Prepare statements to database.
     prepare: BTreeMap<i64, PgStatement>,
 }
@@ -110,10 +125,11 @@ impl PgSql {
         };
         let tls = if config.sslmode {
             let config = ClientConfig::builder().with_root_certificates(RootCertStore::empty()).with_no_client_auth();
-            Some(MakeTinyTlsConnect::new(config))
+            Some(MakeRustTlsConnect::new(config))
         } else {
             None
         };
+
         Some(PgSql {
             client: None,
             sql_conn,
@@ -220,10 +236,7 @@ impl PgSql {
                 "#;
                 map.insert(
                     fnv1a_64!("lib_set_session"),
-                    (
-                        client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::BYTEA, Type::TEXT, Type::TEXT, Type::INT8]),
-                        sql.to_owned(),
-                    ),
+                    (client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::BYTEA, Type::TEXT, Type::TEXT, Type::INT8]), sql.to_owned()),
                 );
 
                 // Insert session
@@ -233,10 +246,7 @@ impl PgSql {
                 "#;
                 map.insert(
                     fnv1a_64!("lib_add_session"),
-                    (
-                        client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::TEXT, Type::BYTEA, Type::TEXT, Type::TEXT]),
-                        sql.to_owned(),
-                    ),
+                    (client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::TEXT, Type::BYTEA, Type::TEXT, Type::TEXT]), sql.to_owned()),
                 );
 
                 // Get redirect
@@ -274,7 +284,7 @@ impl PgSql {
 
                 // Get auth permissions
                 let sql = r#"
-                    SELECT ISNULL(MAX(a.access), 0) AS access
+                    SELECT COALESCE(MAX(a.access::int), 0) AS access
                     FROM
                         access a
                         INNER JOIN "user" u ON u.role_id=a.role_id
@@ -290,10 +300,7 @@ impl PgSql {
                 map.insert(
                     fnv1a_64!("lib_get_auth"),
                     (
-                        client.prepare_typed(
-                            sql,
-                            &[Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8],
-                        ),
+                        client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8, Type::INT8]),
                         sql.to_owned(),
                     ),
                 );
@@ -315,10 +322,7 @@ impl PgSql {
                     VALUES ($1, $2, now(), false, $3)
                     RETURNING mail_id;
                 "#;
-                map.insert(
-                    fnv1a_64!("lib_mail_new"),
-                    (client.prepare_typed(sql, &[Type::INT8, Type::TEXT, Type::TEXT]), sql.to_owned()),
-                );
+                map.insert(fnv1a_64!("lib_mail_new"), (client.prepare_typed(sql, &[Type::INT8, Type::JSON, Type::TEXT]), sql.to_owned()));
                 // Insert email without provider
                 let sql = r#"
                     INSERT INTO mail(user_id, mail, "create", send, err, transport)
@@ -917,26 +921,128 @@ impl PgSql {
 
 impl std::fmt::Debug for PgSql {
     /// Formats the value using the given formatter.
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let tls = self.tls.clone().map(|_| "TlsConnector");
         let PgSql { client, sql_conn, tls: _, prepare } = self;
-        f.debug_struct("DB")
-            .field("client", &client)
-            .field("sql_conn", &sql_conn)
-            .field("tls", &tls)
-            .field("prepare", &prepare)
-            .finish()
+        f.debug_struct("DB").field("client", &client).field("sql_conn", &sql_conn).field("tls", &tls).field("prepare", &prepare).finish()
     }
 }
 
 impl std::fmt::Debug for PgStatement {
     /// Formats the value using the given formatter.
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let PgStatement { statement, sql } = self;
         f.debug_struct("PgStatement")
             .field("sql", &sql)
             .field("columns", &statement.columns())
             .field("params", &statement.params())
             .finish()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct MakeRustTlsConnect {
+    config: Arc<ClientConfig>,
+}
+
+impl MakeRustTlsConnect {
+    pub fn new(config: ClientConfig) -> Self {
+        Self { config: Arc::new(config) }
+    }
+}
+
+impl<S> MakeTlsConnect<S> for MakeRustTlsConnect
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    type Stream = RustTlsStream<S>;
+    type TlsConnect = RustTlsConnect;
+    type Error = rustls::pki_types::InvalidDnsNameError;
+
+    fn make_tls_connect(&mut self, hostname: &str) -> Result<RustTlsConnect, Self::Error> {
+        ServerName::try_from(hostname).map(|dns_name| {
+            RustTlsConnect(RustTlsConnectData {
+                hostname: dns_name.to_owned(),
+                connector: Arc::clone(&self.config).into(),
+            })
+        })
+    }
+}
+
+pub(crate) struct RustTlsConnect(RustTlsConnectData);
+
+struct RustTlsConnectData {
+    hostname: ServerName<'static>,
+    connector: TlsConnector,
+}
+
+impl<S> TlsConnect<S> for RustTlsConnect
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    type Stream = RustTlsStream<S>;
+    type Error = io::Error;
+    type Future = Pin<Box<dyn Future<Output = io::Result<RustTlsStream<S>>> + Send>>;
+
+    fn connect(self, stream: S) -> Self::Future {
+        Box::pin(async move { self.0.connector.connect(self.0.hostname, stream).await.map(|s| RustTlsStream(Box::pin(s))) })
+    }
+}
+
+pub(crate) struct RustTlsStream<S>(Pin<Box<TlsStream<S>>>);
+
+impl<S> tokio_postgres::tls::TlsStream for RustTlsStream<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    fn channel_binding(&self) -> ChannelBinding {
+        let (_, session) = self.0.get_ref();
+        match session.peer_certificates() {
+            Some(certs) if !certs.is_empty() => X509Certificate::from_der(&certs[0])
+                .ok()
+                .and_then(|cert| cert.signature_algorithm())
+                .map(|algorithm| match algorithm {
+                    RsaSha1 | RsaSha256 | EcdsaSha256 => &digest::SHA256,
+                    RsaSha384 | EcdsaSha384 => &digest::SHA384,
+                    RsaSha512 | Ed25519 => &digest::SHA512,
+                    NoSignature(algo) => match algo {
+                        Sha1 | Sha256 => &digest::SHA256,
+                        Sha384 => &digest::SHA384,
+                        Sha512 => &digest::SHA512,
+                    },
+                })
+                .map(|algorithm| {
+                    let hash = digest::digest(algorithm, certs[0].as_ref());
+                    ChannelBinding::tls_server_end_point(hash.as_ref().into())
+                })
+                .unwrap_or(ChannelBinding::none()),
+            _ => ChannelBinding::none(),
+        }
+    }
+}
+
+impl<S> AsyncRead for RustTlsStream<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<tokio::io::Result<()>> {
+        self.0.as_mut().poll_read(cx, buf)
+    }
+}
+
+impl<S> AsyncWrite for RustTlsStream<S>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>> {
+        self.0.as_mut().poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>> {
+        self.0.as_mut().poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>> {
+        self.0.as_mut().poll_shutdown(cx)
     }
 }

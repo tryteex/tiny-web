@@ -5,6 +5,13 @@ The library uses MsSql Server DBMS version 16 and above via adapter. However, yo
 
 Access to the database is mandatory when starting the server. In case of connection loss during operation, the library will attempt to restore it with each request. The corresponding event will be logged.
 
+To use PostgreSQL or MsSql Server, you need to connect the appropriate features when installing dependencies in your `Cargo.toml`.
+```toml
+tiny-web = {version = "0.5", features = ["pgsql"]}
+```
+```toml
+tiny-web = {version = "0.5", features = ["mssql"]}
+```
 ___
 ### Installation
 At the `sql` directory of the project lies the file [lib-install-pgsql.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/sql/lib-install-pgsql.sql) for Postgres or [lib-install-mssql.sql](https://raw.githubusercontent.com/tryteex/tiny-web/main/sql/lib-install-mssql.sql) for MsSql which needs to be executed before the first run in the DB.  

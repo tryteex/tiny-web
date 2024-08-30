@@ -1,4 +1,3 @@
-use chrono::Utc;
 use std::{
     collections::{BTreeMap, HashMap},
     fs::File,
@@ -10,9 +9,6 @@ use std::{
 };
 use tiny_web_macro::fnv1a_64;
 
-use chrono::DateTime;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tokio::{
     fs::remove_file,
     sync::{mpsc::Sender, Mutex},
@@ -27,12 +23,13 @@ use crate::{fnv1a_64, StrOrI64};
 use super::{
     app::App,
     cache::{Cache, CacheSys},
+    data::Data,
     dbs::adapter::DB,
     html::{Html, Nodes},
     init::Addr,
     lang::{Lang, LangItem},
     log::Log,
-    mail::{Mail, MailMessage, MailProvider},
+    mail::{Mail, MailMessage},
     session::Session,
     worker::{MessageWrite, Worker},
 };
@@ -48,67 +45,6 @@ pub type Act = fn(&mut Action) -> Pin<Box<dyn Future<Output = Answer> + Send + '
 /// * 2 - Class ID
 /// * 3 - Action ID
 pub type ActMap = BTreeMap<i64, BTreeMap<i64, BTreeMap<i64, Act>>>;
-
-/// Data transferred between controllers, template, markers, database and cache
-///
-/// # Values
-///
-/// * `None` - No data transferred.
-/// * `Usize(usize)` - No data transferred.
-/// * `I16(i16)` - No data transferred.
-/// * `I32(i32)` - No data transferred.
-/// * `I64(i64)` - i64 data.
-/// * `F32(f32)` - f32 data.
-/// * `F64(f64)` - f64 data.
-/// * `Bool(bool)` - bool data.
-/// * `String(String)` - String data.
-/// * `Date(DateTime<Utc>)` - Chrono dateTime.
-/// * `Json(Value)` - Serde json.
-/// * `Vec(Vec<Data>)` - List of `Data`.
-/// * `Map(BTreeMap<i64, Data>)` - Map of `Data`.
-/// * `Route(Route)` - Route data.
-/// * `Redirect(Redirect)` - Redirect data.
-/// * `MailProvider(MailProvider)` - Mail provider data.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum Data {
-    /// No data transferred.
-    None,
-    /// usize data.
-    Usize(usize),
-    /// i16 data.
-    I16(i16),
-    /// i32 data.
-    I32(i32),
-    /// i64 data.
-    I64(i64),
-    /// f32 data.
-    F32(f32),
-    /// f64 data.
-    F64(f64),
-    /// bool data.
-    Bool(bool),
-    /// String data.
-    String(String),
-    /// DateTime.
-    Date(DateTime<Utc>),
-    /// Json
-    Json(Value),
-    /// List of `Data`.
-    Vec(Vec<Data>),
-    /// Raw data,
-    Raw(Vec<u8>),
-    /// Map of `Data`.
-    Map(BTreeMap<i64, Data>),
-    /// Route data.
-    #[serde(skip_serializing, skip_deserializing)]
-    Route(Route),
-    /// Redirect data.
-    #[serde(skip_serializing, skip_deserializing)]
-    Redirect(Redirect),
-    /// Mail provider data
-    #[serde(skip_serializing, skip_deserializing)]
-    MailProvider(MailProvider),
-}
 
 /// Type of Answer
 ///
@@ -650,14 +586,7 @@ impl Action {
     }
 
     /// Start internal route
-    async fn start_route(
-        &mut self,
-        module_id: i64,
-        class_id: i64,
-        action_id: i64,
-        param: Option<String>,
-        internal: bool,
-    ) -> Answer {
+    async fn start_route(&mut self, module_id: i64, class_id: i64, action_id: i64, param: Option<String>, internal: bool) -> Answer {
         // Check permission
         if self.get_access(module_id, class_id, action_id).await {
             if let Some(answer) = self.invoke(module_id, class_id, action_id, param, internal).await {
@@ -673,8 +602,7 @@ impl Action {
         }
 
         // If not /index/index/not_found - then redirect
-        if !(module_id == self.not_found.module_id && class_id == self.not_found.class_id && class_id == self.not_found.action_id)
-        {
+        if !(module_id == self.not_found.module_id && class_id == self.not_found.class_id && class_id == self.not_found.action_id) {
             self.response.redirect = Some(Redirect {
                 url: self.not_found().await,
                 permanently: false,
@@ -727,14 +655,7 @@ impl Action {
     }
 
     /// Invoke found controller
-    async fn invoke(
-        &mut self,
-        module_id: i64,
-        class_id: i64,
-        action_id: i64,
-        param: Option<String>,
-        internal: bool,
-    ) -> Option<Answer> {
+    async fn invoke(&mut self, module_id: i64, class_id: i64, action_id: i64, param: Option<String>, internal: bool) -> Option<Answer> {
         if let Some(m) = self.engine.get(&module_id) {
             if let Some(c) = m.get(&class_id) {
                 if let Some(a) = c.get(&action_id) {
@@ -899,10 +820,9 @@ impl Action {
                         if v.is_empty() {
                             self.cache.set(key, Data::None).await;
                             match &self.not_found.param {
-                                Some(param) => format!(
-                                    "/{}/{}/{}/{}",
-                                    self.not_found.module, self.not_found.class, self.not_found.action, param
-                                ),
+                                Some(param) => {
+                                    format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                                }
                                 None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
                             }
                         } else if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
@@ -917,19 +837,17 @@ impl Action {
                                             "/{}/{}/{}/{}",
                                             self.not_found.module, self.not_found.class, self.not_found.action, param
                                         ),
-                                        None => format!(
-                                            "/{}/{}/{}",
-                                            self.not_found.module, self.not_found.class, self.not_found.action
-                                        ),
+                                        None => {
+                                            format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
+                                        }
                                     }
                                 }
                             } else {
                                 self.cache.set(key, Data::None).await;
                                 match &self.not_found.param {
-                                    Some(param) => format!(
-                                        "/{}/{}/{}/{}",
-                                        self.not_found.module, self.not_found.class, self.not_found.action, param
-                                    ),
+                                    Some(param) => {
+                                        format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                                    }
                                     None => {
                                         format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
                                     }
@@ -938,10 +856,9 @@ impl Action {
                         } else {
                             self.cache.set(key, Data::None).await;
                             match &self.not_found.param {
-                                Some(param) => format!(
-                                    "/{}/{}/{}/{}",
-                                    self.not_found.module, self.not_found.class, self.not_found.action, param
-                                ),
+                                Some(param) => {
+                                    format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                                }
                                 None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
                             }
                         }
@@ -1246,9 +1163,28 @@ impl Action {
         }
     }
 
-    /// Set value for the template
-    pub fn set(&mut self, key: impl StrOrI64, value: Data) {
-        self.data.insert(key.to_i64(), value);
+    /// Setting data into internal memory
+    pub fn set<T>(&mut self, key: impl StrOrI64, value: T)
+    where
+        T: Into<Data>,
+    {
+        self.data.insert(key.to_i64(), value.into());
+    }
+
+    /// Getting references to data from internal memory
+    pub fn get<T>(&self, key: impl StrOrI64) -> Option<&T>
+    where
+        for<'a> &'a T: From<&'a Data>,
+    {
+        self.data.get(&key.to_i64()).map(|value| value.into())
+    }
+
+    /// Taking (removing) data from internal memory
+    pub fn take<T>(&mut self, key: impl StrOrI64) -> Option<T>
+    where
+        T: From<Data>,
+    {
+        self.data.remove(&key.to_i64()).map(|value| value.into())
     }
 
     /// Set value for the template from translate
@@ -1383,22 +1319,12 @@ impl Action {
                 fnv1a_64(p.as_bytes()),
                 -1,
             ],
-            (None, Some(l)) => vec![
-                fnv1a_64!("route"),
-                fnv1a_64(module.as_bytes()),
-                fnv1a_64(class.as_bytes()),
-                fnv1a_64(action.as_bytes()),
-                0,
-                l,
-            ],
-            (None, None) => vec![
-                fnv1a_64!("route"),
-                fnv1a_64(module.as_bytes()),
-                fnv1a_64(class.as_bytes()),
-                fnv1a_64(action.as_bytes()),
-                0,
-                -1,
-            ],
+            (None, Some(l)) => {
+                vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, l]
+            }
+            (None, None) => {
+                vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, -1]
+            }
         };
         let (data, key) = self.cache.get(key).await;
         if let Some(Data::String(s)) = data {

@@ -13,10 +13,7 @@ use tokio::fs;
 
 use crate::fnv1a_64;
 
-use super::{
-    action::{Answer, Data},
-    log::Log,
-};
+use super::{action::Answer, data::Data, log::Log};
 
 /// The filter of the variable
 ///
@@ -330,6 +327,9 @@ impl Html {
 
     /// Gets temptale from String
     fn parse(orig: &str) -> Result<Nodes, String> {
+        if orig.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut shift = 1;
         let mut last = 1;
 
@@ -919,19 +919,13 @@ impl Html {
                         let exp = match Html::get_exp(&item.text) {
                             Some(e) => e,
                             None => {
-                                return Err(format!(
-                                    r#"Incorrect expression in "{}""#,
-                                    Html::get_err_msg(item.begin, item.end, html)
-                                ));
+                                return Err(format!(r#"Incorrect expression in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                             }
                         };
                         sub_nodes = Html::build_vec(&item.child, html)?;
                         if_list.push(Exp { val: exp, nodes: sub_nodes });
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'IF' tags in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'IF' tags in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
                 ItemCondition::ElseIf => {
@@ -939,19 +933,13 @@ impl Html {
                         let exp = match Html::get_exp(&item.text) {
                             Some(e) => e,
                             None => {
-                                return Err(format!(
-                                    r#"Incorrect expression in "{}""#,
-                                    Html::get_err_msg(item.begin, item.end, html)
-                                ));
+                                return Err(format!(r#"Incorrect expression in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                             }
                         };
                         sub_nodes = Html::build_vec(&item.child, html)?;
                         if_list.push(Exp { val: exp, nodes: sub_nodes });
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'ElseIf' tag in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'ElseIf' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
                 ItemCondition::Else => {
@@ -959,10 +947,7 @@ impl Html {
                         is_if_else = true;
                         if_else = Some(Html::build_vec(&item.child, html)?);
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'Else' tag in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'Else' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
                 ItemCondition::EndIf => {
@@ -970,10 +955,7 @@ impl Html {
                         is_if = false;
                         is_if_else = false;
                         if if_list.is_empty() {
-                            return Err(format!(
-                                r#"Incorrect 'IF' tag format in "{}""#,
-                                Html::get_err_msg(item.begin, item.end, html)
-                            ));
+                            return Err(format!(r#"Incorrect 'IF' tag format in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                         }
                         nodes.push(Node::IF(If {
                             exp: if_list.clone(),
@@ -982,10 +964,7 @@ impl Html {
                         if_else = None;
                         if_list.clear();
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'EndIf' tag in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'EndIf' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
                 ItemCondition::For => {
@@ -993,16 +972,10 @@ impl Html {
                         is_for = true;
                         let vl: Vec<&str> = item.text.split_whitespace().collect();
                         if vl.len() != 3 {
-                            return Err(format!(
-                                r#"Incorrect identical 'For' tag in "{}""#,
-                                Html::get_err_msg(item.begin, item.end, html)
-                            ));
+                            return Err(format!(r#"Incorrect identical 'For' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                         }
                         if unsafe { *vl.get_unchecked(1) } != "in" {
-                            return Err(format!(
-                                r#"Incorrect identical 'For' tag in "{}""#,
-                                Html::get_err_msg(item.begin, item.end, html)
-                            ));
+                            return Err(format!(r#"Incorrect identical 'For' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                         }
                         for_name = match Html::get_val(unsafe { vl.get_unchecked(2) }, Some(true)) {
                             Some(n) => Some(n),
@@ -1015,17 +988,11 @@ impl Html {
                         };
                         for_local = unsafe { *vl.get_unchecked(0) }.to_string();
                         if !Html::is_simple_name(&for_local) {
-                            return Err(format!(
-                                r#"Incorrect identical 'For' tag in "{}""#,
-                                Html::get_err_msg(item.begin, item.end, html)
-                            ));
+                            return Err(format!(r#"Incorrect identical 'For' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                         }
                         for_list = Html::build_vec(&item.child, html)?;
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'For' tag in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'For' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
                 ItemCondition::ElseFor => {
@@ -1033,10 +1000,7 @@ impl Html {
                         is_for_else = true;
                         for_else = Some(Html::build_vec(&item.child, html)?);
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'ElseFor' tag in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'ElseFor' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
                 ItemCondition::EndFor => {
@@ -1044,10 +1008,7 @@ impl Html {
                         is_for = false;
                         is_for_else = false;
                         if for_list.is_empty() {
-                            return Err(format!(
-                                r#"Incorrect 'For' tag format in "{}""#,
-                                Html::get_err_msg(item.begin, item.end, html)
-                            ));
+                            return Err(format!(r#"Incorrect 'For' tag format in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                         }
                         if let Some(name) = for_name {
                             nodes.push(Node::For(For {
@@ -1057,20 +1018,14 @@ impl Html {
                                 empty: for_else,
                             }));
                         } else {
-                            return Err(format!(
-                                r#"Incorrect 'For' tag format in "{}""#,
-                                Html::get_err_msg(item.begin, item.end, html)
-                            ));
+                            return Err(format!(r#"Incorrect 'For' tag format in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                         }
                         for_local = String::new();
                         for_name = None;
                         for_else = None;
                         for_list.clear();
                     } else {
-                        return Err(format!(
-                            r#"Incorrect identical 'EndFor' tag in "{}""#,
-                            Html::get_err_msg(item.begin, item.end, html)
-                        ));
+                        return Err(format!(r#"Incorrect identical 'EndFor' tag in "{}""#, Html::get_err_msg(item.begin, item.end, html)));
                     }
                 }
             }

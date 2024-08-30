@@ -17,7 +17,9 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | lang_list | yes | Arc<Vec<Arc<LangItem>>> | List of languages |
 | 𝑓 | get_access | yes | bool | Checking permissions for the controller |
 | 𝑓 | not_found | yes | String | Retrieving the URL of the 404 Not Found controller |
-| 𝑓 | set | no || Setting data for rendering an HTML page |
+| 𝑓 | set | no || Setting data into internal memory |
+| 𝑓 | get | no || Getting references to data from internal memory |
+| 𝑓 | take | no || Takining (removing) data from internal memory |
 | 𝑓 | set_lang | no || Setting data for rendering an HTML page from translation |
 | 𝑓 | set_lang_arr | no || Setting the array data for rendering an HTML page from translation |
 | 𝑓 | route | yes | String | Get the URL for the controller |
@@ -121,27 +123,32 @@ pub async fn head(this: &mut Action) -> Answer {
 ```
 ___
 ### set
-Setting data for rendering an HTML page
+Setting data into internal memory
 ```rust
 fn set(key: &str, value: Data)
 ```
 * `key: &str` - The variable to set the data to render the html page.
-* `value: Data` - Data for rendering the html page.  
+* `value: Data` - Data in internal memory.  
+More about __Data__ in [Data.md](https://github.com/tryteex/tiny-web/blob/main/doc/Data.md)
+___
+### get
+Getting references to data from internal memory
+```rust
+fn get(key: &str) -> Option<&Data>
+```
+* `key: &str` - The variable to set the data to render the html page.
+* `return: Data` - Data in internal memory.  
+More about __Data__ in [Data.md](https://github.com/tryteex/tiny-web/blob/main/doc/Data.md)
+___
+### take
+Taking (removing) data from internal memory
+```rust
+fn take(key: &str) -> Option<Data> 
+```
+* `key: &str` - The variable to set the data to render the html page.
+* `return: Data` - Data in internal memory.  
 More about __Data__ in [Data.md](https://github.com/tryteex/tiny-web/blob/main/doc/Data.md)
 
-#### Example
-```rust
-pub async fn get(this: &mut Action) -> Answer {
-    let show_menu_item = this.get_access("index", "menu", "permission").await;
-
-    if show_menu_item {
-        this.load("permission", "index", "menu", "permission", None).await;
-    } else {
-        this.set("permission", Data::None);
-    }
-    ...
-}
-```
 ___
 ### set_lang
 Setting data for rendering an HTML page from translation

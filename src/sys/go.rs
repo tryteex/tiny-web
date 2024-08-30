@@ -23,8 +23,9 @@ use tokio::{
 use tokio::sync::RwLock;
 
 use super::{
-    action::{ActMap, Data},
+    action::ActMap,
     cache::CacheSys,
+    data::Data,
     dbs::adapter::DB,
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
@@ -97,11 +98,8 @@ impl Go {
         let max = db.max;
         let mut db = DB::new(max, db).await?;
 
-        let signal_stop = if db.in_use() {
-            None
-        } else {
-            Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal, Arc::clone(&init.exe_path)))
-        };
+        let signal_stop =
+            if db.in_use() { None } else { Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal, Arc::clone(&init.exe_path))) };
 
         let main = tokio::spawn(async move {
             let langs = Go::get_langs(&mut db).await;

@@ -33,9 +33,6 @@ session = "tinysession"
 # salt for a crypto functions
 salt = "same salt words"
 
-# Database type. Only postgresql or mssql. Default postgresql.
-db_type = "postgresql"
-
 # Database host.
 # On Unix systems, a "db_host" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.
 db_host = "removehost"

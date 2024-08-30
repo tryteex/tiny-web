@@ -6,10 +6,7 @@ use tiny_web_macro::fnv1a_64;
 
 use crate::StrOrI64;
 
-use super::{
-    action::{Data, Request},
-    dbs::adapter::DB,
-};
+use super::{action::Request, data::Data, dbs::adapter::DB};
 
 /// User session
 ///

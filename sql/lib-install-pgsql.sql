@@ -563,6 +563,7 @@ CREATE FUNCTION lang_insert_row()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.index = NULL;
+  NEW.enable = FALSE;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

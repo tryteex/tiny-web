@@ -13,7 +13,7 @@ use serde_json::Value;
 use tiny_web_macro::fnv1a_64;
 use tokio::fs::create_dir_all;
 
-use super::{action::Data, dbs::adapter::DB, log::Log};
+use super::{data::Data, dbs::adapter::DB, log::Log};
 
 /// Add file to the message struct.
 ///
@@ -146,86 +146,79 @@ impl Mail {
                     };
 
                     match provider.as_ref() {
-                        "Sendmail" => {
-                            match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:sendmail")], false).await {
-                                Some(res) => {
-                                    if !res.is_empty() {
-                                        let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
-                                            row
-                                        } else {
-                                            Log::warning(3011, Some("query:lib_get_setting:mail:sendmail".to_owned()));
-                                            return MailProvider::None;
-                                        };
-                                        if row.is_empty() {
-                                            Log::warning(3011, Some("query:lib_get_setting:mail:sendmail:empty".to_owned()));
-                                            return MailProvider::None;
-                                        }
-                                        let path = if let Data::String(path) = unsafe { row.get_unchecked(0) } {
-                                            path.clone()
-                                        } else {
-                                            Log::warning(3011, Some("query:lib_get_setting:mail:sendmail:type".to_owned()));
-                                            return MailProvider::None;
-                                        };
-                                        if !path.is_empty() {
-                                            MailProvider::File(path)
-                                        } else {
-                                            Log::warning(3011, Some("mail:sendmail".to_owned()));
-                                            MailProvider::None
-                                        }
+                        "Sendmail" => match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:sendmail")], false).await {
+                            Some(res) => {
+                                if !res.is_empty() {
+                                    let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
+                                        row
+                                    } else {
+                                        Log::warning(3011, Some("query:lib_get_setting:mail:sendmail".to_owned()));
+                                        return MailProvider::None;
+                                    };
+                                    if row.is_empty() {
+                                        Log::warning(3011, Some("query:lib_get_setting:mail:sendmail:empty".to_owned()));
+                                        return MailProvider::None;
+                                    }
+                                    let path = if let Data::String(path) = unsafe { row.get_unchecked(0) } {
+                                        path.clone()
+                                    } else {
+                                        Log::warning(3011, Some("query:lib_get_setting:mail:sendmail:type".to_owned()));
+                                        return MailProvider::None;
+                                    };
+                                    if !path.is_empty() {
+                                        MailProvider::File(path)
                                     } else {
                                         Log::warning(3011, Some("mail:sendmail".to_owned()));
                                         MailProvider::None
                                     }
-                                }
-                                None => {
+                                } else {
                                     Log::warning(3011, Some("mail:sendmail".to_owned()));
                                     MailProvider::None
                                 }
                             }
-                        }
+                            None => {
+                                Log::warning(3011, Some("mail:sendmail".to_owned()));
+                                MailProvider::None
+                            }
+                        },
                         "SMTP" => {
-                            let server = match db
-                                .query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:server")], false)
-                                .await
-                            {
-                                Some(res) => {
-                                    if !res.is_empty() {
-                                        let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
-                                            row
-                                        } else {
-                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:server".to_owned()));
-                                            return MailProvider::None;
-                                        };
-                                        if row.is_empty() {
-                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:server:empty".to_owned()));
-                                            return MailProvider::None;
-                                        }
-                                        let server = if let Data::String(server) = unsafe { row.get_unchecked(0) } {
-                                            server.clone()
-                                        } else {
-                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:server:type".to_owned()));
-                                            return MailProvider::None;
-                                        };
-                                        if !server.is_empty() {
-                                            server
+                            let server =
+                                match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:server")], false).await {
+                                    Some(res) => {
+                                        if !res.is_empty() {
+                                            let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
+                                                row
+                                            } else {
+                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:server".to_owned()));
+                                                return MailProvider::None;
+                                            };
+                                            if row.is_empty() {
+                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:server:empty".to_owned()));
+                                                return MailProvider::None;
+                                            }
+                                            let server = if let Data::String(server) = unsafe { row.get_unchecked(0) } {
+                                                server.clone()
+                                            } else {
+                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:server:type".to_owned()));
+                                                return MailProvider::None;
+                                            };
+                                            if !server.is_empty() {
+                                                server
+                                            } else {
+                                                Log::warning(3011, Some("mail:smtp:server".to_owned()));
+                                                return MailProvider::None;
+                                            }
                                         } else {
                                             Log::warning(3011, Some("mail:smtp:server".to_owned()));
                                             return MailProvider::None;
                                         }
-                                    } else {
+                                    }
+                                    None => {
                                         Log::warning(3011, Some("mail:smtp:server".to_owned()));
                                         return MailProvider::None;
                                     }
-                                }
-                                None => {
-                                    Log::warning(3011, Some("mail:smtp:server".to_owned()));
-                                    return MailProvider::None;
-                                }
-                            };
-                            let port = match db
-                                .query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:port")], false)
-                                .await
-                            {
+                                };
+                            let port = match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:port")], false).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
@@ -261,79 +254,74 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let tls =
-                                match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:tls")], false).await
-                                {
-                                    Some(res) => {
-                                        if !res.is_empty() {
-                                            let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
-                                                row
-                                            } else {
-                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:tls".to_owned()));
-                                                return MailProvider::None;
-                                            };
-                                            if row.is_empty() {
-                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:tls:empty".to_owned()));
-                                                return MailProvider::None;
-                                            }
-                                            let tls = if let Data::String(tls) = unsafe { row.get_unchecked(0) } {
-                                                tls.clone()
-                                            } else {
-                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:tls:type".to_owned()));
-                                                return MailProvider::None;
-                                            };
-                                            if !tls.is_empty() {
-                                                match tls.as_ref() {
-                                                    "None" => Tls::None,
-                                                    "STARTTLS" => {
-                                                        let param = match TlsParametersBuilder::new(server.clone())
-                                                            .dangerous_accept_invalid_certs(true)
-                                                            .build()
-                                                        {
-                                                            Ok(param) => param,
-                                                            Err(_) => {
-                                                                Log::warning(3011, Some("mail:smtp:tls".to_owned()));
-                                                                return MailProvider::None;
-                                                            }
-                                                        };
-                                                        Tls::Required(param)
-                                                    }
-                                                    "SSL/TLS" => {
-                                                        let param = match TlsParametersBuilder::new(server.clone())
-                                                            .dangerous_accept_invalid_certs(true)
-                                                            .build()
-                                                        {
-                                                            Ok(param) => param,
-                                                            Err(_) => {
-                                                                Log::warning(3011, Some("mail:smtp:tls".to_owned()));
-                                                                return MailProvider::None;
-                                                            }
-                                                        };
-                                                        Tls::Wrapper(param)
-                                                    }
-                                                    _ => {
-                                                        Log::warning(3011, Some("mail:smtp:tls".to_owned()));
-                                                        return MailProvider::None;
-                                                    }
+                            let tls = match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:tls")], false).await {
+                                Some(res) => {
+                                    if !res.is_empty() {
+                                        let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
+                                            row
+                                        } else {
+                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:tls".to_owned()));
+                                            return MailProvider::None;
+                                        };
+                                        if row.is_empty() {
+                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:tls:empty".to_owned()));
+                                            return MailProvider::None;
+                                        }
+                                        let tls = if let Data::String(tls) = unsafe { row.get_unchecked(0) } {
+                                            tls.clone()
+                                        } else {
+                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:tls:type".to_owned()));
+                                            return MailProvider::None;
+                                        };
+                                        if !tls.is_empty() {
+                                            match tls.as_ref() {
+                                                "None" => Tls::None,
+                                                "STARTTLS" => {
+                                                    let param = match TlsParametersBuilder::new(server.clone())
+                                                        .dangerous_accept_invalid_certs(true)
+                                                        .build()
+                                                    {
+                                                        Ok(param) => param,
+                                                        Err(_) => {
+                                                            Log::warning(3011, Some("mail:smtp:tls".to_owned()));
+                                                            return MailProvider::None;
+                                                        }
+                                                    };
+                                                    Tls::Required(param)
                                                 }
-                                            } else {
-                                                Log::warning(3011, Some("mail:smtp:tls".to_owned()));
-                                                return MailProvider::None;
+                                                "SSL/TLS" => {
+                                                    let param = match TlsParametersBuilder::new(server.clone())
+                                                        .dangerous_accept_invalid_certs(true)
+                                                        .build()
+                                                    {
+                                                        Ok(param) => param,
+                                                        Err(_) => {
+                                                            Log::warning(3011, Some("mail:smtp:tls".to_owned()));
+                                                            return MailProvider::None;
+                                                        }
+                                                    };
+                                                    Tls::Wrapper(param)
+                                                }
+                                                _ => {
+                                                    Log::warning(3011, Some("mail:smtp:tls".to_owned()));
+                                                    return MailProvider::None;
+                                                }
                                             }
                                         } else {
                                             Log::warning(3011, Some("mail:smtp:tls".to_owned()));
                                             return MailProvider::None;
                                         }
-                                    }
-                                    None => {
+                                    } else {
                                         Log::warning(3011, Some("mail:smtp:tls".to_owned()));
                                         return MailProvider::None;
                                     }
-                                };
-                            let auth = match db
-                                .query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:auth")], false)
-                                .await
-                            {
+                                }
+                                None => {
+                                    Log::warning(3011, Some("mail:smtp:tls".to_owned()));
+                                    return MailProvider::None;
+                                }
+                            };
+                            let auth = match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:auth")], false).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
@@ -377,10 +365,7 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let user = match db
-                                .query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:user")], false)
-                                .await
-                            {
+                            let user = match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:user")], false).await {
                                 Some(res) => {
                                     if !res.is_empty() {
                                         let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
@@ -409,37 +394,35 @@ impl Mail {
                                     return MailProvider::None;
                                 }
                             };
-                            let pwd =
-                                match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:pwd")], false).await
-                                {
-                                    Some(res) => {
-                                        if !res.is_empty() {
-                                            let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
-                                                row
-                                            } else {
-                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:pwd".to_owned()));
-                                                return MailProvider::None;
-                                            };
-                                            if row.is_empty() {
-                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:pwd:empty".to_owned()));
-                                                return MailProvider::None;
-                                            }
-                                            let pwd = if let Data::String(pwd) = unsafe { row.get_unchecked(0) } {
-                                                pwd.clone()
-                                            } else {
-                                                Log::warning(3011, Some("query:lib_get_setting:mail:smtp:pwd:type".to_owned()));
-                                                return MailProvider::None;
-                                            };
-                                            pwd
+                            let pwd = match db.query_prepare(fnv1a_64!("lib_get_setting"), &[&fnv1a_64!("mail:smtp:pwd")], false).await {
+                                Some(res) => {
+                                    if !res.is_empty() {
+                                        let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
+                                            row
                                         } else {
-                                            String::new()
+                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:pwd".to_owned()));
+                                            return MailProvider::None;
+                                        };
+                                        if row.is_empty() {
+                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:pwd:empty".to_owned()));
+                                            return MailProvider::None;
                                         }
+                                        let pwd = if let Data::String(pwd) = unsafe { row.get_unchecked(0) } {
+                                            pwd.clone()
+                                        } else {
+                                            Log::warning(3011, Some("query:lib_get_setting:mail:smtp:pwd:type".to_owned()));
+                                            return MailProvider::None;
+                                        };
+                                        pwd
+                                    } else {
+                                        String::new()
                                     }
-                                    None => {
-                                        Log::warning(3011, Some("mail:smtp:pwd".to_owned()));
-                                        return MailProvider::None;
-                                    }
-                                };
+                                }
+                                None => {
+                                    Log::warning(3011, Some("mail:smtp:pwd".to_owned()));
+                                    return MailProvider::None;
+                                }
+                            };
                             let cred = if !auth.is_empty() { Some(Credentials::new(user, pwd)) } else { None };
                             MailProvider::SMTP(SmtpInfo {
                                 server,
@@ -546,94 +529,90 @@ impl Mail {
                     }
                 }
             }
-            MailProvider::SMTP(smtp) => {
-                match Mail::create_message(Arc::clone(&db), message, &json, user_id, host, &mut id, "SMTP").await {
-                    Ok(mes) => {
-                        let mut sender = match &smtp.tls {
-                            Tls::None => match AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.server) {
-                                Ok(s) => s.port(smtp.port),
-                                Err(e) => {
-                                    let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                                    return false;
-                                }
-                            },
-                            Tls::Required(_) => match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.server) {
-                                Ok(s) => s.tls(smtp.tls).port(smtp.port),
-                                Err(e) => {
-                                    let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                                    return false;
-                                }
-                            },
-                            Tls::Wrapper(_) => match AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.server) {
-                                Ok(s) => s.tls(smtp.tls).port(smtp.port),
-                                Err(e) => {
-                                    let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                                    return false;
-                                }
-                            },
-                            Tls::Opportunistic(_) => match AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.server) {
-                                Ok(s) => s.port(smtp.port),
-                                Err(e) => {
-                                    let e = Log::warning(3014, Some(format!("Error: {}", e)));
-                                    db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                                    return false;
-                                }
-                            },
-                        };
-                        if !smtp.authentication.is_empty() {
-                            sender = sender.authentication(smtp.authentication);
-                        }
-                        if let Some(credentials) = smtp.credentials {
-                            sender = sender.credentials(credentials);
-                        }
-
-                        match sender.build().send(mes).await {
-                            Ok(_) => {
-                                db.execute_prepare(fnv1a_64!("lib_mail_ok"), &[&id]).await;
-                                true
-                            }
+            MailProvider::SMTP(smtp) => match Mail::create_message(Arc::clone(&db), message, &json, user_id, host, &mut id, "SMTP").await {
+                Ok(mes) => {
+                    let mut sender = match &smtp.tls {
+                        Tls::None => match AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.server) {
+                            Ok(s) => s.port(smtp.port),
                             Err(e) => {
                                 let e = Log::warning(3014, Some(format!("Error: {}", e)));
                                 db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                                false
+                                return false;
                             }
-                        }
-                    }
-                    Err(e) => {
-                        if id > 0 {
-                            db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                        }
-                        false
-                    }
-                }
-            }
-            MailProvider::File(path) => {
-                match Mail::create_message(Arc::clone(&db), message, &json, user_id, host, &mut id, "File").await {
-                    Ok(mes) => {
-                        let sender = AsyncFileTransport::<Tokio1Executor>::new(path);
-                        match sender.send(mes).await {
-                            Ok(_) => {
-                                db.execute_prepare(fnv1a_64!("lib_mail_ok"), &[&id]).await;
-                                true
-                            }
+                        },
+                        Tls::Required(_) => match AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.server) {
+                            Ok(s) => s.tls(smtp.tls).port(smtp.port),
                             Err(e) => {
-                                let e = Log::warning(3013, Some(format!("Error: {}", e)));
+                                let e = Log::warning(3014, Some(format!("Error: {}", e)));
                                 db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
-                                false
+                                return false;
                             }
-                        }
+                        },
+                        Tls::Wrapper(_) => match AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.server) {
+                            Ok(s) => s.tls(smtp.tls).port(smtp.port),
+                            Err(e) => {
+                                let e = Log::warning(3014, Some(format!("Error: {}", e)));
+                                db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                                return false;
+                            }
+                        },
+                        Tls::Opportunistic(_) => match AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.server) {
+                            Ok(s) => s.port(smtp.port),
+                            Err(e) => {
+                                let e = Log::warning(3014, Some(format!("Error: {}", e)));
+                                db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                                return false;
+                            }
+                        },
+                    };
+                    if !smtp.authentication.is_empty() {
+                        sender = sender.authentication(smtp.authentication);
                     }
-                    Err(e) => {
-                        if id > 0 {
-                            db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                    if let Some(credentials) = smtp.credentials {
+                        sender = sender.credentials(credentials);
+                    }
+
+                    match sender.build().send(mes).await {
+                        Ok(_) => {
+                            db.execute_prepare(fnv1a_64!("lib_mail_ok"), &[&id]).await;
+                            true
                         }
-                        false
+                        Err(e) => {
+                            let e = Log::warning(3014, Some(format!("Error: {}", e)));
+                            db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                            false
+                        }
                     }
                 }
-            }
+                Err(e) => {
+                    if id > 0 {
+                        db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                    }
+                    false
+                }
+            },
+            MailProvider::File(path) => match Mail::create_message(Arc::clone(&db), message, &json, user_id, host, &mut id, "File").await {
+                Ok(mes) => {
+                    let sender = AsyncFileTransport::<Tokio1Executor>::new(path);
+                    match sender.send(mes).await {
+                        Ok(_) => {
+                            db.execute_prepare(fnv1a_64!("lib_mail_ok"), &[&id]).await;
+                            true
+                        }
+                        Err(e) => {
+                            let e = Log::warning(3013, Some(format!("Error: {}", e)));
+                            db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                            false
+                        }
+                    }
+                }
+                Err(e) => {
+                    if id > 0 {
+                        db.execute_prepare(fnv1a_64!("lib_mail_err"), &[&e, &id]).await;
+                    }
+                    false
+                }
+            },
             MailProvider::None => db.execute_prepare(fnv1a_64!("lib_mail_add"), &[&user_id, &json.to_string()]).await.is_some(),
         }
     }
@@ -651,31 +630,30 @@ impl Mail {
         if !db.in_use() {
             return Err(String::new());
         }
-        let message_id =
-            match db.query_prepare(fnv1a_64!("lib_mail_new"), &[&user_id, &json.to_string(), &transport], false).await {
-                Some(r) => {
-                    if r.len() != 1 {
-                        Log::warning(3003, Some(format!("Message: {:?}.", &json)));
-                        return Err(String::new());
-                    }
-                    let row = if let Data::Vec(row) = unsafe { r.get_unchecked(0) } {
-                        row
-                    } else {
-                        return Err(String::new());
-                    };
-                    if row.is_empty() {
-                        return Err(String::new());
-                    }
-                    let new_id = if let Data::I64(new_id) = unsafe { row.get_unchecked(0) } {
-                        *new_id
-                    } else {
-                        return Err(String::new());
-                    };
-                    *id = new_id;
-                    format!("{}@{}", id, host)
+        let message_id = match db.query_prepare(fnv1a_64!("lib_mail_new"), &[&user_id, &json.to_string(), &transport], false).await {
+            Some(r) => {
+                if r.len() != 1 {
+                    Log::warning(3003, Some(format!("Message: {:?}.", &json)));
+                    return Err(String::new());
                 }
-                None => return Err(String::new()),
-            };
+                let row = if let Data::Vec(row) = unsafe { r.get_unchecked(0) } {
+                    row
+                } else {
+                    return Err(String::new());
+                };
+                if row.is_empty() {
+                    return Err(String::new());
+                }
+                let new_id = if let Data::I64(new_id) = unsafe { row.get_unchecked(0) } {
+                    *new_id
+                } else {
+                    return Err(String::new());
+                };
+                *id = new_id;
+                format!("{}@{}", id, host)
+            }
+            None => return Err(String::new()),
+        };
 
         let from = match message.from.parse::<Mailbox>() {
             Ok(f) => f,

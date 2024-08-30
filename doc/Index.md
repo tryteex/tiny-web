@@ -25,7 +25,7 @@ This library is developed in parallel with an internet store (marketplace), and 
 * Email system [Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
 * First-Time start [First.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md)
 * Configuring nginx [Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)
-* Simple example [Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)
+* Example [Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)
 * Todo [Todo.md](https://github.com/tryteex/tiny-web/blob/main/doc/Todo.md)
 
 > **Note**  

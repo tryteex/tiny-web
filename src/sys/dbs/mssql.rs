@@ -12,7 +12,7 @@ use tiny_web_macro::fnv1a_64;
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
-use crate::sys::{action::Data, init::DBConfig, log::Log};
+use crate::sys::{data::Data, init::DBConfig, log::Log};
 
 use super::adapter::{KeyOrQuery, StrOrI64OrUSize};
 
@@ -168,8 +168,7 @@ impl MsSql {
                 map.insert(
                     fnv1a_64!("lib_add_session"),
                     (
-                        "@P1 BIGINT, @P2 BIGINT, @P3 VARCHAR(512), @P4 VARBINARY(MAX), @P5 VARCHAR(255), @P6 VARCHAR(MAX)"
-                            .to_owned(),
+                        "@P1 BIGINT, @P2 BIGINT, @P3 VARCHAR(512), @P4 VARBINARY(MAX), @P5 VARCHAR(255), @P6 VARCHAR(MAX)".to_owned(),
                         sql.to_owned(),
                     ),
                 );
@@ -225,10 +224,7 @@ impl MsSql {
                 "#;
                 map.insert(
                     fnv1a_64!("lib_get_auth"),
-                    (
-                        "@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 BIGINT, @P5 BIGINT, @P6 BIGINT, @P7 BIGINT".to_owned(),
-                        sql.to_owned(),
-                    ),
+                    ("@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 BIGINT, @P5 BIGINT, @P6 BIGINT, @P7 BIGINT".to_owned(), sql.to_owned()),
                 );
 
                 // Get not found
@@ -251,10 +247,7 @@ impl MsSql {
                     OUTPUT INSERTED.[mail_id]
                     VALUES (@P1, @P2, CURRENT_TIMESTAMP, 0, @P3)
                 "#;
-                map.insert(
-                    fnv1a_64!("lib_mail_new"),
-                    ("@P1 BIGINT, @P2 NVARCHAR(MAX), @P3 VARCHAR(255)".to_owned(), sql.to_owned()),
-                );
+                map.insert(fnv1a_64!("lib_mail_new"), ("@P1 BIGINT, @P2 NVARCHAR(MAX), @P3 VARCHAR(255)".to_owned(), sql.to_owned()));
 
                 // Insert email without provider
                 let sql = r#"
@@ -894,7 +887,7 @@ impl MsSql {
 
 impl std::fmt::Debug for MsSql {
     /// Formats the value using the given formatter.
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let MsSql { client, prepare, config } = self;
         f.debug_struct("DB").field("client", &client).field("config", &config).field("prepare", &prepare).finish()
     }
@@ -902,7 +895,7 @@ impl std::fmt::Debug for MsSql {
 
 impl std::fmt::Debug for MsStatement {
     /// Formats the value using the given formatter.
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let MsStatement { statement, sql } = self;
         f.debug_struct("PgStatement").field("sql", &sql).field("statement", &statement).finish()
     }

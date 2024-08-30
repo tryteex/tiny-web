@@ -457,13 +457,11 @@ impl Worker {
         let mut answer: Vec<u8> = Vec::with_capacity(capacity);
         if let Some(redirect) = action.response.redirect.as_ref() {
             if redirect.permanently {
-                answer.extend_from_slice(
-                    format!("Status: 301 {}\r\nLocation: {}\r\n", Worker::http_code_get(301), redirect.url).as_bytes(),
-                );
+                answer
+                    .extend_from_slice(format!("Status: 301 {}\r\nLocation: {}\r\n", Worker::http_code_get(301), redirect.url).as_bytes());
             } else {
-                answer.extend_from_slice(
-                    format!("Status: 302 {}\r\nLocation: {}\r\n", Worker::http_code_get(302), redirect.url).as_bytes(),
-                );
+                answer
+                    .extend_from_slice(format!("Status: 302 {}\r\nLocation: {}\r\n", Worker::http_code_get(302), redirect.url).as_bytes());
             }
         } else if let Some(code) = action.response.http_code {
             answer.extend_from_slice(format!("Status: {} {}\r\n", code, Worker::http_code_get(code)).as_bytes());
@@ -527,10 +525,7 @@ impl Worker {
     ///
     /// * `HashMap<String, String>` - Post data.
     /// * `HashMap<String, Vec<WebFile>>` - File data.
-    pub async fn read_input(
-        data: Vec<u8>,
-        content_type: Option<String>,
-    ) -> (HashMap<String, String>, HashMap<String, Vec<WebFile>>) {
+    pub async fn read_input(data: Vec<u8>, content_type: Option<String>) -> (HashMap<String, String>, HashMap<String, Vec<WebFile>>) {
         let mut post = HashMap::new();
         let mut file = HashMap::new();
 
@@ -601,12 +596,7 @@ impl Worker {
     }
 
     /// Gets post and file records from multipart/form-data
-    async fn get_post_file(
-        header: &str,
-        data: &[u8],
-        post: &mut HashMap<String, String>,
-        file: &mut HashMap<String, Vec<WebFile>>,
-    ) {
+    async fn get_post_file(header: &str, data: &[u8], post: &mut HashMap<String, String>, file: &mut HashMap<String, Vec<WebFile>>) {
         let h: Vec<&str> = header.splitn(3, "; ").collect();
         let len = h.len();
 

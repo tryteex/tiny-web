@@ -1,5 +1,5 @@
 ## Configuration File
-The configuration file ___tiny.toml__ contains essential settings for running the web application. The simplest way to set it up is by renaming the ___tiny.sample.toml___ file to ___tiny.toml___. It is recommended to place the file either in the root of your project or next to the executable file. This file must be in [TOML](https://toml.io/) format.
+The configuration file __tiny.toml__ contains essential settings for running the web application. The simplest way to set it up is by renaming the ___tiny.sample.toml___ file to ___tiny.toml___. It is recommended to place the file either in the root of your project or next to the executable file. This file must be in [TOML](https://toml.io/) format.
 
 Here is a list of all options:
 
@@ -66,13 +66,6 @@ Example:
 Example:
 * `salt = "tinysession"`
 * `salt = "tiny`
-
-### db_type
-Database type. Only __postgresql__, __mysql__, __mssql__. Default __postgresql__.
-
-Example:
-* `db_type = "postgresql"`
-* `db_type = "mysql"`
 
 ### db_host
 Postgresql database host. On Unix systems, a "db_host" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.

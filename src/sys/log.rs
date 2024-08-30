@@ -119,7 +119,10 @@ impl Log {
         #[cfg(debug_assertions)]
         eprintln!("{}", str.trim_end());
 
-        let file = unsafe { LOG_FILE.as_str() };
+        let mut file = unsafe { LOG_FILE.as_str() };
+        if file.is_empty() {
+            file = "tiny.log";
+        }
         match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut file) => match file.write_all(str.as_bytes()) {
                 Ok(f) => f,
@@ -137,38 +140,32 @@ impl Log {
     /// * `text: &str` - Panic message.
     fn panic(text: &str) -> ! {
         let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f").to_string();
-        let str = format!(
-            "ID: {} Time: {} Type: {:?}. Number: Text: Panic error -> {}\n",
-            process::id(),
-            time,
-            LogView::Critical,
-            text
-        );
+        let str = format!("ID: {} Time: {} Type: {:?}. Number: Text: Panic error -> {}\n", process::id(), time, LogView::Critical, text);
         let file = unsafe { LOG_FILE.as_str() };
         match OpenOptions::new().create(true).append(true).open(file) {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(str.as_bytes()) {
                     let str = format!(
-                        r#"ID: {} Time: {} Type: {:?}. Number: Text: Can't write log file "{}" - {}\n"#,
+                        r#"ID: {} Time: {} Type: {:?}. Number111: Text: Can't write log file "{}" - {}"#,
                         process::id(),
                         time,
                         LogView::Critical,
                         file,
                         e
                     );
-                    eprint!("{}", &str);
+                    eprintln!("{}", &str);
                 }
             }
             Err(e) => {
                 let str = format!(
-                    r#"ID: {} Time: {} Type: {:?}. Number: Text: Can't open log file "{}" - {}\n"#,
+                    r#"ID: {} Time: {} Type: {:?}. Number: Text: Can't open log file "{}" - {}"#,
                     process::id(),
                     time,
                     LogView::Critical,
                     file,
                     e
                 );
-                eprint!("{}", &str);
+                eprintln!("{}", &str);
             }
         };
         process::exit(1);
@@ -217,11 +214,9 @@ impl Log {
             64 => "The 'db_name' parameter in the configuration file must be a string",
             65 => "The 'db_user' parameter in the configuration file must be a string",
             66 => "The 'db_pwd' parameter in the configuration file must be a string",
-            67 => "The 'sslmode' parameter in the configuration file can be a \"require\"",
+            67 => "The 'sslmode' parameter in the configuration file can be a bool",
             68 => "The 'protocol' parameter in the configuration file must be a string",
             71 => "The 'session' parameter in the configuration file must be a string",
-            72 => "The 'db_type' parameter in the configuration file must be a string",
-            73 => "The 'db_type' parameter in the configuration file must have the following values: postgresql, mysql, mssql.",
             74 => "The 'action_index' parameter in the configuration file must be a string",
             75 => "The 'action_index' parameter in the configuration file must start with the character '/' and consist of 3 or 4 non-empty parts separated by the character '/'",
             76 => "The 'action_not_found' parameter in the configuration file must be a string",

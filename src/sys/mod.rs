@@ -7,7 +7,7 @@ pub mod app;
 /// Cache system.
 pub mod cache;
 
-/// Work with database adapter.
+/// Work with databases.
 pub mod dbs;
 
 /// User session.
@@ -39,3 +39,6 @@ pub mod file;
 
 /// Send mail functions.
 pub mod mail;
+
+/// Data type.
+pub mod data;

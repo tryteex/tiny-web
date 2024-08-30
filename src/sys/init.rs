@@ -12,7 +12,7 @@ use toml::{Table, Value};
 use crate::fnv1a_64;
 use tiny_web_macro::fnv1a_64 as m_fnv1a_64;
 
-use super::{action::Route, dbs::adapter::DBEngine, log::Log, worker::WorkerType};
+use super::{action::Route, log::Log, worker::WorkerType};
 
 /// Responsible for the IP address that should be accepted.
 ///
@@ -61,8 +61,6 @@ pub(crate) enum Addr {
 /// * `max: SysCount` - The number of connections that will be used in the pool;
 #[derive(Debug, Clone)]
 pub(crate) struct DBConfig {
-    /// Engine of database.
-    pub engine: DBEngine,
     /// Host of database.
     pub host: String,
     /// Port of database.
@@ -130,7 +128,6 @@ impl Config {
         let rpc = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12501));
 
         let db = DBConfig {
-            engine: DBEngine::None,
             host: String::new(),
             port: None,
             name: String::new(),
@@ -285,14 +282,7 @@ impl Init {
                                                 return None;
                                             }
                                         };
-                                        conf = Init::load_conf(
-                                            Some(&root_path),
-                                            mode != Mode::Help,
-                                            name,
-                                            version,
-                                            desc,
-                                            allow_no_config,
-                                        )?;
+                                        conf = Init::load_conf(Some(&root_path), mode != Mode::Help, name, version, desc, allow_no_config)?;
                                     }
                                     None => {
                                         Log::stop(13, None);
@@ -301,21 +291,13 @@ impl Init {
                                 }
                             } else {
                                 (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
-                                conf = Init::load_conf(
-                                    conf_file.as_deref(),
-                                    mode != Mode::Help,
-                                    name,
-                                    version,
-                                    desc,
-                                    allow_no_config,
-                                )?;
+                                conf = Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
                             }
                         }
                         // second parameter is empty
                         None => {
                             (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
-                            conf =
-                                Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
+                            conf = Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
                         }
                     };
                 } else {
@@ -411,14 +393,7 @@ impl Init {
     /// `Option<Config>` - Option of parsed configuration:
     ///   * `None` - Configuration contains errors;
     ///   * `Some(Config)` - is ok.
-    fn load_conf(
-        file: Option<&str>,
-        check_salt: bool,
-        name: &str,
-        version: &str,
-        desc: &str,
-        allow_no_config: bool,
-    ) -> Option<Config> {
+    fn load_conf(file: Option<&str>, check_salt: bool, name: &str, version: &str, desc: &str, allow_no_config: bool) -> Option<Config> {
         let file = match file {
             Some(file) => file,
             None => {
@@ -450,7 +425,6 @@ impl Init {
         let num_cpus = num_cpus::get();
         let mut num_connections = num_cpus * 3;
         let mut lang = "en".to_owned();
-        let mut log = "tiny.log".to_owned();
         let mut max = num_cpus;
         let mut bind_accept = AcceptAddr::Any;
         let mut bind = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500));
@@ -463,7 +437,6 @@ impl Init {
         let mut protocol = WorkerType::FastCGI;
 
         let mut db = DBConfig {
-            engine: DBEngine::Pgsql,
             host: String::new(),
             port: None,
             name: String::new(),
@@ -476,313 +449,300 @@ impl Init {
         let mut action_not_found = Route::default_not_found();
         let mut action_err = Route::default_err();
 
-        if !text.is_empty() {
-            for (key, value) in text {
-                match &key[..] {
-                    "lang" => {
-                        if let Value::String(val) = value {
-                            if val.len() != 2 {
-                                Log::warning(51, Some(val));
-                            } else {
-                                lang = val;
-                            }
+        if let Some(value) = text.get("log") {
+            if let Value::String(val) = value {
+                Log::set_path(val.clone());
+            } else {
+                Log::warning(61, Some(value.to_string()));
+            }
+        };
+
+        for (key, value) in text {
+            match &key[..] {
+                "lang" => {
+                    if let Value::String(val) = value {
+                        if val.len() != 2 {
+                            Log::warning(51, Some(val));
                         } else {
-                            Log::warning(51, Some(value.to_string()));
+                            lang = val;
                         }
+                    } else {
+                        Log::warning(51, Some(value.to_string()));
                     }
-                    "log" => {
-                        if let Value::String(val) = value {
-                            log = val
-                        } else {
-                            Log::warning(61, Some(value.to_string()));
-                        }
-                    }
-                    "max" => match value {
-                        Value::String(s) => {
-                            if &s != "auto" {
-                                Log::warning(52, Some(s));
-                            }
-                        }
-                        Value::Integer(i) => match usize::try_from(i) {
-                            Ok(v) => {
-                                if v > 0 {
-                                    max = v;
-                                    num_connections = v * 3;
-                                } else {
-                                    Log::warning(52, Some(v.to_string()));
-                                }
-                            }
-                            Err(e) => {
-                                Log::warning(52, Some(format!("{} {}", i, e)));
-                            }
-                        },
-                        _ => {
-                            Log::warning(52, Some(value.to_string()));
-                        }
-                    },
-                    "bind_from" => {
-                        if let Value::String(val) = value {
-                            if val.is_empty() {
-                                #[cfg(not(target_family = "windows"))]
-                                {
-                                    bind_accept = AcceptAddr::Uds;
-                                }
-                                #[cfg(target_family = "windows")]
-                                {
-                                    Log::warning(53, None);
-                                }
-                            } else if val == "any" {
-                                bind_accept = AcceptAddr::Any;
-                            } else {
-                                match IpAddr::from_str(&val) {
-                                    Ok(ip) => bind_accept = AcceptAddr::IpAddr(ip),
-                                    Err(e) => {
-                                        Log::warning(53, Some(format!("{} ({})", e, val)));
-                                    }
-                                };
-                            }
-                        } else {
-                            Log::warning(53, Some(value.to_string()));
-                        }
-                    }
-                    "bind" => {
-                        if let Value::String(val) = value {
-                            if val.contains(':') {
-                                match SocketAddr::from_str(&val) {
-                                    Ok(s) => bind = Addr::SocketAddr(s),
-                                    Err(e) => {
-                                        Log::warning(54, Some(format!("{} ({})", e, val)));
-                                    }
-                                }
-                            } else {
-                                #[cfg(target_family = "windows")]
-                                {
-                                    Log::warning(54, Some(val));
-                                }
-                                #[cfg(not(target_family = "windows"))]
-                                if val.is_empty() || &val[..1] != "/" {
-                                    Log::warning(54, None);
-                                } else {
-                                    bind = Addr::Uds(val);
-                                }
-                            }
-                        } else {
-                            Log::warning(54, Some(value.to_string()));
-                        }
-                    }
-                    "rpc_from" => {
-                        if let Value::String(val) = value {
-                            if val.is_empty() {
-                                #[cfg(not(target_family = "windows"))]
-                                {
-                                    rpc_accept = AcceptAddr::Uds;
-                                }
-                                #[cfg(target_family = "windows")]
-                                {
-                                    Log::warning(53, None);
-                                }
-                            } else if val == "any" {
-                                rpc_accept = AcceptAddr::Any;
-                            } else {
-                                match IpAddr::from_str(&val) {
-                                    Ok(ip) => rpc_accept = AcceptAddr::IpAddr(ip),
-                                    Err(e) => {
-                                        Log::warning(55, Some(format!("{} ({})", e, val)));
-                                    }
-                                };
-                            }
-                        } else {
-                            Log::warning(55, Some(value.to_string()));
-                        }
-                    }
-                    "rpc" => {
-                        if let Value::String(val) = value {
-                            if val.contains(':') {
-                                match SocketAddr::from_str(&val) {
-                                    Ok(s) => rpc = Addr::SocketAddr(s),
-                                    Err(e) => {
-                                        Log::warning(56, Some(format!("{} ({})", e, val)));
-                                    }
-                                }
-                            } else {
-                                #[cfg(target_family = "windows")]
-                                {
-                                    Log::warning(56, Some(val));
-                                }
-                                #[cfg(not(target_family = "windows"))]
-                                if val.is_empty() || &val[..1] != "/" {
-                                    Log::warning(56, None);
-                                } else {
-                                    rpc = Addr::Uds(val);
-                                }
-                            }
-                        } else {
-                            Log::warning(56, Some(value.to_string()));
-                        }
-                    }
-                    "session" => {
-                        if let Value::String(val) = value {
-                            session = val;
-                        } else {
-                            Log::warning(71, Some(value.to_string()));
-                        }
-                    }
-                    "salt" => {
-                        if let Value::String(val) = value {
-                            salt = val;
-                            stop_signal = fnv1a_64(format!("stop{}", &salt).as_bytes());
-                            status_signal = fnv1a_64(format!("status{}", &salt).as_bytes());
-                        } else {
-                            Log::warning(62, Some(value.to_string()));
-                        }
-                    }
-                    "db_type" => {
-                        if let Value::String(val) = value {
-                            match val.as_bytes() {
-                                b"postgresql" => db.engine = DBEngine::Pgsql,
-                                b"mssql" => db.engine = DBEngine::Mssql,
-                                _ => {
-                                    Log::warning(73, Some(val.to_string()));
-                                }
-                            }
-                        } else {
-                            Log::warning(72, Some(value.to_string()));
-                        }
-                    }
-                    "db_host" => {
-                        if let Value::String(val) = value {
-                            if !val.is_empty() {
-                                db.host = val;
-                            }
-                        } else {
-                            Log::warning(63, Some(value.to_string()));
-                        }
-                    }
-                    "db_port" => {
-                        if let Value::Integer(i) = value {
-                            match u16::try_from(i) {
-                                Ok(v) => {
-                                    if v > 0 {
-                                        db.port = Some(v);
-                                    } else {
-                                        Log::warning(57, Some(v.to_string()));
-                                    }
-                                }
-                                Err(e) => {
-                                    Log::warning(57, Some(format!("{} ({})", e, i)));
-                                }
-                            }
-                        } else {
-                            Log::warning(57, Some(value.to_string()));
-                        }
-                    }
-                    "db_name" => {
-                        if let Value::String(val) = value {
-                            db.name = val;
-                        } else {
-                            Log::warning(64, Some(value.to_string()));
-                        }
-                    }
-                    "db_user" => {
-                        if let Value::String(val) = value {
-                            db.user = Some(val);
-                        } else {
-                            Log::warning(65, Some(value.to_string()));
-                        }
-                    }
-                    "db_pwd" => {
-                        if let Value::String(val) = value {
-                            db.pwd = Some(val);
-                        } else {
-                            Log::warning(66, Some(value.to_string()));
-                        }
-                    }
-                    "sslmode" => {
-                        if let Value::Boolean(val) = value {
-                            db.sslmode = val;
-                        } else {
-                            Log::warning(67, Some(value.to_string()));
-                        }
-                    }
-                    "db_max" => match value {
-                        Value::String(s) => {
-                            if &s == "auto" {
-                                db.max = num_connections;
-                            } else {
-                                Log::warning(58, Some(s));
-                            }
-                        }
-                        Value::Integer(i) => match usize::try_from(i) {
-                            Ok(v) => {
-                                if v > 0 {
-                                    db.max = v;
-                                } else {
-                                    Log::warning(58, Some(v.to_string()));
-                                }
-                            }
-                            Err(e) => {
-                                Log::warning(58, Some(format!("{} {}", i, e)));
-                            }
-                        },
-                        _ => {
-                            Log::warning(58, Some(value.to_string()));
-                        }
-                    },
-                    "protokol" => {
-                        if let Value::String(val) = value {
-                            protocol = match &val[..] {
-                                "FastCGI" => WorkerType::FastCGI,
-                                "SCGI" => WorkerType::Scgi,
-                                "uWSGI" => WorkerType::Uwsgi,
-                                "FastgRPCCGI" => WorkerType::Grpc,
-                                "HTTP" => WorkerType::Http,
-                                "WebSocket" => WorkerType::WebSocket,
-                                _ => {
-                                    Log::warning(60, Some(val.to_owned()));
-                                    WorkerType::FastCGI
-                                }
-                            }
-                        } else {
-                            Log::warning(68, Some(value.to_string()));
-                        }
-                    }
-                    "action_index" => {
-                        if let Value::String(val) = &value {
-                            if let Some(route) = Route::parse(val) {
-                                action_index = route;
-                            } else {
-                                Log::warning(75, Some(value.to_string()));
-                            }
-                        } else {
-                            Log::warning(74, Some(value.to_string()));
-                        }
-                    }
-                    "action_not_found" => {
-                        if let Value::String(val) = &value {
-                            if let Some(route) = Route::parse(val) {
-                                action_not_found = route;
-                            } else {
-                                Log::warning(77, Some(value.to_string()));
-                            }
-                        } else {
-                            Log::warning(76, Some(value.to_string()));
-                        }
-                    }
-                    "action_err" => {
-                        if let Value::String(val) = &value {
-                            if let Some(route) = Route::parse(val) {
-                                action_err = route;
-                            } else {
-                                Log::warning(79, Some(value.to_string()));
-                            }
-                        } else {
-                            Log::warning(78, Some(value.to_string()));
-                        }
-                    }
-                    _ => {}
                 }
+                "max" => match value {
+                    Value::String(s) => {
+                        if &s != "auto" {
+                            Log::warning(52, Some(s));
+                        }
+                    }
+                    Value::Integer(i) => match usize::try_from(i) {
+                        Ok(v) => {
+                            if v > 0 {
+                                max = v;
+                                num_connections = v * 3;
+                            } else {
+                                Log::warning(52, Some(v.to_string()));
+                            }
+                        }
+                        Err(e) => {
+                            Log::warning(52, Some(format!("{} {}", i, e)));
+                        }
+                    },
+                    _ => {
+                        Log::warning(52, Some(value.to_string()));
+                    }
+                },
+                "bind_from" => {
+                    if let Value::String(val) = value {
+                        if val.is_empty() {
+                            #[cfg(not(target_family = "windows"))]
+                            {
+                                bind_accept = AcceptAddr::Uds;
+                            }
+                            #[cfg(target_family = "windows")]
+                            {
+                                Log::warning(53, None);
+                            }
+                        } else if val == "any" {
+                            bind_accept = AcceptAddr::Any;
+                        } else {
+                            match IpAddr::from_str(&val) {
+                                Ok(ip) => bind_accept = AcceptAddr::IpAddr(ip),
+                                Err(e) => {
+                                    Log::warning(53, Some(format!("{} ({})", e, val)));
+                                }
+                            };
+                        }
+                    } else {
+                        Log::warning(53, Some(value.to_string()));
+                    }
+                }
+                "bind" => {
+                    if let Value::String(val) = value {
+                        if val.contains(':') {
+                            match SocketAddr::from_str(&val) {
+                                Ok(s) => bind = Addr::SocketAddr(s),
+                                Err(e) => {
+                                    Log::warning(54, Some(format!("{} ({})", e, val)));
+                                }
+                            }
+                        } else {
+                            #[cfg(target_family = "windows")]
+                            {
+                                Log::warning(54, Some(val));
+                            }
+                            #[cfg(not(target_family = "windows"))]
+                            if val.is_empty() || &val[..1] != "/" {
+                                Log::warning(54, None);
+                            } else {
+                                bind = Addr::Uds(val);
+                            }
+                        }
+                    } else {
+                        Log::warning(54, Some(value.to_string()));
+                    }
+                }
+                "rpc_from" => {
+                    if let Value::String(val) = value {
+                        if val.is_empty() {
+                            #[cfg(not(target_family = "windows"))]
+                            {
+                                rpc_accept = AcceptAddr::Uds;
+                            }
+                            #[cfg(target_family = "windows")]
+                            {
+                                Log::warning(53, None);
+                            }
+                        } else if val == "any" {
+                            rpc_accept = AcceptAddr::Any;
+                        } else {
+                            match IpAddr::from_str(&val) {
+                                Ok(ip) => rpc_accept = AcceptAddr::IpAddr(ip),
+                                Err(e) => {
+                                    Log::warning(55, Some(format!("{} ({})", e, val)));
+                                }
+                            };
+                        }
+                    } else {
+                        Log::warning(55, Some(value.to_string()));
+                    }
+                }
+                "rpc" => {
+                    if let Value::String(val) = value {
+                        if val.contains(':') {
+                            match SocketAddr::from_str(&val) {
+                                Ok(s) => rpc = Addr::SocketAddr(s),
+                                Err(e) => {
+                                    Log::warning(56, Some(format!("{} ({})", e, val)));
+                                }
+                            }
+                        } else {
+                            #[cfg(target_family = "windows")]
+                            {
+                                Log::warning(56, Some(val));
+                            }
+                            #[cfg(not(target_family = "windows"))]
+                            if val.is_empty() || &val[..1] != "/" {
+                                Log::warning(56, None);
+                            } else {
+                                rpc = Addr::Uds(val);
+                            }
+                        }
+                    } else {
+                        Log::warning(56, Some(value.to_string()));
+                    }
+                }
+                "session" => {
+                    if let Value::String(val) = value {
+                        session = val;
+                    } else {
+                        Log::warning(71, Some(value.to_string()));
+                    }
+                }
+                "salt" => {
+                    if let Value::String(val) = value {
+                        salt = val;
+                        stop_signal = fnv1a_64(format!("stop{}", &salt).as_bytes());
+                        status_signal = fnv1a_64(format!("status{}", &salt).as_bytes());
+                    } else {
+                        Log::warning(62, Some(value.to_string()));
+                    }
+                }
+                "db_host" => {
+                    if let Value::String(val) = value {
+                        if !val.is_empty() {
+                            db.host = val;
+                        }
+                    } else {
+                        Log::warning(63, Some(value.to_string()));
+                    }
+                }
+                "db_port" => {
+                    if let Value::Integer(i) = value {
+                        match u16::try_from(i) {
+                            Ok(v) => {
+                                if v > 0 {
+                                    db.port = Some(v);
+                                } else {
+                                    Log::warning(57, Some(v.to_string()));
+                                }
+                            }
+                            Err(e) => {
+                                Log::warning(57, Some(format!("{} ({})", e, i)));
+                            }
+                        }
+                    } else {
+                        Log::warning(57, Some(value.to_string()));
+                    }
+                }
+                "db_name" => {
+                    if let Value::String(val) = value {
+                        db.name = val;
+                    } else {
+                        Log::warning(64, Some(value.to_string()));
+                    }
+                }
+                "db_user" => {
+                    if let Value::String(val) = value {
+                        db.user = Some(val);
+                    } else {
+                        Log::warning(65, Some(value.to_string()));
+                    }
+                }
+                "db_pwd" => {
+                    if let Value::String(val) = value {
+                        db.pwd = Some(val);
+                    } else {
+                        Log::warning(66, Some(value.to_string()));
+                    }
+                }
+                "sslmode" => {
+                    if let Value::Boolean(val) = value {
+                        db.sslmode = val;
+                    } else {
+                        Log::warning(67, Some(value.to_string()));
+                    }
+                }
+                "db_max" => match value {
+                    Value::String(s) => {
+                        if &s == "auto" {
+                            db.max = num_connections;
+                        } else {
+                            Log::warning(58, Some(s));
+                        }
+                    }
+                    Value::Integer(i) => match usize::try_from(i) {
+                        Ok(v) => {
+                            if v > 0 {
+                                db.max = v;
+                            } else {
+                                Log::warning(58, Some(v.to_string()));
+                            }
+                        }
+                        Err(e) => {
+                            Log::warning(58, Some(format!("{} {}", i, e)));
+                        }
+                    },
+                    _ => {
+                        Log::warning(58, Some(value.to_string()));
+                    }
+                },
+                "protokol" => {
+                    if let Value::String(val) = value {
+                        protocol = match &val[..] {
+                            "FastCGI" => WorkerType::FastCGI,
+                            "SCGI" => WorkerType::Scgi,
+                            "uWSGI" => WorkerType::Uwsgi,
+                            "FastgRPCCGI" => WorkerType::Grpc,
+                            "HTTP" => WorkerType::Http,
+                            "WebSocket" => WorkerType::WebSocket,
+                            _ => {
+                                Log::warning(60, Some(val.to_owned()));
+                                WorkerType::FastCGI
+                            }
+                        }
+                    } else {
+                        Log::warning(68, Some(value.to_string()));
+                    }
+                }
+                "action_index" => {
+                    if let Value::String(val) = &value {
+                        if let Some(route) = Route::parse(val) {
+                            action_index = route;
+                        } else {
+                            Log::warning(75, Some(value.to_string()));
+                        }
+                    } else {
+                        Log::warning(74, Some(value.to_string()));
+                    }
+                }
+                "action_not_found" => {
+                    if let Value::String(val) = &value {
+                        if let Some(route) = Route::parse(val) {
+                            action_not_found = route;
+                        } else {
+                            Log::warning(77, Some(value.to_string()));
+                        }
+                    } else {
+                        Log::warning(76, Some(value.to_string()));
+                    }
+                }
+                "action_err" => {
+                    if let Value::String(val) = &value {
+                        if let Some(route) = Route::parse(val) {
+                            action_err = route;
+                        } else {
+                            Log::warning(79, Some(value.to_string()));
+                        }
+                    } else {
+                        Log::warning(78, Some(value.to_string()));
+                    }
+                }
+                _ => {}
             }
         }
+
         if db.host.is_empty() {
             Log::stop(59, None);
             return None;
@@ -791,7 +751,6 @@ impl Init {
             Log::stop(50, None);
             return None;
         }
-        Log::set_path(log.clone());
         let conf = Config {
             is_default: false,
             name: name.to_owned(),

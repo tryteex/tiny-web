@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::fnv1a_64;
 
-use super::action::Data;
+use super::data::Data;
 
 /// Data caching module.
 ///

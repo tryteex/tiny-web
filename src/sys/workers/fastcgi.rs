@@ -300,10 +300,7 @@ impl Net {
                                 }
                                 session_key = Some((*unsafe { key.get_unchecked(1) }).to_owned());
                             } else {
-                                cookie.insert(
-                                    (*unsafe { key.get_unchecked(0) }).to_owned(),
-                                    (*unsafe { key.get_unchecked(1) }).to_owned(),
-                                );
+                                cookie.insert((*unsafe { key.get_unchecked(0) }).to_owned(), (*unsafe { key.get_unchecked(1) }).to_owned());
                             }
                         }
                     }
