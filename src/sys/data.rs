@@ -126,11 +126,25 @@ impl Data {
     where
         for<'a> &'a T: From<&'a Data>,
     {
-        if let Data::Map(map) = self {
-            let value = map.get(&key.to_i64())?;
-            Some(value.into())
-        } else {
-            None
+        match self {
+            Data::Vec(vec) => match usize::try_from(key.to_i64()) {
+                Ok(index) => {
+                    let value = vec.get(index)?;
+                    Some(value.into())
+                }
+                #[cfg(not(debug_assertions))]
+                Err(_) => None,
+                #[cfg(debug_assertions)]
+                Err(e) => panic!("The key must be in the range for type usize. Err: {}", e),
+            },
+            Data::Map(map) => {
+                let value = map.get(&key.to_i64())?;
+                Some(value.into())
+            }
+            #[cfg(not(debug_assertions))]
+            _ => None,
+            #[cfg(debug_assertions)]
+            _ => panic!("Must be Data::Map<Data> or Data::Vec<Data>"),
         }
     }
 
@@ -138,11 +152,25 @@ impl Data {
     where
         T: From<Data>,
     {
-        if let Data::Map(map) = self {
-            let value = map.remove(&key.to_i64())?;
-            Some(value.into())
-        } else {
-            None
+        match self {
+            Data::Vec(vec) => match usize::try_from(key.to_i64()) {
+                Ok(index) => {
+                    let value = vec.remove(index);
+                    Some(value.into())
+                }
+                #[cfg(not(debug_assertions))]
+                Err(_) => None,
+                #[cfg(debug_assertions)]
+                Err(e) => panic!("The key must be in the range for type usize. Err: {}", e),
+            },
+            Data::Map(map) => {
+                let value = map.remove(&key.to_i64())?;
+                Some(value.into())
+            }
+            #[cfg(not(debug_assertions))]
+            _ => None,
+            #[cfg(debug_assertions)]
+            _ => panic!("Must be Data::Map<Data> or Data::Vec<Data>"),
         }
     }
 }
