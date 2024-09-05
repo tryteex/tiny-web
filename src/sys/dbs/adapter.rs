@@ -86,7 +86,7 @@ impl DB {
         }
         let semaphore = Arc::new(Semaphore::new(asize));
 
-        Some(DB { connections, semaphore, is_used: false })
+        Some(DB { connections, semaphore, is_used: true })
     }
     /// Is library uses database
     pub fn in_use(&self) -> bool {

@@ -15,7 +15,11 @@ use postgres::{
     Column, NoTls, Row, Statement, ToStatement,
 };
 use ring::digest;
-use rustls::{pki_types::ServerName, ClientConfig, RootCertStore};
+use rustls::{
+    client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
+    pki_types::{CertificateDer, ServerName, UnixTime},
+    ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
+};
 use serde_json::Value;
 use tiny_web_macro::fnv1a_64;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -55,7 +59,7 @@ pub(crate) struct PgSql {
     /// Connection config.
     sql_conn: tokio_postgres::Config,
     /// Use tls for connection when sslmode=require.
-    tls: Option<MakeRustTlsConnect>,
+    tls: Option<MakeRustlsConnect>,
     /// Prepare statements to database.
     prepare: BTreeMap<i64, PgStatement>,
 }
@@ -124,8 +128,9 @@ impl PgSql {
             }
         };
         let tls = if config.sslmode {
-            let config = ClientConfig::builder().with_root_certificates(RootCertStore::empty()).with_no_client_auth();
-            Some(MakeRustTlsConnect::new(config))
+            let mut config = ClientConfig::builder().with_root_certificates(RootCertStore::empty()).with_no_client_auth();
+            config.dangerous().set_certificate_verifier(Arc::new(NoCertificateVerification {}));
+            Some(MakeRustlsConnect::new(config))
         } else {
             None
         };
@@ -328,7 +333,7 @@ impl PgSql {
                     INSERT INTO mail(user_id, mail, "create", send, err, transport)
                     VALUES ($1, $2, now(), now(), false, 'None')
                 "#;
-                map.insert(fnv1a_64!("lib_mail_add"), (client.prepare_typed(sql, &[Type::INT8, Type::TEXT]), sql.to_owned()));
+                map.insert(fnv1a_64!("lib_mail_add"), (client.prepare_typed(sql, &[Type::INT8, Type::JSON]), sql.to_owned()));
                 // Insert error send email
                 let sql = r#"
                     UPDATE mail
@@ -940,28 +945,80 @@ impl std::fmt::Debug for PgStatement {
     }
 }
 
+#[derive(Debug)]
+struct NoCertificateVerification;
+
+impl ServerCertVerifier for NoCertificateVerification {
+    fn verify_server_cert(
+        &self,
+        _: &CertificateDer<'_>,
+        _: &[CertificateDer<'_>],
+        _: &ServerName<'_>,
+        _: &[u8],
+        _: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _: &[u8],
+        _: &CertificateDer<'_>,
+        _: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _: &[u8],
+        _: &CertificateDer<'_>,
+        _: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA1,
+            SignatureScheme::ECDSA_SHA1_Legacy,
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::ED25519,
+            SignatureScheme::ED448,
+        ]
+    }
+}
+
 #[derive(Clone)]
-pub(crate) struct MakeRustTlsConnect {
+pub(crate) struct MakeRustlsConnect {
     config: Arc<ClientConfig>,
 }
 
-impl MakeRustTlsConnect {
+impl MakeRustlsConnect {
     pub fn new(config: ClientConfig) -> Self {
         Self { config: Arc::new(config) }
     }
 }
 
-impl<S> MakeTlsConnect<S> for MakeRustTlsConnect
+impl<S> MakeTlsConnect<S> for MakeRustlsConnect
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    type Stream = RustTlsStream<S>;
-    type TlsConnect = RustTlsConnect;
+    type Stream = RustlsStream<S>;
+    type TlsConnect = RustlsConnect;
     type Error = rustls::pki_types::InvalidDnsNameError;
 
-    fn make_tls_connect(&mut self, hostname: &str) -> Result<RustTlsConnect, Self::Error> {
+    fn make_tls_connect(&mut self, hostname: &str) -> Result<RustlsConnect, Self::Error> {
         ServerName::try_from(hostname).map(|dns_name| {
-            RustTlsConnect(RustTlsConnectData {
+            RustlsConnect(RustlsConnectData {
                 hostname: dns_name.to_owned(),
                 connector: Arc::clone(&self.config).into(),
             })
@@ -969,29 +1026,29 @@ where
     }
 }
 
-pub(crate) struct RustTlsConnect(RustTlsConnectData);
+pub(crate) struct RustlsConnect(RustlsConnectData);
 
-struct RustTlsConnectData {
+struct RustlsConnectData {
     hostname: ServerName<'static>,
     connector: TlsConnector,
 }
 
-impl<S> TlsConnect<S> for RustTlsConnect
+impl<S> TlsConnect<S> for RustlsConnect
 where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-    type Stream = RustTlsStream<S>;
+    type Stream = RustlsStream<S>;
     type Error = io::Error;
-    type Future = Pin<Box<dyn Future<Output = io::Result<RustTlsStream<S>>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = io::Result<RustlsStream<S>>> + Send>>;
 
     fn connect(self, stream: S) -> Self::Future {
-        Box::pin(async move { self.0.connector.connect(self.0.hostname, stream).await.map(|s| RustTlsStream(Box::pin(s))) })
+        Box::pin(async move { self.0.connector.connect(self.0.hostname, stream).await.map(|s| RustlsStream(Box::pin(s))) })
     }
 }
 
-pub(crate) struct RustTlsStream<S>(Pin<Box<TlsStream<S>>>);
+pub(crate) struct RustlsStream<S>(Pin<Box<TlsStream<S>>>);
 
-impl<S> tokio_postgres::tls::TlsStream for RustTlsStream<S>
+impl<S> tokio_postgres::tls::TlsStream for RustlsStream<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -1021,7 +1078,7 @@ where
     }
 }
 
-impl<S> AsyncRead for RustTlsStream<S>
+impl<S> AsyncRead for RustlsStream<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -1030,7 +1087,7 @@ where
     }
 }
 
-impl<S> AsyncWrite for RustTlsStream<S>
+impl<S> AsyncWrite for RustlsStream<S>
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {

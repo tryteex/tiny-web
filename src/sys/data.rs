@@ -4,6 +4,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::StrOrI64;
+
 use super::{
     action::{Redirect, Route},
     mail::MailProvider,
@@ -118,3 +120,29 @@ impl_from_for_data!(
     Vec<u8> => Raw,
     BTreeMap<i64, Data> => Map,
 );
+
+impl Data {
+    pub fn get<T>(&self, key: impl StrOrI64) -> Option<&T>
+    where
+        for<'a> &'a T: From<&'a Data>,
+    {
+        if let Data::Map(map) = self {
+            let value = map.get(&key.to_i64())?;
+            Some(value.into())
+        } else {
+            None
+        }
+    }
+
+    pub fn take<T>(&mut self, key: impl StrOrI64) -> Option<T>
+    where
+        T: From<Data>,
+    {
+        if let Data::Map(map) = self {
+            let value = map.remove(&key.to_i64())?;
+            Some(value.into())
+        } else {
+            None
+        }
+    }
+}
