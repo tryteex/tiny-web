@@ -126,10 +126,7 @@ impl Session {
         let res = if data.is_empty() {
             BTreeMap::new()
         } else {
-            match bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]) {
-                Ok(r) => r,
-                Err(_) => BTreeMap::new(),
-            }
+            bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_default()
         };
         Session {
             id: session_id,
@@ -149,10 +146,7 @@ impl Session {
             return;
         }
         if session.change {
-            let data = match bincode::serialize(&session.data) {
-                Ok(r) => r,
-                Err(_) => Vec::new(),
-            };
+            let data = bincode::serialize(&session.data).unwrap_or_default();
             if session.id > 0 {
                 db.execute_prepare(
                     fnv1a_64!("lib_set_session"),
