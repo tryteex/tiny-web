@@ -25,8 +25,8 @@ jobs:
     - name: Install Rust
       run: rustup update stable
 
-    - name: Run Clippy (Feature: ${{ matrix.feature }})
+    - name: Run Clippy
       run: cargo clippy --verbose --no-default-features --features "${{ matrix.feature }}" -- -D warnings
 
-    - name: Build (Feature: ${{ matrix.feature }})
+    - name: Build
       run: cargo build --verbose --no-default-features --features "${{ matrix.feature }}"
