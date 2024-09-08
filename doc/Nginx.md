@@ -71,5 +71,5 @@ http {
 ```
 Additionally, it is recommended to note that the recommended file structure of the compiled application is provided [here](https://github.com/tryteex/tiny-web/blob/main/doc/Files.md).
 ___
-Next => Simple example [Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Simple example [https://github.com/tryteex/tiny-web/blob/main/doc/Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

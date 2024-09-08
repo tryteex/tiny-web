@@ -1,0 +1,8 @@
+max_width = 140
+fn_call_width = 130
+attr_fn_like_width = 90
+struct_lit_width = 38
+struct_variant_width = 55
+array_width = 130
+chain_width = 130
+single_line_if_else_max_width = 130

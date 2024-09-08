@@ -263,5 +263,5 @@ Value arr.name: A.Name end;<br>
         Value b: Third value of Item3 end;<br>
 ```
 ___
-Next => I18N [I18N.md](https://github.com/tryteex/tiny-web/blob/main/doc/I18N.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => I18N [https://github.com/tryteex/tiny-web/blob/main/doc/I18N.md](https://github.com/tryteex/tiny-web/blob/main/doc/I18N.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

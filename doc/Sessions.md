@@ -54,5 +54,5 @@ pub async fn add_product_cart(this: &mut Action) -> Answer {
 }
 ```
 ___
-Next => Caching [Caching.md](https://github.com/tryteex/tiny-web/blob/main/doc/Caching.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Caching [https://github.com/tryteex/tiny-web/blob/main/doc/Caching.md](https://github.com/tryteex/tiny-web/blob/main/doc/Caching.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

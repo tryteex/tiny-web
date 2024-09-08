@@ -96,5 +96,5 @@ pub async fn index(this: &mut Action) -> Answer {
 }
 ```
 ___
-Next => First-Time start [First.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => First-Time start [https://github.com/tryteex/tiny-web/blob/main/doc/First.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

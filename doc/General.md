@@ -39,5 +39,5 @@ The system should have tree default controllers: __/index/index/index/__, __/ind
 
 For SEO optimizations, route mechanisms are applied, which can transform any URL request into a pre-defined controller, that is, __/Module/Class/Action/Param__.
 ___
-Next => Basic functionality [Basic.md](https://github.com/tryteex/tiny-web/blob/main/doc/Basic.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Basic functionality [https://github.com/tryteex/tiny-web/blob/main/doc/Basic.md](https://github.com/tryteex/tiny-web/blob/main/doc/Basic.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

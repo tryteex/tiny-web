@@ -57,5 +57,5 @@ fn main() {
 tiny_web_macro::addmod!();
 ```
 ___
-Next => __Action__ structure [Action.md](https://github.com/tryteex/tiny-web/blob/main/doc/Action.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => __Action__ structure [https://github.com/tryteex/tiny-web/blob/main/doc/Action.md](https://github.com/tryteex/tiny-web/blob/main/doc/Action.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

@@ -38,5 +38,5 @@ Connection: Keep-Alive
 Content-Length: <length>
 ```
 ___
-Next => __Data__ structure [Data.md](https://github.com/tryteex/tiny-web/blob/main/doc/Data.md)   
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => __Data__ structure [https://github.com/tryteex/tiny-web/blob/main/doc/Data.md](https://github.com/tryteex/tiny-web/blob/main/doc/Data.md)   
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

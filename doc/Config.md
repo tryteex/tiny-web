@@ -152,5 +152,5 @@ Example:
 * `action_error_route = "/main/route/err"`
 
 ___
-Next => Controller [Controller.md](https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Controller [https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md](https://github.com/tryteex/tiny-web/blob/main/doc/Controller.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

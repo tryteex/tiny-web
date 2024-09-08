@@ -47,5 +47,5 @@ The root directort ```app``` contains html templates.
 
 Accordingly, the nginx server settings will be different for Development and Production.
 ___
-Next => Config [Config.md](https://github.com/tryteex/tiny-web/blob/main/doc/Config.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Config [https://github.com/tryteex/tiny-web/blob/main/doc/Config.md](https://github.com/tryteex/tiny-web/blob/main/doc/Config.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

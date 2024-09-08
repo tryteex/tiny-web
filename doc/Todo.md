@@ -1,11 +1,10 @@
 ## Todo
 
-* Network protocols: gRPC, HTTP, HTTPS, WebSocket.
-* Token-based authentication without sessions.
-* Monitoring.
+* Plugins and hooks system.
+* Server monitoring.
 * Authorization.
 * Smart logging.
 * Update Wizard.
-* Support Server-sent events.
+* Network protocols: gRPC, HTTP, HTTPS, WebSocket.
 ___
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

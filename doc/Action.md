@@ -257,5 +257,5 @@ fn mail(message: MailMessage) -> bool
 
 More about __email__ [Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
 ___
-Next => __Answer__ structure [Answer.md](https://github.com/tryteex/tiny-web/blob/main/doc/Answer.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => __Answer__ structure [https://github.com/tryteex/tiny-web/blob/main/doc/Answer.md](https://github.com/tryteex/tiny-web/blob/main/doc/Answer.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

@@ -37,5 +37,5 @@ The basic functionality of the library includes the following modules:
 
 The full list of available functions in the controller is in the section Useful functions / macros [Functions.md](https://github.com/tryteex/tiny-web/blob/main/doc/Functions.md).
 ___
-Next => File structure of the project [Files.md](https://github.com/tryteex/tiny-web/blob/main/doc/Files.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => File structure of the project [https://github.com/tryteex/tiny-web/blob/main/doc/Files.md](https://github.com/tryteex/tiny-web/blob/main/doc/Files.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

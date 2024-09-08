@@ -6,5 +6,5 @@ This means that there are no database connections. When the stop signal is sent,
 
 On first launch (without config file) only the controller from `/index/install/*` will be available.
 ___
-Next => Configuring nginx [Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Configuring nginx [https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

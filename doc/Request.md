@@ -37,5 +37,5 @@ pub async fn index(this: &mut Action) -> Answer {
 }
 ```
 ___
-Next => Response [Response.md](https://github.com/tryteex/tiny-web/blob/main/doc/Response.md)   
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Response [https://github.com/tryteex/tiny-web/blob/main/doc/Response.md](https://github.com/tryteex/tiny-web/blob/main/doc/Response.md)   
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

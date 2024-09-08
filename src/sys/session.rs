@@ -123,11 +123,8 @@ impl Session {
             return Session::with_key(lang_id, key, session_key);
         };
 
-        let res = if data.is_empty() {
-            BTreeMap::new()
-        } else {
-            bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_default()
-        };
+        let res =
+            if data.is_empty() { BTreeMap::new() } else { bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_default() };
         Session {
             id: session_id,
             lang_id,

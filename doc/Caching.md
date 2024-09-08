@@ -28,5 +28,5 @@ If it's necessary to clear all permissions only for `role_id=2`:
 this.cache.remove("auth:2").await
 ```
 ___
-Next => Request [Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md)  
-Index => Contents [Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  
+Next => Request [https://github.com/tryteex/tiny-web/blob/main/doc/Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md)  
+Index => Contents [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md)  

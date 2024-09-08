@@ -13,4 +13,4 @@ pub mod mssql;
 pub mod without_sql;
 
 #[cfg(not(any(feature = "pgsql", feature = "mssql")))]
-compile_error!("Either feature \"pgsql\" or \"mssql\" must be enabled for this crate.");
+compile_error!("Either feature 'pgsql' or 'mssql' must be enabled for this crate.");
