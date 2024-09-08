@@ -17,6 +17,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        feature: [pgsql, mssql]
 
     steps:
     - uses: actions/checkout@v4
@@ -24,8 +25,8 @@ jobs:
     - name: Install Rust
       run: rustup update stable
 
-    - name: Run Clippy
-      run: cargo clippy --verbose -- -D warnings
+    - name: Run Clippy (Feature: ${{ matrix.feature }})
+      run: cargo clippy --verbose --no-default-features --features "${{ matrix.feature }}" -- -D warnings
 
-    - name: Build
-      run: cargo build --verbose
+    - name: Build (Feature: ${{ matrix.feature }})
+      run: cargo build --verbose --no-default-features --features "${{ matrix.feature }}"
