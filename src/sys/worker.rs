@@ -443,7 +443,8 @@ impl Worker {
         let changed = lang.read().await.check_time().await;
         if changed {
             let mut lang = lang.write().await;
-            lang.load().await;
+            let files = Lang::get_files(Arc::clone(&lang.root)).await;
+            lang.load(files).await;
         }
         let changed = html.read().await.check_time().await;
         if changed {

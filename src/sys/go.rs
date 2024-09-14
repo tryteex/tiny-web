@@ -9,7 +9,6 @@ use std::{
     time::Duration,
 };
 
-use tiny_web_macro::fnv1a_64;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -25,11 +24,10 @@ use tokio::sync::RwLock;
 use super::{
     action::ActMap,
     cache::CacheSys,
-    data::Data,
     dbs::adapter::DB,
     html::Html,
     init::{AcceptAddr, Addr, Config, Init},
-    lang::{Lang, LangItem},
+    lang::Lang,
     log::Log,
     mail::Mail,
     worker::{Worker, WorkerData},
@@ -102,12 +100,12 @@ impl Go {
             if db.in_use() { None } else { Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal, Arc::clone(&init.exe_path))) };
 
         let main = tokio::spawn(async move {
-            let langs = Go::get_langs(&mut db).await;
-
             #[cfg(not(debug_assertions))]
-            let lang = Arc::new(Lang::new(&root_path, &lang, langs).await);
+            let lang = Arc::new(Lang::new(&root_path, &lang, &mut db).await);
+
             #[cfg(debug_assertions)]
-            let lang = Arc::new(RwLock::new(Lang::new(&root_path, &lang, langs).await));
+            let lang = Arc::new(RwLock::new(Lang::new(Arc::clone(&root_path), &lang, &mut db).await));
+
             #[cfg(not(debug_assertions))]
             let html = Arc::new(Html::new(&root_path).await);
             #[cfg(debug_assertions)]
@@ -338,68 +336,5 @@ impl Go {
                 }
             },
         }
-    }
-
-    /// Get list of enabled langs from database
-    async fn get_langs(db: &mut DB) -> Vec<Arc<LangItem>> {
-        if !db.in_use() {
-            let vec = vec![Arc::new(LangItem {
-                id: 0,
-                lang: "en".to_owned(),
-                name: "English".to_owned(),
-                index: 0,
-            })];
-            return vec;
-        }
-
-        let res = match db.query_prepare(fnv1a_64!("lib_get_langs"), &[], false).await {
-            Some(r) => r,
-            None => {
-                Log::warning(1150, None);
-                return Vec::new();
-            }
-        };
-        if res.is_empty() {
-            Log::warning(1151, None);
-            return Vec::new();
-        }
-        let mut vec = Vec::with_capacity(res.len());
-        for row in res {
-            if let Data::Vec(row) = row {
-                if row.len() != 4 {
-                    Log::warning(1150, None);
-                    return Vec::new();
-                }
-                let id = if let Data::I64(val) = unsafe { row.get_unchecked(0) } {
-                    *val
-                } else {
-                    Log::warning(1150, None);
-                    return Vec::new();
-                };
-                let index = if let Data::I64(val) = unsafe { row.get_unchecked(3) } {
-                    *val
-                } else {
-                    Log::warning(1150, None);
-                    return Vec::new();
-                };
-                let lang = if let Data::String(val) = unsafe { row.get_unchecked(1) } {
-                    val.to_owned()
-                } else {
-                    Log::warning(1150, None);
-                    return Vec::new();
-                };
-                let name = if let Data::String(val) = unsafe { row.get_unchecked(2) } {
-                    val.to_owned()
-                } else {
-                    Log::warning(1150, None);
-                    return Vec::new();
-                };
-                vec.push(Arc::new(LangItem { id, lang, name, index }));
-            } else {
-                Log::warning(1150, None);
-                return Vec::new();
-            }
-        }
-        vec
     }
 }

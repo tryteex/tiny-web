@@ -190,13 +190,13 @@ impl Session {
     }
 
     /// Get session data for reading
-    pub fn read(&mut self, key: impl StrOrI64) -> Option<&Data> {
+    pub fn get(&mut self, key: impl StrOrI64) -> Option<&Data> {
         self.change = true;
         self.data.get(&key.to_i64())
     }
 
     /// Getting session data by deleting it
-    pub fn get(&mut self, key: impl StrOrI64) -> Option<Data> {
+    pub fn take(&mut self, key: impl StrOrI64) -> Option<Data> {
         self.change = true;
         self.data.remove(&key.to_i64())
     }
