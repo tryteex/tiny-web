@@ -32,7 +32,7 @@ pub struct LangItem {
     /// Language ID
     pub id: i64,
     /// Languane name ISO 639-1: uk - ukrainian, en - english, en - english
-    pub lang: String,
+    pub code: String,
     /// Native name of the language
     pub name: String,
     /// Index in JSON type field db
@@ -141,8 +141,8 @@ impl Lang {
 
         let mut default = 0;
         for item in &langs {
-            codes.insert(item.lang.clone(), item.id);
-            if item.lang == default_lang {
+            codes.insert(item.code.clone(), item.id);
+            if item.code == default_lang {
                 default = item.id as usize;
             }
         }
@@ -193,7 +193,7 @@ impl Lang {
                     Log::warning(1150, None);
                     return Vec::new();
                 };
-                let lang = if let Data::String(val) = unsafe { row.get_unchecked(1) } {
+                let code = if let Data::String(val) = unsafe { row.get_unchecked(1) } {
                     val.to_owned()
                 } else {
                     Log::warning(1150, None);
@@ -205,7 +205,7 @@ impl Lang {
                     Log::warning(1150, None);
                     return Vec::new();
                 };
-                vec.push(Arc::new(LangItem { id, lang, name, index }));
+                vec.push(Arc::new(LangItem { id, code, name, index }));
             } else {
                 Log::warning(1150, None);
                 return Vec::new();
@@ -406,7 +406,7 @@ impl Lang {
             if let Some((id, name)) = list.get(&fnv1a_64(code.as_bytes())) {
                 vec.push(Arc::new(LangItem {
                     id: *id,
-                    lang: code.to_owned(),
+                    code: code.to_owned(),
                     name: name.to_owned(),
                     index,
                 }));

@@ -120,7 +120,7 @@ impl MsSql {
                 let mut map = BTreeMap::new();
                 // Get lang
                 let sql = r#"
-                    SELECT [lang_id], [lang], [name], [index]
+                    SELECT [lang_id], [code], [name], [index]
                     FROM [lang]
                     WHERE [enable]=1
                     ORDER BY [sort]
