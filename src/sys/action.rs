@@ -1301,70 +1301,74 @@ impl Action {
 
     /// Get route
     pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: Option<i64>) -> String {
-        // Read from cache
-        let key = match (param, lang_id) {
-            (Some(p), Some(l)) => vec![
-                fnv1a_64!("route"),
-                fnv1a_64(module.as_bytes()),
-                fnv1a_64(class.as_bytes()),
-                fnv1a_64(action.as_bytes()),
-                fnv1a_64(p.as_bytes()),
-                l,
-            ],
-            (Some(p), None) => vec![
-                fnv1a_64!("route"),
-                fnv1a_64(module.as_bytes()),
-                fnv1a_64(class.as_bytes()),
-                fnv1a_64(action.as_bytes()),
-                fnv1a_64(p.as_bytes()),
-                -1,
-            ],
-            (None, Some(l)) => {
-                vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, l]
-            }
-            (None, None) => {
-                vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, -1]
-            }
-        };
-        let (data, key) = self.cache.get(key).await;
-        if let Some(Data::String(s)) = data {
-            return s;
-        };
-        // Prepare sql query
-        match self
-            .db
-            .query_prepare(
-                fnv1a_64!("lib_get_url"),
-                &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
-                false,
-            )
-            .await
-        {
-            Some(rows) => {
-                if rows.len() == 1 {
-                    let row = if let Data::Vec(vec) = unsafe { rows.get_unchecked(0) } {
-                        vec
-                    } else {
-                        return Action::format_route(module, class, action, param);
-                    };
-                    if row.is_empty() {
-                        return Action::format_route(module, class, action, param);
-                    }
-
-                    let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
-                        url.clone()
-                    } else {
-                        return Action::format_route(module, class, action, param);
-                    };
-                    self.cache.set(key, Data::String(url.clone())).await;
-                    url
-                } else {
-                    let url = Action::format_route(module, class, action, param);
-                    self.cache.set(key, Data::String(url.clone())).await;
-                    url
+        if self.db.in_use() {
+            // Read from cache
+            let key = match (param, lang_id) {
+                (Some(p), Some(l)) => vec![
+                    fnv1a_64!("route"),
+                    fnv1a_64(module.as_bytes()),
+                    fnv1a_64(class.as_bytes()),
+                    fnv1a_64(action.as_bytes()),
+                    fnv1a_64(p.as_bytes()),
+                    l,
+                ],
+                (Some(p), None) => vec![
+                    fnv1a_64!("route"),
+                    fnv1a_64(module.as_bytes()),
+                    fnv1a_64(class.as_bytes()),
+                    fnv1a_64(action.as_bytes()),
+                    fnv1a_64(p.as_bytes()),
+                    -1,
+                ],
+                (None, Some(l)) => {
+                    vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, l]
                 }
+                (None, None) => {
+                    vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, -1]
+                }
+            };
+            let (data, key) = self.cache.get(key).await;
+            if let Some(Data::String(s)) = data {
+                return s;
+            };
+            // Prepare sql query
+            match self
+                .db
+                .query_prepare(
+                    fnv1a_64!("lib_get_url"),
+                    &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
+                    false,
+                )
+                .await
+            {
+                Some(rows) => {
+                    if rows.len() == 1 {
+                        let row = if let Data::Vec(vec) = unsafe { rows.get_unchecked(0) } {
+                            vec
+                        } else {
+                            return Action::format_route(module, class, action, param);
+                        };
+                        if row.is_empty() {
+                            return Action::format_route(module, class, action, param);
+                        }
+
+                        let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
+                            url.clone()
+                        } else {
+                            return Action::format_route(module, class, action, param);
+                        };
+                        self.cache.set(key, Data::String(url.clone())).await;
+                        url
+                    } else {
+                        let url = Action::format_route(module, class, action, param);
+                        self.cache.set(key, Data::String(url.clone())).await;
+                        url
+                    }
+                }
+                None => Action::format_route(module, class, action, param),
             }
-            None => Action::format_route(module, class, action, param),
+        } else {
+            Action::format_route(module, class, action, param)
         }
     }
 }

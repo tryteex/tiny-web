@@ -60,7 +60,7 @@ impl DB {
     ///
     /// # Parameters
     ///
-    /// * `size: usize` - Pool size;
+    /// * `size: usize` - Pool size; =0 - when install mode
     /// * `config: Arc<DBConfig>` - Configuration.
     ///
     /// # Return
