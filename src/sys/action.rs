@@ -1206,7 +1206,7 @@ impl Action {
             if let Some(l) = &self.lang {
                 if let Some(str) = l.get(&idkey) {
                     self.data.insert(idkey, Data::String(str.to_owned()));
-                    return;
+                    continue;
                 }
             }
             self.data.insert(idkey, Data::String(key.to_str().to_owned()));
