@@ -1,12 +1,19 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, LazyLock},
+};
 
 use chrono::Local;
 use sha3::{Digest, Sha3_512};
 use tiny_web_macro::fnv1a_64;
+use tokio::sync::Mutex;
 
-use crate::StrOrI64;
+use crate::{fnv1a_64, StrOrI64};
+use tiny_web_macro::fnv1a_64 as m_fnv1a_64;
 
 use super::{action::Request, data::Data, dbs::adapter::DB};
+
+static INSTALL_CACHE: LazyLock<Mutex<BTreeMap<i64, Data>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
 /// User session
 ///
@@ -70,93 +77,117 @@ impl Session {
 
     /// Load session from database
     pub(crate) async fn load_session(key: String, db: Arc<DB>, lang_id: i64, session_key: Arc<String>) -> Session {
-        if !db.in_use() {
-            return Session {
-                id: 0,
+        if db.in_use() {
+            let res = match db.query_prepare(fnv1a_64!("lib_get_session"), &[&key], false).await {
+                Some(r) => r,
+                None => return Session::with_key(lang_id, key, session_key),
+            };
+            if res.is_empty() {
+                return Session::with_key(lang_id, key, session_key);
+            }
+            let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
+                row
+            } else {
+                return Session::with_key(lang_id, key, session_key);
+            };
+            if row.len() != 5 {
+                return Session::with_key(lang_id, key, session_key);
+            }
+            let session_id = if let Data::I64(val) = unsafe { row.get_unchecked(0) } {
+                *val
+            } else {
+                return Session::with_key(lang_id, key, session_key);
+            };
+            let user_id = if let Data::I64(val) = unsafe { row.get_unchecked(1) } {
+                *val
+            } else {
+                return Session::with_key(lang_id, key, session_key);
+            };
+            let role_id = if let Data::I64(val) = unsafe { row.get_unchecked(2) } {
+                *val
+            } else {
+                return Session::with_key(lang_id, key, session_key);
+            };
+            let data = if let Data::Raw(val) = unsafe { row.get_unchecked(2) } {
+                val.to_owned()
+            } else {
+                return Session::with_key(lang_id, key, session_key);
+            };
+            let lang_id = if let Data::I64(val) = unsafe { row.get_unchecked(4) } {
+                *val
+            } else {
+                return Session::with_key(lang_id, key, session_key);
+            };
+
+            let res =
+                if data.is_empty() { BTreeMap::new() } else { bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_default() };
+            Session {
+                id: session_id,
                 lang_id,
-                user_id: 0,
-                role_id: 0,
+                user_id,
+                role_id,
                 key,
                 session_key,
-                data: BTreeMap::new(),
+                data: res,
                 change: false,
-            };
-        }
-        let res = match db.query_prepare(fnv1a_64!("lib_get_session"), &[&key], false).await {
-            Some(r) => r,
-            None => return Session::with_key(lang_id, key, session_key),
-        };
-        if res.is_empty() {
-            return Session::with_key(lang_id, key, session_key);
-        }
-        let row = if let Data::Vec(row) = unsafe { res.get_unchecked(0) } {
-            row
+            }
         } else {
-            return Session::with_key(lang_id, key, session_key);
-        };
-        if row.len() != 5 {
-            return Session::with_key(lang_id, key, session_key);
-        }
-        let session_id = if let Data::I64(val) = unsafe { row.get_unchecked(0) } {
-            *val
-        } else {
-            return Session::with_key(lang_id, key, session_key);
-        };
-        let user_id = if let Data::I64(val) = unsafe { row.get_unchecked(1) } {
-            *val
-        } else {
-            return Session::with_key(lang_id, key, session_key);
-        };
-        let role_id = if let Data::I64(val) = unsafe { row.get_unchecked(2) } {
-            *val
-        } else {
-            return Session::with_key(lang_id, key, session_key);
-        };
-        let data = if let Data::Raw(val) = unsafe { row.get_unchecked(2) } {
-            val.to_owned()
-        } else {
-            return Session::with_key(lang_id, key, session_key);
-        };
-        let lang_id = if let Data::I64(val) = unsafe { row.get_unchecked(4) } {
-            *val
-        } else {
-            return Session::with_key(lang_id, key, session_key);
-        };
-
-        let res =
-            if data.is_empty() { BTreeMap::new() } else { bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_default() };
-        Session {
-            id: session_id,
-            lang_id,
-            user_id,
-            role_id,
-            key,
-            session_key,
-            data: res,
-            change: false,
+            let cache = INSTALL_CACHE.lock().await;
+            match cache.get(&fnv1a_64(key.as_bytes())) {
+                Some(map) => {
+                    let data: BTreeMap<i64, Data> = map.clone().into();
+                    let lang_id = if let Some(Data::I64(lang)) = data.get(&m_fnv1a_64!("lang_id")) {
+                        *lang
+                    } else {
+                        return Session::with_key(lang_id, key, session_key);
+                    };
+                    let data = if let Some(Data::Map(data)) = data.get(&m_fnv1a_64!("data")) {
+                        data.clone()
+                    } else {
+                        return Session::with_key(lang_id, key, session_key);
+                    };
+                    Session {
+                        id: 0,
+                        lang_id,
+                        user_id: 0,
+                        role_id: 0,
+                        key,
+                        session_key,
+                        data,
+                        change: false,
+                    }
+                }
+                None => Session::with_key(lang_id, key, session_key),
+            }
         }
     }
 
     /// Save session into database
     pub(crate) async fn save_session(db: Arc<DB>, session: &Session, request: &Request) {
-        if !db.in_use() {
-            return;
-        }
         if session.change {
-            let data = bincode::serialize(&session.data).unwrap_or_default();
-            if session.id > 0 {
-                db.execute_prepare(
-                    fnv1a_64!("lib_set_session"),
-                    &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
-                )
-                .await;
+            if db.in_use() {
+                let data = bincode::serialize(&session.data).unwrap_or_default();
+                if session.id > 0 {
+                    db.execute_prepare(
+                        fnv1a_64!("lib_set_session"),
+                        &[&session.user_id, &session.lang_id, &data, &request.ip, &request.agent, &session.id],
+                    )
+                    .await;
+                } else {
+                    db.execute_prepare(
+                        fnv1a_64!("lib_add_session"),
+                        &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent],
+                    )
+                    .await;
+                };
             } else {
-                db.execute_prepare(
-                    fnv1a_64!("lib_add_session"),
-                    &[&session.user_id, &session.lang_id, &session.key, &data, &request.ip, &request.agent],
-                )
-                .await;
-            };
+                let mut cache = INSTALL_CACHE.lock().await;
+                let mut data = BTreeMap::new();
+                data.insert(m_fnv1a_64!("lang_id"), session.lang_id.into());
+                data.insert(m_fnv1a_64!("data"), session.data.clone().into());
+
+                cache.insert(fnv1a_64(session.key.as_bytes()), data.into());
+            }
         }
     }
 

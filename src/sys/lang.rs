@@ -402,15 +402,17 @@ impl Lang {
 
         let mut vec = Vec::with_capacity(files.len());
         let mut index = 0;
-        for (_, _, _, code) in files {
-            if let Some((id, name)) = list.get(&fnv1a_64(code.as_bytes())) {
-                vec.push(Arc::new(LangItem {
-                    id: *id,
-                    code: code.to_owned(),
-                    name: name.to_owned(),
-                    index,
-                }));
-                index += 1;
+        for (_, module, class, code) in files {
+            if module == "index" && class == "install" {
+                if let Some((id, name)) = list.get(&fnv1a_64(code.as_bytes())) {
+                    vec.push(Arc::new(LangItem {
+                        id: *id,
+                        code: code.to_owned(),
+                        name: name.to_owned(),
+                        index,
+                    }));
+                    index += 1;
+                }
             }
         }
 
