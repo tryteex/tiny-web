@@ -18,7 +18,7 @@ use tokio::{
 use tokio::sync::RwLock;
 
 use super::{
-    action::{ActMap, Action, ActionData, Answer, Route, WebFile},
+    action::{ActMap, Action, ActionData, Answer},
     cache::CacheSys,
     dbs::adapter::DB,
     file::TempFile,
@@ -27,6 +27,8 @@ use super::{
     lang::Lang,
     log::Log,
     mail::Mail,
+    request::WebFile,
+    route::Route,
     workers::{fastcgi, grpc, http, scgi, uwsgi, websocket},
 };
 
@@ -381,6 +383,15 @@ impl Worker {
     ///
     /// Vector with a binary data
     pub(crate) async fn call_action(data: ActionData) -> Vec<u8> {
+        #[cfg(debug_assertions)]
+        Log::info(
+            228,
+            Some(format!(
+                "{} {} {}://{}{}",
+                data.request.ip, data.request.method, data.request.scheme, data.request.host, data.request.url
+            )),
+        );
+
         // Check and reload langs and templates
         #[cfg(debug_assertions)]
         Worker::reload(Arc::clone(&data.lang), Arc::clone(&data.html)).await;

@@ -6,10 +6,7 @@ use serde_json::Value;
 
 use crate::StrOrI64;
 
-use super::{
-    action::{Redirect, Route},
-    mail::MailProvider,
-};
+use super::{mail::MailProvider, response::Redirect, route::Route};
 
 /// Data transferred between controllers, template, markers, database and cache
 ///

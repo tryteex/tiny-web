@@ -22,6 +22,8 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | take | no || Takining (removing) data from internal memory |
 | 𝑓 | set_lang | no || Setting data for rendering an HTML page from translation |
 | 𝑓 | set_lang_arr | no || Setting the array data for rendering an HTML page from translation |
+| 𝑓 | set_flash | no || Set flash message |
+| 𝑓 | take_flash | no || Take flash message |
 | 𝑓 | route | yes | String | Get the URL for the controller |
 | 𝑓 | write | yes | | Write data to the output stream |
 | 𝑓 | spawn | no | | Spawns a new asynchronous task |
@@ -167,6 +169,18 @@ fn set_lang_arr(key: &[&str])
 * `keys: &[&str]` - The array of variable to set the data to render the html page.
 This is equivalent to the following function call:  
 `this.set_lang_arr(&["str1", "str2"]);` => `this.set_lang("str1");this.set_lang("str2");`
+___
+### set_flash
+Set flash message
+```rust
+pub fn set_flash(&mut self, kind: Flash, value: String)
+```
+___
+### set_flash
+Take flash message
+```rust
+pub fn take_flash(&mut self) -> Option<Vec<(Flash, String)>>
+```
 ___
 ### route
 Get the URL for the controller

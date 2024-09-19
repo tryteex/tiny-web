@@ -1,7 +1,8 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
 use crate::sys::{
-    action::{ActionData, Input, Request},
+    action::ActionData,
+    request::{Input, Request},
     worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 

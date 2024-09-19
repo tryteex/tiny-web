@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{btree_map::Entry, BTreeMap},
     sync::{Arc, LazyLock},
 };
 
@@ -11,9 +11,41 @@ use tokio::sync::Mutex;
 use crate::{fnv1a_64, StrOrI64};
 use tiny_web_macro::fnv1a_64 as m_fnv1a_64;
 
-use super::{action::Request, data::Data, dbs::adapter::DB};
+use super::{data::Data, dbs::adapter::DB, request::Request};
 
+/// Temporary cache for install mode only
 static INSTALL_CACHE: LazyLock<Mutex<BTreeMap<i64, Data>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+/// Types of flash messages
+#[repr(i16)]
+#[derive(Debug)]
+pub enum Flash {
+    Info = 1,
+    Success = 2,
+    Warning = 3,
+    Error = 4,
+}
+
+impl From<i16> for Flash {
+    fn from(value: i16) -> Self {
+        match value {
+            1 => Flash::Info,
+            2 => Flash::Success,
+            3 => Flash::Warning,
+            4 => Flash::Error,
+            #[cfg(not(debug_assertions))]
+            _ => Flash::Error,
+            #[cfg(debug_assertions)]
+            _ => panic!("Invalid value for Status"),
+        }
+    }
+}
+
+impl From<Flash> for i16 {
+    fn from(value: Flash) -> Self {
+        value as i16
+    }
+}
 
 /// User session
 ///
@@ -215,9 +247,12 @@ impl Session {
     }
 
     /// Set session data
-    pub fn set(&mut self, key: impl StrOrI64, value: Data) {
+    pub fn set<T>(&mut self, key: impl StrOrI64, value: T)
+    where
+        T: Into<Data>,
+    {
         self.change = true;
-        self.data.insert(key.to_i64(), value);
+        self.data.insert(key.to_i64(), value.into());
     }
 
     /// Get session data for reading
@@ -242,5 +277,46 @@ impl Session {
     pub fn clear(&mut self) {
         self.change = true;
         self.data.clear();
+    }
+
+    /// Set flash message to session data
+    pub(crate) fn set_flash(&mut self, kind: Flash, value: String) {
+        self.change = true;
+        match self.data.entry(fnv1a_64!("flash-message")) {
+            Entry::Vacant(entry) => {
+                entry.insert(vec![Data::I16(kind.into()), Data::String(value)].into());
+            }
+            Entry::Occupied(mut entry) => {
+                let e = entry.get_mut();
+                if let Data::Vec(vec) = e {
+                    vec.push(Data::I16(kind.into()));
+                    vec.push(Data::String(value));
+                } else {
+                    *e = vec![Data::I16(kind.into()), Data::String(value)].into();
+                }
+            }
+        }
+    }
+
+    /// Take flash message from session data
+    pub(crate) fn take_flash(&mut self) -> Option<Vec<(Flash, String)>> {
+        self.change = true;
+        if let Data::Vec(vec) = self.data.remove(&fnv1a_64!("flash-message"))? {
+            if vec.len() % 2 != 0 {
+                return None;
+            }
+            let mut result = Vec::with_capacity(vec.len() / 2);
+            let mut iter = vec.into_iter();
+            while let (Some(first), Some(second)) = (iter.next(), iter.next()) {
+                match (first, second) {
+                    (Data::I16(num), Data::String(text)) => result.push((num.into(), text)),
+                    _ => return None,
+                }
+            }
+
+            Some(result)
+        } else {
+            None
+        }
     }
 }

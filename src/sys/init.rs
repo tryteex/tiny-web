@@ -12,7 +12,7 @@ use toml::{Table, Value};
 use crate::fnv1a_64;
 use tiny_web_macro::fnv1a_64 as m_fnv1a_64;
 
-use super::{action::Route, log::Log, worker::WorkerType};
+use super::{log::Log, route::Route, worker::WorkerType};
 
 /// Responsible for the IP address that should be accepted.
 ///

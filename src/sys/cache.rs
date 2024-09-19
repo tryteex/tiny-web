@@ -71,7 +71,10 @@ impl CacheSys {
     }
 
     /// Inserts a data
-    pub async fn set(cache: Arc<Mutex<CacheSys>>, keys: &[i64], data: Data) {
+    pub async fn set<T>(cache: Arc<Mutex<CacheSys>>, keys: &[i64], data: T)
+    where
+        T: Into<Data>,
+    {
         if keys.is_empty() {
             return;
         }
@@ -101,11 +104,11 @@ impl CacheSys {
                 match last {
                     CacheKey::More(m) => match m.entry(*key_last) {
                         Entry::Vacant(v) => {
-                            v.insert(CacheKey::Last(data));
+                            v.insert(CacheKey::Last(data.into()));
                         }
                         Entry::Occupied(mut o) => {
                             let v = o.get_mut();
-                            *v = CacheKey::Last(data);
+                            *v = CacheKey::Last(data.into());
                         }
                     },
                     _ => unreachable!(),
@@ -113,11 +116,11 @@ impl CacheSys {
             }
             CacheKey::More(m) => match m.entry(*key_last) {
                 Entry::Vacant(v) => {
-                    v.insert(CacheKey::Last(data));
+                    v.insert(CacheKey::Last(data.into()));
                 }
                 Entry::Occupied(mut o) => {
                     let v = o.get_mut();
-                    *v = CacheKey::Last(data);
+                    *v = CacheKey::Last(data.into());
                 }
             },
         }
@@ -231,9 +234,10 @@ impl Cache {
     }
 
     /// Set cache
-    pub async fn set<T>(&mut self, keys: T, data: Data)
+    pub async fn set<T, K>(&mut self, keys: T, data: K)
     where
         T: StrOrArrI64,
+        K: Into<Data>,
     {
         CacheSys::set(Arc::clone(&self.cache), &keys.to_arr(), data).await
     }

@@ -30,7 +30,10 @@ use super::{
     lang::{Lang, LangItem},
     log::Log,
     mail::{Mail, MailMessage},
-    session::Session,
+    request::{Request, WebFile},
+    response::{Redirect, Response},
+    route::Route,
+    session::{Flash, Session},
     worker::{MessageWrite, Worker},
 };
 
@@ -61,127 +64,6 @@ pub enum Answer {
     String(String),
     /// Answer in binary data
     Raw(Vec<u8>),
-}
-
-/// Redirect struct
-///
-/// # Values
-///
-/// * `url: String` - Url.
-/// * `permanently: bool,` - Permanently redirect.
-#[derive(Debug, Clone)]
-pub struct Redirect {
-    /// Url
-    pub url: String,
-    /// Permanently redirect
-    pub permanently: bool,
-}
-
-/// Describes received files
-///
-/// # Values
-///
-/// * `size: usize` - File size.
-/// * `name: String` - File name.
-/// * `tmp: std::path::PathBuf` - Absolute path to file location.
-#[derive(Debug)]
-pub struct WebFile {
-    /// File size
-    pub size: usize,
-    /// File name
-    pub name: String,
-    /// Absolute path to file location
-    pub tmp: std::path::PathBuf,
-}
-
-/// Input http protocol datas
-///
-/// # Values
-///
-/// * `get: HashMap<String, String>` - GET data.
-/// * `post: HashMap<String, String>` - POST data.
-/// * `file: HashMap<String, Vec<WebFile>>` - FILE data.
-/// * `cookie: HashMap<String, String>` - Cookies.
-/// * `params: HashMap<String, String>` - Params from web servers.
-#[derive(Debug)]
-pub struct Input {
-    /// GET data
-    pub get: HashMap<String, String>,
-    /// POST data
-    pub post: HashMap<String, String>,
-    /// FILE data
-    pub file: HashMap<String, Vec<WebFile>>,
-    /// Cookies
-    pub cookie: HashMap<String, String>,
-    /// Params from web servers
-    pub params: HashMap<String, String>,
-}
-
-/// Request parameters
-///
-///  # Values
-///
-/// * `ajax: bool` - Ajax query (only software detect).
-/// * `host: String` - Request host. Example: subdomain.domain.zone.
-/// * `scheme: String` - Request scheme. Example: http / https.
-/// * `agent: String` - HTTP_USER_AGENT.
-/// * `referer: String` - HTTP_REFERER.
-/// * `ip: String` - Client IP.
-/// * `method: String` - REQUEST_METHOD.
-/// * `path: String` - DOCUMENT_ROOT.
-/// * `url: String` - Request url. Example: /product/view/item/145
-/// * `input: Input` - Input http protocol datas.
-#[derive(Debug)]
-pub struct Request {
-    /// Ajax query (only software detect)
-    pub ajax: bool,
-    /// Request host. Example: subdomain.domain.zone
-    pub host: String,
-    /// Request scheme. Example: http / https
-    pub scheme: String,
-    /// HTTP_USER_AGENT
-    pub agent: String,
-    /// HTTP_REFERER
-    pub referer: String,
-    /// Client IP
-    pub ip: String,
-    /// REQUEST_METHOD
-    pub method: String,
-    /// DOCUMENT_ROOT
-    pub path: String,
-    /// Request url. Example: /product/view/item/145
-    pub url: String,
-    /// Input http protocol datas
-    pub input: Input,
-}
-
-/// Response parameters
-///
-///  # Values
-///
-/// * `redirect: Option<Redirect>` - Redirect.
-/// * `content_type: Option<String>` - Content type.
-/// * `headers: Vec<String>` - Additional headers.
-/// * `http_code: Option<u16>` - Http code.
-/// * `css: Vec<String>` - Addition css.
-/// * `js: Vec<String>` - Addition js.
-/// * `mata: Vec<String>` - Addition meta.
-#[derive(Debug)]
-pub struct Response {
-    /// Redirect
-    pub redirect: Option<Redirect>,
-    /// Content type
-    pub content_type: Option<String>,
-    /// Additional headers
-    pub headers: Vec<(String, String)>,
-    /// Http code
-    pub http_code: Option<u16>,
-    /// Addition css
-    pub css: Vec<String>,
-    /// Addition js
-    pub js: Vec<String>,
-    /// Addition meta
-    pub meta: Vec<String>,
 }
 
 /// Data to run Action (Main controler)
@@ -225,136 +107,6 @@ pub(crate) struct ActionData {
     pub(crate) action_err: Arc<Route>,
     /// Stop signal
     pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
-}
-
-/// Route of request
-///
-///  # Values
-///
-/// * `module: String` - Start module.
-/// * `class: String` - Start class.
-/// * `action: String` - Start action (controller).
-/// * `module_id: i64` - Module id.
-/// * `class_id: i64` - Class id.
-/// * `action_id: i64` - Action id.
-/// * `param: Option<String>` - Controller param.
-/// * `lang_id: Option<i64>` - Set lang id.
-#[derive(Debug, Clone)]
-pub struct Route {
-    /// Start module
-    pub module: String,
-    /// Start class
-    pub class: String,
-    /// Start action (controller)
-    pub action: String,
-    /// Module id
-    pub module_id: i64,
-    /// Class id
-    pub class_id: i64,
-    /// Action id
-    pub action_id: i64,
-    /// Controller param
-    pub param: Option<String>,
-    /// Set lang id
-    pub lang_id: Option<i64>,
-}
-
-impl Route {
-    pub fn default_index() -> Route {
-        Route {
-            module: "index".to_owned(),
-            class: "index".to_owned(),
-            action: "index".to_owned(),
-            module_id: fnv1a_64!("index"),
-            class_id: fnv1a_64!("index"),
-            action_id: fnv1a_64!("index"),
-            param: None,
-            lang_id: None,
-        }
-    }
-    pub fn default_not_found() -> Route {
-        Route {
-            module: "index".to_owned(),
-            class: "index".to_owned(),
-            action: "not_found".to_owned(),
-            module_id: fnv1a_64!("index"),
-            class_id: fnv1a_64!("index"),
-            action_id: fnv1a_64!("not_found"),
-            param: None,
-            lang_id: None,
-        }
-    }
-    pub fn default_err() -> Route {
-        Route {
-            module: "index".to_owned(),
-            class: "index".to_owned(),
-            action: "err".to_owned(),
-            module_id: fnv1a_64!("index"),
-            class_id: fnv1a_64!("index"),
-            action_id: fnv1a_64!("err"),
-            param: None,
-            lang_id: None,
-        }
-    }
-    pub fn default_install() -> Route {
-        Route {
-            module: "index".to_owned(),
-            class: "install".to_owned(),
-            action: "index".to_owned(),
-            module_id: fnv1a_64!("index"),
-            class_id: fnv1a_64!("install"),
-            action_id: fnv1a_64!("index"),
-            param: None,
-            lang_id: None,
-        }
-    }
-
-    pub fn parse(val: &str) -> Option<Route> {
-        let vec: Vec<&str> = val.split('/').collect();
-        if vec.len() < 4 || vec.len() > 5 {
-            return None;
-        }
-        if !unsafe { *vec.get_unchecked(0) }.is_empty() {
-            return None;
-        }
-        let module = unsafe { *vec.get_unchecked(1) };
-        if module.is_empty() {
-            return None;
-        }
-        let class = unsafe { *vec.get_unchecked(2) };
-        if class.is_empty() {
-            return None;
-        }
-        let action = unsafe { *vec.get_unchecked(3) };
-        if action.is_empty() {
-            return None;
-        }
-        let param = if vec.len() == 5 {
-            let param = unsafe { *vec.get_unchecked(4) };
-            if param.is_empty() {
-                return None;
-            }
-            Some(param.to_owned())
-        } else {
-            None
-        };
-        let module = module.to_owned();
-        let module_id = fnv1a_64(module.as_bytes());
-        let class: String = class.to_owned();
-        let class_id = fnv1a_64(class.as_bytes());
-        let action = action.to_owned();
-        let action_id = fnv1a_64(action.as_bytes());
-        Some(Route {
-            module,
-            class,
-            action,
-            module_id,
-            class_id,
-            action_id,
-            param,
-            lang_id: None,
-        })
-    }
 }
 
 /// Main struct to run web engine
@@ -565,11 +317,6 @@ impl Action {
         })
     }
 
-    /// Run execute of controller
-    pub(crate) async fn run(action: &mut Action) -> Answer {
-        action.start_route(action.module_id, action.class_id, action.action_id, action.param.clone(), false).await
-    }
-
     /// Load internal controller
     pub async fn load(
         &mut self,
@@ -583,41 +330,6 @@ impl Action {
         if let Answer::String(value) = res {
             self.data.insert(key.to_i64(), Data::String(value));
         }
-    }
-
-    /// Start internal route
-    async fn start_route(&mut self, module_id: i64, class_id: i64, action_id: i64, param: Option<String>, internal: bool) -> Answer {
-        // Check permission
-        if self.get_access(module_id, class_id, action_id).await {
-            if let Some(answer) = self.invoke(module_id, class_id, action_id, param, internal).await {
-                return answer;
-            };
-        }
-        if internal {
-            return Answer::None;
-        }
-        if self.request.ajax {
-            self.response.http_code = Some(404);
-            return Answer::None;
-        }
-
-        // If not /index/index/not_found - then redirect
-        if !(module_id == self.not_found.module_id && class_id == self.not_found.class_id && class_id == self.not_found.action_id) {
-            self.response.redirect = Some(Redirect {
-                url: self.not_found().await,
-                permanently: false,
-            });
-        }
-        Answer::None
-    }
-
-    /// Send email
-    pub async fn mail(&self, message: MailMessage) -> bool {
-        let provider = {
-            let mail = self.mail.lock().await;
-            mail.provider.clone()
-        };
-        Mail::send(provider, Arc::clone(&self.db), message, self.session.user_id, self.request.host.clone()).await
     }
 
     /// Get translate
@@ -652,6 +364,409 @@ impl Action {
         {
             Arc::clone(&self.language.read().await.langs)
         }
+    }
+
+    /// Setting data into internal memory
+    pub fn set<T>(&mut self, key: impl StrOrI64, value: T)
+    where
+        T: Into<Data>,
+    {
+        self.data.insert(key.to_i64(), value.into());
+    }
+
+    /// Getting references to data from internal memory
+    pub fn get<T>(&self, key: impl StrOrI64) -> Option<&T>
+    where
+        for<'a> &'a T: From<&'a Data>,
+    {
+        self.data.get(&key.to_i64()).map(|value| value.into())
+    }
+
+    /// Taking (removing) data from internal memory
+    pub fn take<T>(&mut self, key: impl StrOrI64) -> Option<T>
+    where
+        T: From<Data>,
+    {
+        self.data.remove(&key.to_i64()).map(|value| value.into())
+    }
+
+    /// Set flash message to session data
+    pub fn set_flash(&mut self, kind: Flash, value: String) {
+        self.session.set_flash(kind, value);
+    }
+
+    /// Take flash message from session data
+    pub fn take_flash(&mut self) -> Option<Vec<(Flash, String)>> {
+        self.session.take_flash()
+    }
+
+    /// Set value for the template from translate
+    pub fn set_lang(&mut self, key: impl StrOrI64) {
+        let idkey = key.to_i64();
+        if let Some(l) = &self.lang {
+            if let Some(str) = l.get(&idkey) {
+                self.data.insert(idkey, Data::String(str.to_owned()));
+                return;
+            }
+        }
+        self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+    }
+
+    /// Set an array of values for the template from the translation
+    pub fn set_lang_arr(&mut self, keys: &[impl StrOrI64]) {
+        for key in keys {
+            let idkey = key.to_i64();
+            if let Some(l) = &self.lang {
+                if let Some(str) = l.get(&idkey) {
+                    self.data.insert(idkey, Data::String(str.to_owned()));
+                    continue;
+                }
+            }
+            self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+        }
+    }
+
+    /// Spawns a new asynchronous task, returning a
+    /// [`tokio::task::JoinHandle`](tokio::task::JoinHandle) for it.
+    ///
+    /// The provided future will start running in the background immediately
+    /// when `spawn` is called, even if you don't await the returned
+    /// `JoinHandle`.
+    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        tokio::spawn(future)
+    }
+
+    /// Write data to the output stream
+    pub async fn write(&mut self, answer: Answer) {
+        let vec = match answer {
+            Answer::None => return,
+            Answer::String(str) => str.as_bytes().to_vec(),
+            Answer::Raw(raw) => raw,
+        };
+        Worker::write(self, vec).await;
+        self.header_send = true;
+        yield_now().await;
+    }
+
+    /// Get access to run controller
+    pub async fn get_access(&mut self, module: impl StrOrI64, class: impl StrOrI64, action: impl StrOrI64) -> bool {
+        if !self.db.in_use() {
+            return true;
+        }
+        let module_id = module.to_i64();
+        let class_id = class.to_i64();
+        let action_id = action.to_i64();
+        // Read from cache
+        let key = vec![fnv1a_64!("auth"), self.session.role_id, module_id, class_id, action_id];
+        let (data, key) = self.cache.get(key).await;
+        if let Some(Data::Bool(a)) = data {
+            return a;
+        };
+        // Prepare sql query
+        match self
+            .db
+            .query_prepare(
+                fnv1a_64!("lib_get_auth"),
+                &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id],
+                false,
+            )
+            .await
+        {
+            Some(rows) => {
+                if rows.len() == 1 {
+                    let access = if let Data::Vec(row) = unsafe { rows.get_unchecked(0) } {
+                        if row.is_empty() {
+                            return false;
+                        }
+                        if let Data::I32(val) = unsafe { row.get_unchecked(0) } {
+                            *val != 0
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    };
+
+                    self.cache.set(key, Data::Bool(access)).await;
+                    access
+                } else {
+                    self.cache.set(key, Data::Bool(false)).await;
+                    false
+                }
+            }
+            None => false,
+        }
+    }
+
+    /// Restart the web server after creating the configuration file
+    pub fn install_end(&mut self, conf: String) -> Result<(), Error> {
+        if !self.db.in_use() {
+            if let Some((rpc, stop, path)) = self.stop.take() {
+                let mut file = File::create(format!("{}/tiny.toml", path))?;
+                file.write_all(conf.as_bytes())?;
+
+                App::stop(rpc, stop);
+            }
+        }
+        Ok(())
+    }
+
+    /// Render template
+    ///
+    /// # Value
+    ///
+    /// * `template: &str` - Name of template
+    pub fn render(&mut self, template: impl StrOrI64) -> Answer {
+        match &self.html {
+            Some(h) => match h.get(&template.to_i64()) {
+                Some(vec) => {
+                    if !self.response.css.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.css.len());
+                        for css in self.response.css.drain(..) {
+                            vec.push(Data::String(css));
+                        }
+                        self.data.insert(fnv1a_64!("css"), Data::Vec(vec));
+                    }
+                    if !self.response.js.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.js.len());
+                        for js in self.response.js.drain(..) {
+                            vec.push(Data::String(js));
+                        }
+                        self.data.insert(fnv1a_64!("js"), Data::Vec(vec));
+                    }
+                    if !self.response.meta.is_empty() {
+                        let mut vec = Vec::with_capacity(self.response.meta.len());
+                        for meta in self.response.meta.drain(..) {
+                            vec.push(Data::String(meta));
+                        }
+                        self.data.insert(fnv1a_64!("meta"), Data::Vec(vec));
+                    }
+                    Html::render(&self.data, vec)
+                }
+                None => Answer::None,
+            },
+            None => Answer::None,
+        }
+    }
+
+    /// Get route
+    pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: Option<i64>) -> String {
+        if self.db.in_use() {
+            // Read from cache
+            let key = match (param, lang_id) {
+                (Some(p), Some(l)) => vec![
+                    fnv1a_64!("route"),
+                    fnv1a_64(module.as_bytes()),
+                    fnv1a_64(class.as_bytes()),
+                    fnv1a_64(action.as_bytes()),
+                    fnv1a_64(p.as_bytes()),
+                    l,
+                ],
+                (Some(p), None) => vec![
+                    fnv1a_64!("route"),
+                    fnv1a_64(module.as_bytes()),
+                    fnv1a_64(class.as_bytes()),
+                    fnv1a_64(action.as_bytes()),
+                    fnv1a_64(p.as_bytes()),
+                    -1,
+                ],
+                (None, Some(l)) => {
+                    vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, l]
+                }
+                (None, None) => {
+                    vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, -1]
+                }
+            };
+            let (data, key) = self.cache.get(key).await;
+            if let Some(Data::String(s)) = data {
+                return s;
+            };
+            // Prepare sql query
+            match self
+                .db
+                .query_prepare(
+                    fnv1a_64!("lib_get_url"),
+                    &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
+                    false,
+                )
+                .await
+            {
+                Some(rows) => {
+                    if rows.len() == 1 {
+                        let row = if let Data::Vec(vec) = unsafe { rows.get_unchecked(0) } {
+                            vec
+                        } else {
+                            return Action::format_route(module, class, action, param);
+                        };
+                        if row.is_empty() {
+                            return Action::format_route(module, class, action, param);
+                        }
+
+                        let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
+                            url.clone()
+                        } else {
+                            return Action::format_route(module, class, action, param);
+                        };
+                        self.cache.set(key, Data::String(url.clone())).await;
+                        url
+                    } else {
+                        let url = Action::format_route(module, class, action, param);
+                        self.cache.set(key, Data::String(url.clone())).await;
+                        url
+                    }
+                }
+                None => Action::format_route(module, class, action, param),
+            }
+        } else {
+            Action::format_route(module, class, action, param)
+        }
+    }
+    /// Send email
+    pub async fn mail(&self, message: MailMessage) -> bool {
+        let provider = {
+            let mail = self.mail.lock().await;
+            mail.provider.clone()
+        };
+        Mail::send(provider, Arc::clone(&self.db), message, self.session.user_id, self.request.host.clone()).await
+    }
+
+    /// Get not_found url
+    pub async fn not_found(&mut self) -> String {
+        if !self.db.in_use() {
+            let install = Route::default_install();
+            return format!("/{}/{}/not_found", install.module, install.class);
+        }
+        let key = vec![fnv1a_64!("404"), self.session.get_lang_id()];
+        let (data, key) = self.cache.get(key).await;
+        match data {
+            Some(d) => match d {
+                Data::String(url) => url,
+                _ => match &self.not_found.param {
+                    Some(param) => {
+                        format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                    }
+                    None => {
+                        format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
+                    }
+                },
+            },
+            None => {
+                // Load from database
+                match self.db.query_prepare(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()], false).await {
+                    Some(v) => {
+                        if v.is_empty() {
+                            self.cache.set(key, Data::None).await;
+                            match &self.not_found.param {
+                                Some(param) => {
+                                    format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                                }
+                                None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
+                            }
+                        } else if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
+                            if !row.is_empty() {
+                                if let Data::String(url) = unsafe { row.get_unchecked(0) } {
+                                    self.cache.set(key, Data::String(url.clone())).await;
+                                    url.clone()
+                                } else {
+                                    self.cache.set(key, Data::None).await;
+                                    match &self.not_found.param {
+                                        Some(param) => format!(
+                                            "/{}/{}/{}/{}",
+                                            self.not_found.module, self.not_found.class, self.not_found.action, param
+                                        ),
+                                        None => {
+                                            format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
+                                        }
+                                    }
+                                }
+                            } else {
+                                self.cache.set(key, Data::None).await;
+                                match &self.not_found.param {
+                                    Some(param) => {
+                                        format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                                    }
+                                    None => {
+                                        format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
+                                    }
+                                }
+                            }
+                        } else {
+                            self.cache.set(key, Data::None).await;
+                            match &self.not_found.param {
+                                Some(param) => {
+                                    format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                                }
+                                None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
+                            }
+                        }
+                    }
+                    None => match &self.not_found.param {
+                        Some(param) => {
+                            format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
+                        }
+                        None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
+                    },
+                }
+            }
+        }
+    }
+
+    /// Run execute of controller
+    pub(crate) async fn run(action: &mut Action) -> Answer {
+        action.start_route(action.module_id, action.class_id, action.action_id, action.param.clone(), false).await
+    }
+
+    /// Finish work of controller
+    pub(crate) async fn end(action: Action) {
+        // Save session
+        Session::save_session(action.db, &action.session, &action.request).await;
+        // Remove temp file
+        for val in action.request.input.file.values() {
+            for f in val {
+                if let Err(e) = remove_file(&f.tmp).await {
+                    Log::warning(1103, Some(format!("filename={}. Error={}", &f.tmp.display(), e)));
+                };
+            }
+        }
+    }
+
+    /// Simple remove temp file after redirect
+    pub(crate) async fn clean_file(file: Vec<PathBuf>) {
+        for f in file {
+            if let Err(e) = remove_file(&f).await {
+                Log::warning(1103, Some(format!("filename={}. Error={}", f.display(), e)));
+            };
+        }
+    }
+
+    /// Start internal route
+    async fn start_route(&mut self, module_id: i64, class_id: i64, action_id: i64, param: Option<String>, internal: bool) -> Answer {
+        // Check permission
+        if self.get_access(module_id, class_id, action_id).await {
+            if let Some(answer) = self.invoke(module_id, class_id, action_id, param, internal).await {
+                return answer;
+            };
+        }
+        if internal {
+            return Answer::None;
+        }
+        if self.request.ajax {
+            self.response.http_code = Some(404);
+            return Answer::None;
+        }
+
+        // If not /index/index/not_found - then redirect
+        if !(module_id == self.not_found.module_id && class_id == self.not_found.class_id && class_id == self.not_found.action_id) {
+            self.response.redirect = Some(Redirect {
+                url: self.not_found().await,
+                permanently: false,
+            });
+        }
+        Answer::None
     }
 
     /// Invoke found controller
@@ -741,137 +856,6 @@ impl Action {
             }
         }
         None
-    }
-
-    /// Get access to run controller
-    pub async fn get_access(&mut self, module: impl StrOrI64, class: impl StrOrI64, action: impl StrOrI64) -> bool {
-        if !self.db.in_use() {
-            return true;
-        }
-        let module_id = module.to_i64();
-        let class_id = class.to_i64();
-        let action_id = action.to_i64();
-        // Read from cache
-        let key = vec![fnv1a_64!("auth"), self.session.role_id, module_id, class_id, action_id];
-        let (data, key) = self.cache.get(key).await;
-        if let Some(Data::Bool(a)) = data {
-            return a;
-        };
-        // Prepare sql query
-        match self
-            .db
-            .query_prepare(
-                fnv1a_64!("lib_get_auth"),
-                &[&self.session.role_id, &module_id, &module_id, &module_id, &class_id, &class_id, &action_id],
-                false,
-            )
-            .await
-        {
-            Some(rows) => {
-                if rows.len() == 1 {
-                    let access = if let Data::Vec(row) = unsafe { rows.get_unchecked(0) } {
-                        if row.is_empty() {
-                            return false;
-                        }
-                        if let Data::I32(val) = unsafe { row.get_unchecked(0) } {
-                            *val != 0
-                        } else {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    };
-
-                    self.cache.set(key, Data::Bool(access)).await;
-                    access
-                } else {
-                    self.cache.set(key, Data::Bool(false)).await;
-                    false
-                }
-            }
-            None => false,
-        }
-    }
-
-    /// Get not_found url
-    pub async fn not_found(&mut self) -> String {
-        if !self.db.in_use() {
-            let install = Route::default_install();
-            return format!("/{}/{}/not_found", install.module, install.class);
-        }
-        let key = vec![fnv1a_64!("404"), self.session.get_lang_id()];
-        let (data, key) = self.cache.get(key).await;
-        match data {
-            Some(d) => match d {
-                Data::String(url) => url,
-                _ => match &self.not_found.param {
-                    Some(param) => {
-                        format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
-                    }
-                    None => {
-                        format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
-                    }
-                },
-            },
-            None => {
-                // Load from database
-                match self.db.query_prepare(fnv1a_64!("lib_get_not_found"), &[&self.session.get_lang_id()], false).await {
-                    Some(v) => {
-                        if v.is_empty() {
-                            self.cache.set(key, Data::None).await;
-                            match &self.not_found.param {
-                                Some(param) => {
-                                    format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
-                                }
-                                None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
-                            }
-                        } else if let Data::Vec(row) = unsafe { v.get_unchecked(0) } {
-                            if !row.is_empty() {
-                                if let Data::String(url) = unsafe { row.get_unchecked(0) } {
-                                    self.cache.set(key, Data::String(url.clone())).await;
-                                    url.clone()
-                                } else {
-                                    self.cache.set(key, Data::None).await;
-                                    match &self.not_found.param {
-                                        Some(param) => format!(
-                                            "/{}/{}/{}/{}",
-                                            self.not_found.module, self.not_found.class, self.not_found.action, param
-                                        ),
-                                        None => {
-                                            format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
-                                        }
-                                    }
-                                }
-                            } else {
-                                self.cache.set(key, Data::None).await;
-                                match &self.not_found.param {
-                                    Some(param) => {
-                                        format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
-                                    }
-                                    None => {
-                                        format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action)
-                                    }
-                                }
-                            }
-                        } else {
-                            self.cache.set(key, Data::None).await;
-                            match &self.not_found.param {
-                                Some(param) => {
-                                    format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
-                                }
-                                None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
-                            }
-                        }
-                    }
-                    None => match &self.not_found.param {
-                        Some(param) => {
-                            format!("/{}/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action, param)
-                        }
-                        None => format!("/{}/{}/{}", self.not_found.module, self.not_found.class, self.not_found.action),
-                    },
-                }
-            }
-        }
     }
 
     fn error_route(action_err: Arc<Route>) -> Route {
@@ -1140,235 +1124,12 @@ impl Action {
         }
     }
 
-    /// Finish work of controller
-    pub(crate) async fn end(action: Action) {
-        // Save session
-        Session::save_session(action.db, &action.session, &action.request).await;
-        // Remove temp file
-        for val in action.request.input.file.values() {
-            for f in val {
-                if let Err(e) = remove_file(&f.tmp).await {
-                    Log::warning(1103, Some(format!("filename={}. Error={}", &f.tmp.display(), e)));
-                };
-            }
-        }
-    }
-
-    /// Simple remove temp file after redirect
-    pub(crate) async fn clean_file(file: Vec<PathBuf>) {
-        for f in file {
-            if let Err(e) = remove_file(&f).await {
-                Log::warning(1103, Some(format!("filename={}. Error={}", f.display(), e)));
-            };
-        }
-    }
-
-    /// Setting data into internal memory
-    pub fn set<T>(&mut self, key: impl StrOrI64, value: T)
-    where
-        T: Into<Data>,
-    {
-        self.data.insert(key.to_i64(), value.into());
-    }
-
-    /// Getting references to data from internal memory
-    pub fn get<T>(&self, key: impl StrOrI64) -> Option<&T>
-    where
-        for<'a> &'a T: From<&'a Data>,
-    {
-        self.data.get(&key.to_i64()).map(|value| value.into())
-    }
-
-    /// Taking (removing) data from internal memory
-    pub fn take<T>(&mut self, key: impl StrOrI64) -> Option<T>
-    where
-        T: From<Data>,
-    {
-        self.data.remove(&key.to_i64()).map(|value| value.into())
-    }
-
-    /// Set value for the template from translate
-    pub fn set_lang(&mut self, key: impl StrOrI64) {
-        let idkey = key.to_i64();
-        if let Some(l) = &self.lang {
-            if let Some(str) = l.get(&idkey) {
-                self.data.insert(idkey, Data::String(str.to_owned()));
-                return;
-            }
-        }
-        self.data.insert(idkey, Data::String(key.to_str().to_owned()));
-    }
-
-    /// Set an array of values for the template from the translation
-    pub fn set_lang_arr(&mut self, keys: &[impl StrOrI64]) {
-        for key in keys {
-            let idkey = key.to_i64();
-            if let Some(l) = &self.lang {
-                if let Some(str) = l.get(&idkey) {
-                    self.data.insert(idkey, Data::String(str.to_owned()));
-                    continue;
-                }
-            }
-            self.data.insert(idkey, Data::String(key.to_str().to_owned()));
-        }
-    }
-
-    /// Spawns a new asynchronous task, returning a
-    /// [`tokio::task::JoinHandle`](tokio::task::JoinHandle) for it.
-    ///
-    /// The provided future will start running in the background immediately
-    /// when `spawn` is called, even if you don't await the returned
-    /// `JoinHandle`.
-    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        tokio::spawn(future)
-    }
-
-    /// Write data to the output stream
-    pub async fn write(&mut self, answer: Answer) {
-        let vec = match answer {
-            Answer::None => return,
-            Answer::String(str) => str.as_bytes().to_vec(),
-            Answer::Raw(raw) => raw,
-        };
-        Worker::write(self, vec).await;
-        self.header_send = true;
-        yield_now().await;
-    }
-
-    /// Restart the web server after creating the configuration file
-    pub fn install_end(&mut self, conf: String) -> Result<(), Error> {
-        if !self.db.in_use() {
-            if let Some((rpc, stop, path)) = self.stop.take() {
-                let mut file = File::create(format!("{}/tiny.toml", path))?;
-                file.write_all(conf.as_bytes())?;
-
-                App::stop(rpc, stop);
-            }
-        }
-        Ok(())
-    }
-
-    /// Render template
-    ///
-    /// # Value
-    ///
-    /// * `template: &str` - Name of template
-    pub fn render(&mut self, template: impl StrOrI64) -> Answer {
-        match &self.html {
-            Some(h) => match h.get(&template.to_i64()) {
-                Some(vec) => {
-                    if !self.response.css.is_empty() {
-                        let mut vec = Vec::with_capacity(self.response.css.len());
-                        for css in self.response.css.drain(..) {
-                            vec.push(Data::String(css));
-                        }
-                        self.data.insert(fnv1a_64!("css"), Data::Vec(vec));
-                    }
-                    if !self.response.js.is_empty() {
-                        let mut vec = Vec::with_capacity(self.response.js.len());
-                        for js in self.response.js.drain(..) {
-                            vec.push(Data::String(js));
-                        }
-                        self.data.insert(fnv1a_64!("js"), Data::Vec(vec));
-                    }
-                    if !self.response.meta.is_empty() {
-                        let mut vec = Vec::with_capacity(self.response.meta.len());
-                        for meta in self.response.meta.drain(..) {
-                            vec.push(Data::String(meta));
-                        }
-                        self.data.insert(fnv1a_64!("meta"), Data::Vec(vec));
-                    }
-                    Html::render(&self.data, vec)
-                }
-                None => Answer::None,
-            },
-            None => Answer::None,
-        }
-    }
-
     fn format_route(module: &str, class: &str, action: &str, param: Option<&str>) -> String {
         match param {
             Some(s) => {
                 format!("/{}/{}/{}/{}", module, class, action, s)
             }
             None => format!("/{}/{}/{}", module, class, action),
-        }
-    }
-
-    /// Get route
-    pub async fn route(&mut self, module: &str, class: &str, action: &str, param: Option<&str>, lang_id: Option<i64>) -> String {
-        if self.db.in_use() {
-            // Read from cache
-            let key = match (param, lang_id) {
-                (Some(p), Some(l)) => vec![
-                    fnv1a_64!("route"),
-                    fnv1a_64(module.as_bytes()),
-                    fnv1a_64(class.as_bytes()),
-                    fnv1a_64(action.as_bytes()),
-                    fnv1a_64(p.as_bytes()),
-                    l,
-                ],
-                (Some(p), None) => vec![
-                    fnv1a_64!("route"),
-                    fnv1a_64(module.as_bytes()),
-                    fnv1a_64(class.as_bytes()),
-                    fnv1a_64(action.as_bytes()),
-                    fnv1a_64(p.as_bytes()),
-                    -1,
-                ],
-                (None, Some(l)) => {
-                    vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, l]
-                }
-                (None, None) => {
-                    vec![fnv1a_64!("route"), fnv1a_64(module.as_bytes()), fnv1a_64(class.as_bytes()), fnv1a_64(action.as_bytes()), 0, -1]
-                }
-            };
-            let (data, key) = self.cache.get(key).await;
-            if let Some(Data::String(s)) = data {
-                return s;
-            };
-            // Prepare sql query
-            match self
-                .db
-                .query_prepare(
-                    fnv1a_64!("lib_get_url"),
-                    &[&fnv1a_64(module.as_bytes()), &fnv1a_64(class.as_bytes()), &fnv1a_64(action.as_bytes()), &param, &lang_id],
-                    false,
-                )
-                .await
-            {
-                Some(rows) => {
-                    if rows.len() == 1 {
-                        let row = if let Data::Vec(vec) = unsafe { rows.get_unchecked(0) } {
-                            vec
-                        } else {
-                            return Action::format_route(module, class, action, param);
-                        };
-                        if row.is_empty() {
-                            return Action::format_route(module, class, action, param);
-                        }
-
-                        let url = if let Data::String(url) = unsafe { row.get_unchecked(0) } {
-                            url.clone()
-                        } else {
-                            return Action::format_route(module, class, action, param);
-                        };
-                        self.cache.set(key, Data::String(url.clone())).await;
-                        url
-                    } else {
-                        let url = Action::format_route(module, class, action, param);
-                        self.cache.set(key, Data::String(url.clone())).await;
-                        url
-                    }
-                }
-                None => Action::format_route(module, class, action, param),
-            }
-        } else {
-            Action::format_route(module, class, action, param)
         }
     }
 }

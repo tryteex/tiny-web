@@ -254,6 +254,8 @@ impl Log {
             225 => "Can't read answer from stream",
             226 => "Can't recognize answer from stream",
             227 => "Status signal received successfully",
+            #[cfg(debug_assertions)]
+            228 => "Get request",
 
             500 => "Unable to open server port",
             501 => "IP address from which to accept connections is not allowed",

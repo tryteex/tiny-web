@@ -42,3 +42,11 @@ pub mod mail;
 
 /// Data type.
 pub mod data;
+
+/// Request data.
+pub mod request;
+
+/// Response answer.
+pub mod response;
+/// Route
+pub mod route;

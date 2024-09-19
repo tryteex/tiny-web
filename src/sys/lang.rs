@@ -215,7 +215,7 @@ impl Lang {
     }
 
     /// Get list of enabled langs for install module
-    fn get_langs_install(files: &Vec<(PathBuf, String, String, String)>) -> Vec<Arc<LangItem>> {
+    pub(crate) fn get_langs_install(files: &Vec<(PathBuf, String, String, String)>) -> Vec<Arc<LangItem>> {
         let mut list = BTreeMap::new();
         list.insert(m_fnv1a_64!("en"), (0, "English".to_string()));
         list.insert(m_fnv1a_64!("uk"), (1, "Ukrainian (Українська)".to_string()));
