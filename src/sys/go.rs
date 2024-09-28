@@ -107,9 +107,9 @@ impl Go {
             let lang = Arc::new(RwLock::new(Lang::new(Arc::clone(&root_path), &lang, &mut db).await));
 
             #[cfg(not(debug_assertions))]
-            let html = Arc::new(Html::new(&root_path).await);
+            let html = Arc::new(Html::new(Arc::clone(&root_path)).await);
             #[cfg(debug_assertions)]
-            let html = Arc::new(RwLock::new(Html::new(&root_path).await));
+            let html = Arc::new(RwLock::new(Html::new(Arc::clone(&root_path)).await));
 
             let cache = CacheSys::new().await;
             let engine = Arc::new(engine_data);
@@ -128,6 +128,8 @@ impl Go {
                 Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
                 None => None,
             };
+
+            let root_path = Arc::clone(&root_path);
 
             // Started (accepted) threads
             let handles = Arc::new(Mutex::new(BTreeMap::new()));
@@ -175,6 +177,7 @@ impl Go {
                     Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
                     None => None,
                 };
+                let root_path = Arc::clone(&root_path);
 
                 let handle = tokio::spawn(async move {
                     let id = counter;
@@ -204,6 +207,7 @@ impl Go {
                         action_not_found,
                         action_err,
                         stop: signal_stop,
+                        root: root_path,
                     };
                     Worker::run(stream, data, protocol).await;
                     if let Err(i) = tx.send(id) {

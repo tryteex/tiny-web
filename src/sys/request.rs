@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use serde_json::Value;
+
 /// Describes received files
 ///
 /// # Values
@@ -15,6 +17,15 @@ pub struct WebFile {
     pub name: String,
     /// Absolute path to file location
     pub tmp: std::path::PathBuf,
+}
+
+/// Raw HTTP data if the HTTP POST data was not recognized
+#[derive(Debug)]
+pub enum RawData {
+    None,
+    Json(Value),
+    String(String),
+    Raw(Vec<u8>),
 }
 
 /// Input http protocol datas
@@ -38,6 +49,8 @@ pub struct Input {
     pub cookie: HashMap<String, String>,
     /// Params from web servers
     pub params: HashMap<String, String>,
+    /// Raw data
+    pub raw: RawData,
 }
 
 /// Request parameters
@@ -69,11 +82,28 @@ pub struct Request {
     /// Client IP
     pub ip: String,
     /// REQUEST_METHOD
-    pub method: String,
+    pub method: HttpMethod,
     /// DOCUMENT_ROOT
     pub path: String,
     /// Request url. Example: /product/view/item/145
     pub url: String,
     /// Input http protocol datas
     pub input: Input,
+    /// Site name. Example: https://example.com
+    pub site: String,
+}
+
+/// HTTP Methods
+#[derive(Debug)]
+pub enum HttpMethod {
+    Get,
+    Head,
+    Post,
+    Put,
+    Delete,
+    Connect,
+    Options,
+    Trace,
+    Patch,
+    Other(String),
 }

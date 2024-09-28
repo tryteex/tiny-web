@@ -2,7 +2,7 @@ use std::{cmp::min, collections::HashMap, sync::Arc};
 
 use crate::sys::{
     action::ActionData,
-    request::{Input, Request},
+    request::{HttpMethod, Input, RawData, Request},
     worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
@@ -126,9 +126,10 @@ impl Net {
                 let (mut request, content_type, session) = FastCGI::read_param(params, Arc::clone(&data.session_key));
 
                 // Reads POST data
-                let (post, file) = Worker::read_input(stdin, content_type).await;
+                let (post, file, raw) = Worker::read_input(stdin, content_type).await;
                 request.input.file = file;
                 request.input.post = post;
+                request.input.raw = raw;
 
                 let stop = match data.stop {
                     Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
@@ -151,6 +152,7 @@ impl Net {
                     action_not_found: Arc::clone(&data.action_not_found),
                     action_err: Arc::clone(&data.action_err),
                     stop,
+                    root: Arc::clone(&data.root),
                 };
 
                 // Run main controller
@@ -316,6 +318,19 @@ impl Net {
             }
         }
         params.shrink_to_fit();
+        let method = match method.as_str() {
+            "GET" => HttpMethod::Get,
+            "HEAD" => HttpMethod::Head,
+            "POST" => HttpMethod::Post,
+            "PUT" => HttpMethod::Put,
+            "DELETE" => HttpMethod::Delete,
+            "CONNECT" => HttpMethod::Connect,
+            "OPTIONS" => HttpMethod::Options,
+            "TRACE" => HttpMethod::Trace,
+            "PATCH" => HttpMethod::Patch,
+            _ => HttpMethod::Other(method),
+        };
+        let site = format!("{}://{}", scheme, host);
         (
             Request {
                 ajax,
@@ -333,7 +348,9 @@ impl Net {
                     file: HashMap::new(),
                     cookie,
                     params,
+                    raw: RawData::None,
                 },
+                site,
             },
             content_type,
             session_key,

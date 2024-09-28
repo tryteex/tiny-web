@@ -212,6 +212,8 @@ pub(crate) struct Init {
 
 impl Init {
     /// Initializes the server configuration
+    /// If the server is running in release mode, the configuration file must be in the same folder as the program.
+    /// If the server is running in debug mode, the configuration file must be in the user's current folder.
     pub fn new(name: &str, version: &str, desc: &str, allow_no_config: bool) -> Option<Init> {
         let exe_file = Init::get_current_exe()?;
 

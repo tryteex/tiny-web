@@ -256,6 +256,10 @@ impl Log {
             227 => "Status signal received successfully",
             #[cfg(debug_assertions)]
             228 => "Get request",
+            #[cfg(debug_assertions)]
+            229 => "Load lang file",
+            #[cfg(debug_assertions)]
+            230 => "Load html template file",
 
             500 => "Unable to open server port",
             501 => "IP address from which to accept connections is not allowed",

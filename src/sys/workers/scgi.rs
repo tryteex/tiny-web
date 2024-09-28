@@ -2,7 +2,7 @@ use std::{cmp::min, collections::HashMap, sync::Arc};
 
 use crate::sys::{
     action::ActionData,
-    request::{Input, Request, WebFile},
+    request::{HttpMethod, Input, RawData, Request, WebFile},
     worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
@@ -87,12 +87,13 @@ impl Net {
             };
 
         // Reads POST data
-        let (post, file) = match Scgi::read_input(&mut stream_read, content_type, content_len).await {
+        let (post, file, raw) = match Scgi::read_input(&mut stream_read, content_type, content_len).await {
             Some(c) => c,
             None => return,
         };
         request.input.file = file;
         request.input.post = post;
+        request.input.raw = raw;
 
         let data = ActionData {
             engine: Arc::clone(&data.engine),
@@ -110,6 +111,7 @@ impl Net {
             action_not_found: Arc::clone(&data.action_not_found),
             action_err: Arc::clone(&data.action_err),
             stop: data.stop,
+            root: Arc::clone(&data.root),
         };
 
         // Run main controller
@@ -131,7 +133,7 @@ impl Net {
         stream: &mut StreamRead,
         content_type: Option<String>,
         mut content_len: usize,
-    ) -> Option<(HashMap<String, String>, HashMap<String, Vec<WebFile>>)> {
+    ) -> Option<(HashMap<String, String>, HashMap<String, Vec<WebFile>>, RawData)> {
         let mut data = Vec::with_capacity(content_len);
         let mut max_read;
         let mut buf;
@@ -319,6 +321,19 @@ impl Net {
             }
         }
         params.shrink_to_fit();
+        let method = match method.as_str() {
+            "GET" => HttpMethod::Get,
+            "HEAD" => HttpMethod::Head,
+            "POST" => HttpMethod::Post,
+            "PUT" => HttpMethod::Put,
+            "DELETE" => HttpMethod::Delete,
+            "CONNECT" => HttpMethod::Connect,
+            "OPTIONS" => HttpMethod::Options,
+            "TRACE" => HttpMethod::Trace,
+            "PATCH" => HttpMethod::Patch,
+            _ => HttpMethod::Other(method),
+        };
+        let site = format!("{}://{}", scheme, host);
         Some((
             Request {
                 ajax,
@@ -336,7 +351,9 @@ impl Net {
                     file: HashMap::new(),
                     cookie,
                     params,
+                    raw: RawData::None,
                 },
+                site,
             },
             content_type,
             session_key,

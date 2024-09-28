@@ -4,6 +4,7 @@ use std::{
 };
 
 use chrono::Local;
+use ring::rand::{SecureRandom, SystemRandom};
 use sha3::{Digest, Sha3_512};
 use tiny_web_macro::fnv1a_64;
 use tokio::sync::Mutex;
@@ -71,7 +72,7 @@ pub struct Session {
     /// Cookie key (session value)
     pub key: String,
     /// Session key
-    pub(crate) session_key: Arc<String>,
+    pub session_key: Arc<String>,
     /// User data from database
     data: BTreeMap<i64, Data>,
     /// User data is changed
@@ -233,6 +234,38 @@ impl Session {
         format!("{:#x}", hasher.finalize())
     }
 
+    pub fn generate_salt(&self) -> String {
+        let time = Local::now().format("%Y.%m.%d %H:%M:%S%.9f %:z").to_string();
+        let cook = format!("{}{}", self.key, time);
+        let mut hasher = Sha3_512::new();
+        hasher.update(cook.as_bytes());
+        let rand = format!("!@#$^&*()_-+=,<.>/?|{:#x}", hasher.finalize());
+        self.shuffle_string(&rand)
+    }
+
+    fn shuffle_string(&self, s: &str) -> String {
+        let mut chars: Vec<char> = s.chars().collect();
+        let len = chars.len();
+        let rng = SystemRandom::new();
+    
+        for i in (1..len).rev() {
+            let mut buf = [0u8; 8];
+            let _ = rng.fill(&mut buf);
+            let rand_index = (u64::from_ne_bytes(buf) % (i as u64 + 1)) as usize;
+            chars.swap(i, rand_index);
+        }
+        for c in chars.iter_mut() {
+            let mut buf = [0u8; 1];
+            let _ = rng.fill(&mut buf);
+            if buf[0] % 2 == 0 {
+                *c = c.to_ascii_uppercase();
+            }
+        }
+        let mut str: String = chars.into_iter().collect();
+        str.truncate(32);
+        str
+    }
+    
     /// Set lang_id
     pub fn set_lang_id(&mut self, lang_id: i64) {
         if self.lang_id != lang_id {

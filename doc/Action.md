@@ -15,10 +15,13 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | lang | no | String | Retrieving a simple translation |
 | 𝑓 | lang_current | yes | Arc<LangItem> | Current user language |
 | 𝑓 | lang_list | yes | Arc<Vec<Arc<LangItem>>> | List of languages |
+| 𝑓 | all_lang_list | yes | Vec<LangItem> | List of all languages |
 | 𝑓 | get_access | yes | bool | Checking permissions for the controller |
 | 𝑓 | not_found | yes | String | Retrieving the URL of the 404 Not Found controller |
 | 𝑓 | set | no || Setting data into internal memory |
 | 𝑓 | get | no || Getting references to data from internal memory |
+| 𝑓 | get_cpu | no || Get number of avaible CPU |
+| 𝑓 | get_root | no || Get path of current exe file |
 | 𝑓 | take | no || Takining (removing) data from internal memory |
 | 𝑓 | set_lang | no || Setting data for rendering an HTML page from translation |
 | 𝑓 | set_lang_arr | no || Setting the array data for rendering an HTML page from translation |
@@ -29,6 +32,7 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | spawn | no | | Spawns a new asynchronous task |
 | 𝑓 | render | no | Answer | Rendering an HTML page |
 | 𝑓 | mail | yes | bool| Sending an email |
+| 𝑓 | get_root | yes | bool| Sending an email |
 | . | request || Request | Request parameters from the client and web server. More details [Request.md](https://github.com/tryteex/tiny-web/blob/main/doc/Request.md) |
 | . | response || Response | Setting additional parameters for rendering an HTML page. More details [Response.md](https://github.com/tryteex/tiny-web/blob/main/doc/Response.md) |
 | . | session || Session | Client session data. More details [Session.md](https://github.com/tryteex/tiny-web/blob/main/doc/Session.md) |

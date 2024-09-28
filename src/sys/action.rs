@@ -26,7 +26,7 @@ use super::{
     data::Data,
     dbs::adapter::DB,
     html::{Html, Nodes},
-    init::Addr,
+    init::{Addr, DBConfig},
     lang::{Lang, LangItem},
     log::Log,
     mail::{Mail, MailMessage},
@@ -107,6 +107,8 @@ pub(crate) struct ActionData {
     pub(crate) action_err: Arc<Route>,
     /// Stop signal
     pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
+    /// The full path to the folder where the server was started.
+    pub(crate) root: Arc<String>,
 }
 
 /// Main struct to run web engine
@@ -191,19 +193,19 @@ pub struct Action {
     pub db: Arc<DB>,
     /// Mail function
     mail: Arc<Mutex<Mail>>,
+    /// The full path to the folder where the server was started.
+    root: Arc<String>,
 
     /// Internal call of controller
     pub internal: bool,
 
     /// Sender data to output stream
     pub(crate) tx: Arc<Sender<MessageWrite>>,
-
     /// Header was sended
     pub(crate) header_send: bool,
 
     /// Default controller for 404 Not Found
     not_found: Arc<Route>,
-
     /// Stop signal
     stop: Option<(Arc<Addr>, i64, Arc<String>)>,
 }
@@ -314,6 +316,7 @@ impl Action {
             not_found: data.action_not_found,
 
             stop: data.stop,
+            root: data.root,
         })
     }
 
@@ -366,6 +369,11 @@ impl Action {
         }
     }
 
+    /// Get vector of all languages
+    pub async fn all_lang_list(&self) -> Vec<LangItem> {
+        Lang::get_all_langs(Arc::clone(&self.db)).await
+    }
+
     /// Setting data into internal memory
     pub fn set<T>(&mut self, key: impl StrOrI64, value: T)
     where
@@ -409,7 +417,15 @@ impl Action {
                 return;
             }
         }
-        self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+        let str = key.to_str();
+        if !str.is_empty() {
+            self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+        } else {
+            #[cfg(not(debug_assertions))]
+            self.data.insert(idkey, Data::String("".to_owned()));
+            #[cfg(debug_assertions)]
+            self.data.insert(idkey, Data::String(key.to_i64().to_string().to_owned()));
+        }
     }
 
     /// Set an array of values for the template from the translation
@@ -422,7 +438,15 @@ impl Action {
                     continue;
                 }
             }
-            self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+            let str = key.to_str();
+            if !str.is_empty() {
+                self.data.insert(idkey, Data::String(key.to_str().to_owned()));
+            } else {
+                #[cfg(not(debug_assertions))]
+                self.data.insert(idkey, Data::String("".to_owned()));
+                #[cfg(debug_assertions)]
+                self.data.insert(idkey, Data::String(key.to_i64().to_string().to_owned()));
+            }
         }
     }
 
@@ -547,9 +571,15 @@ impl Action {
                     }
                     Html::render(&self.data, vec)
                 }
+                #[cfg(not(debug_assertions))]
                 None => Answer::None,
+                #[cfg(debug_assertions)]
+                None => Answer::String(format!("{{{}}}", template.to_str())),
             },
+            #[cfg(not(debug_assertions))]
             None => Answer::None,
+            #[cfg(debug_assertions)]
+            None => Answer::String(format!("{{{}}}", template.to_str())),
         }
     }
 
@@ -625,6 +655,7 @@ impl Action {
             Action::format_route(module, class, action, param)
         }
     }
+
     /// Send email
     pub async fn mail(&self, message: MailMessage) -> bool {
         let provider = {
@@ -632,6 +663,40 @@ impl Action {
             mail.provider.clone()
         };
         Mail::send(provider, Arc::clone(&self.db), message, self.session.user_id, self.request.host.clone()).await
+    }
+
+    /// Get number of avaible CPU
+    pub fn get_cpu(&self) -> usize {
+        num_cpus::get()
+    }
+
+    /// Get path of current exe file
+    pub fn get_root(&self) ->Arc<String> {
+        Arc::clone(&self.root)
+    }
+
+    /// Check db connection
+    pub async fn check_db(&self, host: &str, port: u16, name: &str, user: &str, pwd: &str, ssl: bool) -> Result<String, String> {
+        let config = DBConfig {
+            host: host.to_owned(),
+            port: if port == 0 { None } else { Some(port) },
+            name: name.to_owned(),
+            user: if user.is_empty() { None } else { Some(user.to_owned()) },
+            pwd: if pwd.is_empty() { None } else { Some(pwd.to_owned()) },
+            sslmode: ssl,
+            max: 0,
+        };
+        DB::check_db(&config).await
+    }
+
+    /// Get database type
+    pub fn get_db_type(&self) -> &'static str {
+        #[cfg(feature = "pgsql")]
+        return "PostgreSQL";
+        #[cfg(feature = "mssql")]
+        return "MS Sql Server";
+        #[cfg(not(any(feature = "pgsql", feature = "mssql")))]
+        return "Not defined";
     }
 
     /// Get not_found url

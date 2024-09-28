@@ -1,6 +1,8 @@
+use core::str;
 use std::{cmp::min, collections::HashMap, io::Error, sync::Arc};
 
 use chrono::{TimeDelta, Utc};
+use serde_json::Value;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{
@@ -27,7 +29,7 @@ use super::{
     lang::Lang,
     log::Log,
     mail::Mail,
-    request::WebFile,
+    request::{RawData, WebFile},
     route::Route,
     workers::{fastcgi, grpc, http, scgi, uwsgi, websocket},
 };
@@ -103,6 +105,8 @@ pub(crate) struct WorkerData {
     pub action_err: Arc<Route>,
     /// Stop signal
     pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
+    /// The full path to the folder where the server was started.
+    pub(crate) root: Arc<String>,
 }
 
 /// A network stream errors
@@ -384,13 +388,7 @@ impl Worker {
     /// Vector with a binary data
     pub(crate) async fn call_action(data: ActionData) -> Vec<u8> {
         #[cfg(debug_assertions)]
-        Log::info(
-            228,
-            Some(format!(
-                "{} {} {}://{}{}",
-                data.request.ip, data.request.method, data.request.scheme, data.request.host, data.request.url
-            )),
-        );
+        Log::info(228, Some(format!("{} {:?} {}{}", data.request.ip, data.request.method, data.request.site, data.request.url)));
 
         // Check and reload langs and templates
         #[cfg(debug_assertions)]
@@ -537,9 +535,13 @@ impl Worker {
     ///
     /// * `HashMap<String, String>` - Post data.
     /// * `HashMap<String, Vec<WebFile>>` - File data.
-    pub async fn read_input(data: Vec<u8>, content_type: Option<String>) -> (HashMap<String, String>, HashMap<String, Vec<WebFile>>) {
+    pub async fn read_input(
+        data: Vec<u8>,
+        content_type: Option<String>,
+    ) -> (HashMap<String, String>, HashMap<String, Vec<WebFile>>, RawData) {
         let mut post = HashMap::new();
         let mut file = HashMap::new();
+        let mut raw = RawData::None;
 
         // Different types of CONTENT_TYPE need to be processed differently
         if let Some(c) = content_type {
@@ -558,6 +560,14 @@ impl Worker {
                         }
                     }
                 }
+            } else if c == "application/json;charset=UTF-8" {
+                raw = match serde_json::from_slice::<Value>(&data) {
+                    Ok(v) => RawData::Json(v),
+                    Err(_) => match String::from_utf8(data.clone()) {
+                        Ok(s) => RawData::String(s),
+                        Err(e) => RawData::Raw(e.into_bytes()),
+                    },
+                };
             } else if c.len() > 30 {
                 // Multi post with files
                 if let "multipart/form-data; boundary=" = &c[..30] {
@@ -601,10 +611,25 @@ impl Worker {
                             }
                         }
                     }
+                } else {
+                    raw = match String::from_utf8(data.clone()) {
+                        Ok(s) => RawData::String(s),
+                        Err(e) => RawData::Raw(e.into_bytes()),
+                    }
+                }
+            } else {
+                raw = match String::from_utf8(data.clone()) {
+                    Ok(s) => RawData::String(s),
+                    Err(e) => RawData::Raw(e.into_bytes()),
                 }
             }
+        } else if !data.is_empty() {
+            raw = match String::from_utf8(data.clone()) {
+                Ok(s) => RawData::String(s),
+                Err(e) => RawData::Raw(e.into_bytes()),
+            }
         }
-        (post, file)
+        (post, file, raw)
     }
 
     /// Gets post and file records from multipart/form-data

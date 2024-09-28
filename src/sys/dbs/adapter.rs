@@ -97,6 +97,17 @@ impl DB {
         self.is_used
     }
 
+    pub(crate) async fn check_db(config: &DBConfig) -> Result<String, String> {
+        #[cfg(feature = "pgsql")]
+        return PgSql::check_db(config).await;
+
+        #[cfg(feature = "mssql")]
+        return MsSql::check_db(config).await;
+
+        #[cfg(not(any(feature = "pgsql", feature = "mssql")))]
+        return Ok(());
+    }
+
     /// Execute query to database synchronously
     ///
     /// # Parmeters

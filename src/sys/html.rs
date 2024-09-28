@@ -309,7 +309,7 @@ impl Html {
     ///   {{ arr.body }}
     /// {% elsefor %} empty or null array
     /// {% endfor %}
-    pub async fn new(root: &str) -> Html {
+    pub async fn new(root: Arc<String>) -> Html {
         #[cfg(debug_assertions)]
         let last_time = SystemTime::UNIX_EPOCH;
 
@@ -319,7 +319,7 @@ impl Html {
             last: last_time,
             #[cfg(debug_assertions)]
             hash: 0,
-            root: Arc::new(root.to_owned()),
+            root: Arc::new(root.as_str().to_owned()),
         };
         html.load().await;
         html

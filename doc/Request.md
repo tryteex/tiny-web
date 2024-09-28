@@ -13,10 +13,11 @@ Available Properties and Functions:
 * `request.agent` - String from the HTTP header __HTTP_USER_AGENT__.
 * `request.referer` - String from the HTTP header __HTTP_REFERER__.
 * `request.ip` - String from the HTTP header __REMOTE_ADDR__.
-* `request.method` - *РString from the HTTP header __REQUEST_METHOD__.
+* `request.method` - *HttpMethod from the HTTP header __REQUEST_METHOD__.
 * `request.path` - String from the HTTP header __DOCUMENT_ROOT__.
 * `request.url` - String from the HTTP header __REDIRECT_URL__ up to the '?' character.
 * `request.input` -  Input data including __GET__, __POST__, __FILES__ and __COOKIE__ data.
+* `request.site` -  Site name. Example: https://example.com
 
 To retrieve data, use the corresponding method:
 * `request.input.get` - Input __GET__ data obtained from the HTTP header __QUERY_STRING__.
@@ -28,6 +29,12 @@ Each file consists of:
   * `tmp` - Local path to the temporary file. It will be deleted after the session is closed.
 * `request.input.cookie` - Input __COOKIE__ data obtained from the HTTP header __HTTP_COOKIE__, excluding session data.
 * `request.input.param` - All other HTTP headers that are not included in the above list are added here.
+* `request.input.raw` - Raw __HTTP__ data if the __HTTP__ __POST__ data was not recognized.  
+Raw data can be:
+  * `None` - None data.
+  * `Json` - __Json__ value. Header `application/json;charset=UTF-8` is required.
+  * `String` - __String__ value.
+  * `Raw` - __Vec<u8>__ value.
 ___
 ### Example
 ```rust

@@ -2,6 +2,7 @@ use std::{
     borrow::Cow,
     collections::{btree_map::Entry, BTreeMap},
     sync::Arc,
+    time::Duration,
 };
 
 use chrono::{DateTime, Utc};
@@ -9,7 +10,7 @@ use chrono::{DateTime, Utc};
 use futures_util::TryStreamExt;
 use tiberius::{error::Error, AuthMethod, Client, Column, Config, EncryptionLevel, QueryItem, Row, ToSql};
 use tiny_web_macro::fnv1a_64;
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, time::timeout};
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
 
 use crate::sys::{data::Data, init::DBConfig, log::Log};
@@ -53,6 +54,14 @@ type MsColumnName = (usize, fn(&Row, usize) -> Data);
 impl MsSql {
     /// Initializes a new object `PgSql`
     pub fn new(config: Arc<DBConfig>) -> Option<MsSql> {
+        Some(MsSql {
+            config: MsSql::create_config(&config),
+            client: None,
+            prepare: BTreeMap::new(),
+        })
+    }
+
+    fn create_config(config: &DBConfig) -> Config {
         let mut cfg = Config::new();
         cfg.host(&config.host);
         if let Some(p) = &config.port {
@@ -70,13 +79,47 @@ impl MsSql {
         cfg.trust_cert();
         if config.sslmode {
             cfg.encryption(EncryptionLevel::Required);
+        } else {
+            cfg.encryption(EncryptionLevel::NotSupported);
         }
+        cfg
+    }
 
-        Some(MsSql {
-            config: cfg,
-            client: None,
-            prepare: BTreeMap::new(),
-        })
+    pub(crate) async fn check_db(config: &DBConfig) -> Result<String, String> {
+        let config = MsSql::create_config(config);
+        let tcp = match timeout(Duration::from_secs(1), TcpStream::connect(config.get_addr())).await {
+            Ok(Ok(tcp)) => tcp,
+            Ok(Err(e)) => return Err(e.to_string()),
+            Err(e) => return Err(e.to_string()),
+        };
+        if let Err(e) = tcp.set_nodelay(true) {
+            return Err(e.to_string());
+        };
+        let mut client = match Client::connect(config, tcp.compat_write()).await {
+            Ok(client) => client,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let row = match client.query("SELECT FORMAT(SYSDATETIMEOFFSET(), 'yyyy-MM-dd HH:mm:ss.fff zzz')", &[]).await {
+            Ok(mut s) => loop {
+                match s.try_next().await {
+                    Ok(Some(QueryItem::Row(row))) => break row,
+                    Ok(None) => {
+                        return Err("Query 'SELECT FORMAT(SYSDATETIMEOFFSET(), 'yyyy-MM-dd HH:mm:ss.fff zzz')' return no data".to_owned())
+                    }
+                    Ok(_) => {}
+                    Err(e) => return Err(e.to_string()),
+                }
+            },
+            Err(e) => return Err(e.to_string()),
+        };
+
+        let dt: &str = match row.get(0) {
+            Some(cell) => cell,
+            None => return Err("Query 'SELECT FORMAT(SYSDATETIMEOFFSET(), 'yyyy-MM-dd HH:mm:ss.fff zzz')' return no data".to_owned()),
+        };
+
+        Ok(dt.to_owned())
     }
 
     /// Connect to the database
@@ -89,8 +132,12 @@ impl MsSql {
 
     /// Trying to connect to the database
     async fn try_connect(&mut self) -> bool {
-        let tcp = match TcpStream::connect(self.config.get_addr()).await {
-            Ok(tcp) => tcp,
+        let tcp = match timeout(Duration::from_secs(1), TcpStream::connect(self.config.get_addr())).await {
+            Ok(Ok(tcp)) => tcp,
+            Ok(Err(e)) => {
+                Log::stop(601, Some(e.to_string()));
+                return false;
+            }
             Err(e) => {
                 Log::stop(601, Some(e.to_string()));
                 return false;
@@ -118,7 +165,7 @@ impl MsSql {
         match self.client.as_mut() {
             Some(client) => {
                 let mut map = BTreeMap::new();
-                // Get lang
+                // Get avaible lang
                 let sql = r#"
                     SELECT [lang_id], [code], [name], [index]
                     FROM [lang]
@@ -126,6 +173,15 @@ impl MsSql {
                     ORDER BY [sort]
                 "#;
                 map.insert(fnv1a_64!("lib_get_langs"), ("".to_owned(), sql.to_owned()));
+
+                // Get all lang
+                let sql = r#"
+                    SELECT [lang_id], [code], [name], [index]
+                    FROM [lang]
+                    ORDER BY [index], sort]
+                "#;
+                map.insert(fnv1a_64!("lib_get_all_langs"), ("".to_owned(), sql.to_owned()));
+
                 // Get session
                 let sql = r#"
                     UPDATE [session] 

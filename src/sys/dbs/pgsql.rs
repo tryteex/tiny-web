@@ -12,7 +12,7 @@ use futures_util::{pin_mut, TryStreamExt};
 use postgres::{
     tls::{ChannelBinding, MakeTlsConnect, TlsConnect},
     types::{ToSql, Type},
-    Column, NoTls, Row, Statement, ToStatement,
+    Column, Error, NoTls, Row, Statement, ToStatement,
 };
 use ring::digest;
 use rustls::{
@@ -78,6 +78,23 @@ type PgColumnName = (usize, fn(&Row, usize) -> Data);
 impl PgSql {
     /// Initializes a new object `PgSql`
     pub fn new(config: Arc<DBConfig>) -> Option<PgSql> {
+        let (sql_conn, tls) = match PgSql::create_connect_string(&config) {
+            Ok(v) => v,
+            Err(e) => {
+                Log::stop(609, Some(e.to_string()));
+                return None;
+            }
+        };
+
+        Some(PgSql {
+            client: None,
+            sql_conn,
+            tls,
+            prepare: BTreeMap::new(),
+        })
+    }
+
+    fn create_connect_string(config: &DBConfig) -> Result<(tokio_postgres::Config, Option<MakeRustlsConnect>), Error> {
         let mut conn_str = String::with_capacity(512);
         //host
         conn_str.push_str("host='");
@@ -122,10 +139,7 @@ impl PgSql {
 
         let sql_conn: tokio_postgres::Config = match conn_str.parse() {
             Ok(c) => c,
-            Err(e) => {
-                Log::stop(609, Some(e.to_string()));
-                return None;
-            }
+            Err(e) => return Err(e),
         };
         let tls = if config.sslmode {
             let mut config = ClientConfig::builder().with_root_certificates(RootCertStore::empty()).with_no_client_auth();
@@ -135,12 +149,41 @@ impl PgSql {
             None
         };
 
-        Some(PgSql {
-            client: None,
-            sql_conn,
-            tls,
-            prepare: BTreeMap::new(),
-        })
+        Ok((sql_conn, tls))
+    }
+
+    pub(crate) async fn check_db(config: &DBConfig) -> Result<String, String> {
+        let (sql_conn, tls) = match PgSql::create_connect_string(config) {
+            Ok(v) => v,
+            Err(e) => return Err(e.to_string()),
+        };
+        let client = match tls {
+            Some(tls) => match sql_conn.connect(tls).await {
+                Ok((client, connection)) => {
+                    tokio::spawn(async move {
+                        let _ = connection.await;
+                    });
+                    client
+                }
+                Err(e) => return Err(e.to_string()),
+            },
+            None => match sql_conn.connect(NoTls).await {
+                Ok((client, connection)) => {
+                    tokio::spawn(async move {
+                        let _ = connection.await;
+                    });
+                    client
+                }
+                Err(e) => return Err(e.to_string()),
+            },
+        };
+        let row = match client.query_one("SELECT now()::text", &[]).await {
+            Ok(r) => r,
+            Err(e) => return Err(e.to_string()),
+        };
+        let time: &str = row.get(0);
+
+        Ok(time.to_owned())
     }
 
     /// Connect to the database
@@ -199,7 +242,7 @@ impl PgSql {
             Some(client) => {
                 let mut map = BTreeMap::new();
 
-                // Get lang
+                // Get avaible lang
                 let sql = r#"
                     SELECT lang_id, code, name, index
                     FROM lang
@@ -207,6 +250,14 @@ impl PgSql {
                     ORDER BY sort
                 "#;
                 map.insert(fnv1a_64!("lib_get_langs"), (client.prepare_typed(sql, &[]), sql.to_owned()));
+
+                // Get all lang
+                let sql = r#"
+                    SELECT lang_id, code, name, index
+                    FROM lang
+                    ORDER BY index, sort
+                "#;
+                map.insert(fnv1a_64!("lib_get_all_langs"), (client.prepare_typed(sql, &[]), sql.to_owned()));
 
                 // Get session
                 let sql = r#"
