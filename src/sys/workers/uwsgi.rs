@@ -1,8 +1,10 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
+use percent_encoding::percent_decode_str;
+
 use crate::sys::{
     action::ActionData,
-    request::{HttpMethod, Input, RawData, Request, WebFile},
+    request::{HttpMethod, HttpVersion, Input, RawData, Request, WebFile},
     worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
@@ -47,6 +49,7 @@ impl Net {
             request.input.file = file;
             request.input.post = post;
             request.input.raw = raw;
+
             let stop = match data.stop {
                 Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
                 None => None,
@@ -99,7 +102,7 @@ impl Net {
         while content_len > 0 {
             max_read = min(content_len, stream.available());
             while max_read == 0 {
-                if stream.read(1000).await.is_err() {
+                if stream.read(300).await.is_err() {
                     return None;
                 }
                 max_read = min(content_len, stream.available());
@@ -157,7 +160,7 @@ impl Net {
             // Reads data to the buffer
             max_read = min(packet_len, stream.available());
             while max_read == 0 {
-                if stream.read(1000).await.is_err() {
+                if stream.read(300).await.is_err() {
                     return None;
                 }
                 max_read = min(packet_len, stream.available());
@@ -166,7 +169,7 @@ impl Net {
                 // Search params
                 if param_size == 0 {
                     while max_read < 2 {
-                        if stream.read(1000).await.is_err() {
+                        if stream.read(300).await.is_err() {
                             return None;
                         }
                         max_read = min(packet_len, stream.available());
@@ -202,7 +205,7 @@ impl Net {
                 // Search values
                 if value_size == 0 {
                     while max_read < 2 {
-                        if stream.read(1000).await.is_err() {
+                        if stream.read(300).await.is_err() {
                             return None;
                         }
                         max_read = min(packet_len, stream.available());
@@ -256,7 +259,9 @@ impl Net {
                     b"DOCUMENT_ROOT" => path = val,
                     b"REDIRECT_URL" => {
                         if let Some(u) = val.split('?').next() {
-                            u.clone_into(&mut url)
+                            if let Ok(u) = percent_decode_str(u).decode_utf8() {
+                                url = u.to_string();
+                            }
                         }
                     }
                     b"QUERY_STRING" => {
@@ -266,9 +271,17 @@ impl Net {
                             for v in gets {
                                 let key: Vec<&str> = v.splitn(2, '=').collect();
                                 match key.len() {
-                                    1 => get.insert(v.to_owned(), String::new()),
+                                    1 => {
+                                        if let Ok(u) = percent_decode_str(v).decode_utf8() {
+                                            get.insert(u.to_string(), String::new());
+                                        }
+                                    }
                                     _ => {
-                                        get.insert(unsafe { *key.get_unchecked(0) }.to_owned(), unsafe { *key.get_unchecked(1) }.to_owned())
+                                        if let Ok(u) = percent_decode_str(unsafe { key.get_unchecked(0) }).decode_utf8() {
+                                            if let Ok(v) = percent_decode_str(unsafe { key.get_unchecked(1) }).decode_utf8() {
+                                                get.insert(u.to_string(), v.to_string());
+                                            }
+                                        }
                                     }
                                 };
                             }
@@ -312,18 +325,7 @@ impl Net {
             }
         }
         params.shrink_to_fit();
-        let method = match method.as_str() {
-            "GET" => HttpMethod::Get,
-            "HEAD" => HttpMethod::Head,
-            "POST" => HttpMethod::Post,
-            "PUT" => HttpMethod::Put,
-            "DELETE" => HttpMethod::Delete,
-            "CONNECT" => HttpMethod::Connect,
-            "OPTIONS" => HttpMethod::Options,
-            "TRACE" => HttpMethod::Trace,
-            "PATCH" => HttpMethod::Patch,
-            _ => HttpMethod::Other(method),
-        };
+        let method = method.parse().unwrap_or(HttpMethod::Get);
         let site = format!("{}://{}", scheme, host);
         Some((
             Request {
@@ -345,6 +347,7 @@ impl Net {
                     raw: RawData::None,
                 },
                 site,
+                version: HttpVersion::None,
             },
             content_type,
             session_key,

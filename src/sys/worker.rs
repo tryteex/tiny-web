@@ -1,5 +1,5 @@
 use core::str;
-use std::{cmp::min, collections::HashMap, io::Error, sync::Arc};
+use std::{cmp::min, collections::HashMap, io::Error, net::IpAddr, sync::Arc};
 
 use chrono::{TimeDelta, Utc};
 use serde_json::Value;
@@ -29,7 +29,7 @@ use super::{
     lang::Lang,
     log::Log,
     mail::Mail,
-    request::{RawData, WebFile},
+    request::{HttpVersion, RawData, WebFile},
     route::Route,
     workers::{fastcgi, grpc, http, scgi, uwsgi, websocket},
 };
@@ -107,6 +107,8 @@ pub(crate) struct WorkerData {
     pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
     /// The full path to the folder where the server was started.
     pub(crate) root: Arc<String>,
+    /// Remote IP
+    pub(crate) ip: IpAddr,
 }
 
 /// A network stream errors
@@ -190,7 +192,7 @@ impl StreamRead {
         }
     }
 
-    /// Gets bytes in the local buffer
+    /// Gets the bytes in the local buffer without moving the buffer pointers
     pub fn get(&self, size: usize) -> &[u8] {
         let size = min(self.shift + size, self.len);
         unsafe { self.buf.get_unchecked(self.shift..size) }
@@ -285,7 +287,7 @@ impl Worker {
         };
         let (stream_write, handle) = StreamWrite::new(write, Arc::clone(&protocol)).await;
         let tx = Arc::clone(&stream_write.tx);
-        if let Err(e) = stream_read.read(1000).await {
+        if let Err(e) = stream_read.read(300).await {
             match e {
                 StreamError::Closed => {}
                 StreamError::Error(e) => {
@@ -394,6 +396,12 @@ impl Worker {
         #[cfg(debug_assertions)]
         Worker::reload(Arc::clone(&data.lang), Arc::clone(&data.html)).await;
 
+        let status = match data.request.version {
+            HttpVersion::None => "Status:",
+            HttpVersion::HTTP1_0 => "HTTP/1.0",
+            HttpVersion::HTTP1_1 => "HTTP/1.1",
+        };
+
         let mut action = match Action::new(data).await {
             Ok(action) => action,
             Err((redirect, files)) => {
@@ -407,15 +415,16 @@ impl Worker {
                     }
                     Action::clean_file(vec).await;
                 });
+
                 // Write status
                 let mut answer: Vec<u8> = Vec::with_capacity(512);
                 if redirect.permanently {
                     answer.extend_from_slice(
-                        format!("Status: 301 {}\r\nLocation: {}\r\n\r\n", Worker::http_code_get(301), redirect.url).as_bytes(),
+                        format!("{status} 301 {}\r\nLocation: {}\r\n\r\n", Worker::http_code_get(301), redirect.url).as_bytes(),
                     );
                 } else {
                     answer.extend_from_slice(
-                        format!("Status: 302 {}\r\nLocation: {}\r\n\r\n", Worker::http_code_get(302), redirect.url).as_bytes(),
+                        format!("{status} 302 {}\r\nLocation: {}\r\n\r\n", Worker::http_code_get(302), redirect.url).as_bytes(),
                     );
                 }
                 return answer;
@@ -463,24 +472,30 @@ impl Worker {
     }
 
     fn get_header(capacity: usize, action: &Action, content_length: Option<usize>) -> Vec<u8> {
+        let status = match action.request.version {
+            HttpVersion::None => "Status:",
+            HttpVersion::HTTP1_0 => "HTTP/1.0",
+            HttpVersion::HTTP1_1 => "HTTP/1.1",
+        };
+
         // Write status
         let mut answer: Vec<u8> = Vec::with_capacity(capacity);
         if let Some(redirect) = action.response.redirect.as_ref() {
             if redirect.permanently {
                 answer
-                    .extend_from_slice(format!("Status: 301 {}\r\nLocation: {}\r\n", Worker::http_code_get(301), redirect.url).as_bytes());
+                    .extend_from_slice(format!("{status} 301 {}\r\nLocation: {}\r\n", Worker::http_code_get(301), redirect.url).as_bytes());
             } else {
                 answer
-                    .extend_from_slice(format!("Status: 302 {}\r\nLocation: {}\r\n", Worker::http_code_get(302), redirect.url).as_bytes());
+                    .extend_from_slice(format!("{status} 302 {}\r\nLocation: {}\r\n", Worker::http_code_get(302), redirect.url).as_bytes());
             }
         } else if let Some(code) = action.response.http_code {
-            answer.extend_from_slice(format!("Status: {} {}\r\n", code, Worker::http_code_get(code)).as_bytes());
+            answer.extend_from_slice(format!("{status} {} {}\r\n", code, Worker::http_code_get(code)).as_bytes());
         } else {
-            answer.extend_from_slice(format!("Status: 200 {}\r\n", Worker::http_code_get(200)).as_bytes());
+            answer.extend_from_slice(format!("{status} 200 {}\r\n", Worker::http_code_get(200)).as_bytes());
         }
 
         // Write Cookie
-        let sec = TimeDelta::new(ONE_YEAR, 0).unwrap_or(TimeDelta::zero());
+        let sec = TimeDelta::new(ONE_YEAR, 0).unwrap_or_else(TimeDelta::zero);
         let time = Utc::now() + sec;
         let date = time.format("%a, %d-%b-%Y %H:%M:%S GMT").to_string();
         let secure = if action.request.scheme == "https" { "Secure; " } else { "" };

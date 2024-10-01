@@ -7,7 +7,7 @@ Short documentation for the library is [https://github.com/tryteex/tiny-web/blob
 > **Note**  
 > For security reasons, this library must be located behind the Primary web server, for example, under Nginx.
 
-This library works only with FastCGI, SCGI, and UWSGI (modifier1=0) protocols.
+This library works only with FastCGI, SCGI, UWSGI (modifier1=0) and HTTP protocols.
 
 This library works with Postgresql or MS Sql Server databases.
 

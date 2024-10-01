@@ -2051,7 +2051,7 @@ impl Html {
                 }
 
                 // Parse templates
-                match Html::parse(&html[..]) {
+                match Html::parse(html.as_str()) {
                     Ok(v) => {
                         let module = match list.entry(fnv1a_64(module.as_bytes())) {
                             Entry::Vacant(entry) => entry.insert(BTreeMap::new()),

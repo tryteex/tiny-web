@@ -208,6 +208,7 @@ impl Go {
                         action_err,
                         stop: signal_stop,
                         root: root_path,
+                        ip: addr.ip(),
                     };
                     Worker::run(stream, data, protocol).await;
                     if let Err(i) = tx.send(id) {

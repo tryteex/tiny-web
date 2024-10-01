@@ -152,8 +152,11 @@ impl Session {
                 return Session::with_key(lang_id, key, session_key);
             };
 
-            let res =
-                if data.is_empty() { BTreeMap::new() } else { bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_default() };
+            let res = if data.is_empty() {
+                BTreeMap::new()
+            } else {
+                bincode::deserialize::<BTreeMap<i64, Data>>(&data[..]).unwrap_or_else(|_| BTreeMap::new())
+            };
             Session {
                 id: session_id,
                 lang_id,
@@ -199,7 +202,7 @@ impl Session {
     pub(crate) async fn save_session(db: Arc<DB>, session: &Session, request: &Request) {
         if session.change {
             if db.in_use() {
-                let data = bincode::serialize(&session.data).unwrap_or_default();
+                let data = bincode::serialize(&session.data).unwrap_or_else(|_| Vec::new());
                 if session.id > 0 {
                     db.execute_prepare(
                         fnv1a_64!("lib_set_session"),
@@ -247,7 +250,7 @@ impl Session {
         let mut chars: Vec<char> = s.chars().collect();
         let len = chars.len();
         let rng = SystemRandom::new();
-    
+
         for i in (1..len).rev() {
             let mut buf = [0u8; 8];
             let _ = rng.fill(&mut buf);
@@ -265,7 +268,7 @@ impl Session {
         str.truncate(32);
         str
     }
-    
+
     /// Set lang_id
     pub fn set_lang_id(&mut self, lang_id: i64) {
         if self.lang_id != lang_id {

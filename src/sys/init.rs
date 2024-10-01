@@ -120,7 +120,7 @@ pub(crate) struct Config {
 }
 
 impl Config {
-    fn default(name: &str, version: &str, desc: &str) -> Config {
+    fn default(args: InitArgs) -> Config {
         let num_cpus = num_cpus::get();
         let bind_accept = AcceptAddr::Any;
         let bind = Addr::SocketAddr(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12500));
@@ -139,12 +139,15 @@ impl Config {
         let log = "tiny.log".to_owned();
         Log::set_path(log.clone());
 
+        let lang = if let Some(lang) = args.lang { lang } else { "en".to_owned() };
+        let protocol = if let Some(protocol) = args.protocol { protocol } else { WorkerType::FastCGI };
+
         Config {
             is_default: true,
-            name: name.to_owned(),
-            desc: desc.to_owned(),
-            version: version.to_owned(),
-            lang: Arc::new("en".to_owned()),
+            name: args.name.to_owned(),
+            desc: args.desc.to_owned(),
+            version: args.version.to_owned(),
+            lang: Arc::new(lang),
             max: num_cpus,
             bind_accept: Arc::new(bind_accept),
             bind,
@@ -155,7 +158,7 @@ impl Config {
             db: Arc::new(db),
             stop_signal: m_fnv1a_64!("stopsalt"),
             status_signal: m_fnv1a_64!("statussalt"),
-            protocol: WorkerType::FastCGI,
+            protocol,
             action_index: Arc::new(Route::default_index()),
             action_not_found: Arc::new(Route::default_not_found()),
             action_err: Arc::new(Route::default_err()),
@@ -210,6 +213,21 @@ pub(crate) struct Init {
     pub root_path: Arc<String>,
 }
 
+/// Startup parameters
+#[derive(Debug, Clone)]
+struct InitArgs<'a> {
+    path: Option<String>,         // -r start path for searching log file
+    protocol: Option<WorkerType>, // -p Default protoco;
+    lang: Option<String>,         // -l Default lang
+
+    file: Option<&'a str>,
+    check_salt: bool,
+    name: &'a str,
+    version: &'a str,
+    desc: &'a str,
+    allow_no_config: bool,
+}
+
 impl Init {
     /// Initializes the server configuration
     /// If the server is running in release mode, the configuration file must be in the same folder as the program.
@@ -248,14 +266,28 @@ impl Init {
         let root_path;
 
         args.next();
+
+        let mut iar = InitArgs {
+            path: None,
+            protocol: None,
+            lang: None,
+            file: None,
+            check_salt: false,
+            name,
+            version,
+            desc,
+            allow_no_config,
+        };
+
         // Check first parameter
-        // Can be mode Or root Or empty
         match args.next() {
             // first parameter is empty
             None => {
                 mode = Mode::Help;
                 (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
-                conf = Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
+                iar.file = conf_file.as_deref();
+
+                conf = Init::load_conf(iar)?;
             }
             // first parameter is not empty
             Some(arg) => {
@@ -267,44 +299,65 @@ impl Init {
                     _ => mode = Mode::Help,
                 };
                 if mode != Mode::Help {
-                    // check second parameter
-                    // if second parameter is root try to read configuration file
-                    match args.next() {
-                        // second parameter is not empty
-                        Some(c) => {
-                            // second parameter is root
-                            if c.as_str() == "-r" {
-                                match args.next() {
-                                    Some(p) => {
-                                        let file = format!("{}/tiny.toml", p);
-                                        root_path = match file.rfind('/') {
-                                            Some(i) => file[..i].to_owned(),
-                                            None => {
-                                                Log::stop(16, Some(file));
-                                                return None;
-                                            }
-                                        };
-                                        conf = Init::load_conf(Some(&root_path), mode != Mode::Help, name, version, desc, allow_no_config)?;
-                                    }
-                                    None => {
-                                        Log::stop(13, None);
-                                        return None;
+                    iar.check_salt = true;
+
+                    while let Some(command) = args.next() {
+                        if command == "-r" {
+                            match args.next() {
+                                Some(value) => {
+                                    iar.path = Some(value);
+                                }
+                                None => break,
+                            }
+                        } else if command == "-p" {
+                            match args.next() {
+                                Some(value) => {
+                                    match value.as_str() {
+                                        "FastCGI" => iar.protocol = Some(WorkerType::FastCGI),
+                                        "SCGI" => iar.protocol = Some(WorkerType::Scgi),
+                                        "uWSGI" => iar.protocol = Some(WorkerType::Uwsgi),
+                                        "FastgRPCCGI" => iar.protocol = Some(WorkerType::Grpc),
+                                        "HTTP" => iar.protocol = Some(WorkerType::Http),
+                                        "WebSocket" => iar.protocol = Some(WorkerType::WebSocket),
+                                        _ => {
+                                            Log::warning(80, Some(value.to_owned()));
+                                        }
+                                    };
+                                }
+                                None => break,
+                            }
+                        } else if command == "-l" {
+                            match args.next() {
+                                Some(value) => {
+                                    if value.len() != 2 {
+                                        Log::warning(81, Some(value));
+                                    } else {
+                                        iar.lang = Some(value);
                                     }
                                 }
-                            } else {
-                                (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
-                                conf = Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
+                                None => break,
                             }
                         }
-                        // second parameter is empty
-                        None => {
-                            (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
-                            conf = Init::load_conf(conf_file.as_deref(), mode != Mode::Help, name, version, desc, allow_no_config)?;
-                        }
-                    };
+                    }
+
+                    if let Some(path) = &iar.path {
+                        let file = format!("{}/tiny.toml", path);
+                        root_path = match file.rfind('/') {
+                            Some(i) => file[..i].to_owned(),
+                            None => {
+                                Log::stop(16, Some(file));
+                                return None;
+                            }
+                        };
+                        iar.file = Some(&root_path);
+                    } else {
+                        (conf_file, root_path) = Init::check_path(&exe_path, allow_no_config)?;
+                        iar.file = conf_file.as_deref();
+                    }
+                    conf = Init::load_conf(iar)?;
                 } else {
                     root_path = String::new();
-                    conf = Config::default(name, version, desc);
+                    conf = Config::default(iar);
                 }
             }
         };
@@ -384,23 +437,19 @@ impl Init {
     ///
     /// # Parameters
     ///
-    /// * `text: String` - Configuration string;
-    /// * `check_salt: bool` - Check salt for empty.
-    /// * `name: &str` - Name of app.
-    /// * `version: &str` - Version of app.
-    /// * `desc: &str` - Description of app.
+    /// * `iar: InitArgs` - Startup parameters
     ///
     /// # Return
     ///
     /// `Option<Config>` - Option of parsed configuration:
     ///   * `None` - Configuration contains errors;
     ///   * `Some(Config)` - is ok.
-    fn load_conf(file: Option<&str>, check_salt: bool, name: &str, version: &str, desc: &str, allow_no_config: bool) -> Option<Config> {
-        let file = match file {
+    fn load_conf(args: InitArgs) -> Option<Config> {
+        let file = match args.file {
             Some(file) => file,
             None => {
-                if allow_no_config {
-                    return Some(Config::default(name, version, desc));
+                if args.allow_no_config {
+                    return Some(Config::default(args));
                 } else {
                     Log::stop(14, None);
                     return None;
@@ -460,7 +509,7 @@ impl Init {
         };
 
         for (key, value) in text {
-            match &key[..] {
+            match key.as_str() {
                 "lang" => {
                     if let Value::String(val) = value {
                         if val.len() != 2 {
@@ -692,7 +741,7 @@ impl Init {
                 },
                 "protokol" => {
                     if let Value::String(val) = value {
-                        protocol = match &val[..] {
+                        protocol = match val.as_str() {
                             "FastCGI" => WorkerType::FastCGI,
                             "SCGI" => WorkerType::Scgi,
                             "uWSGI" => WorkerType::Uwsgi,
@@ -749,15 +798,22 @@ impl Init {
             Log::stop(59, None);
             return None;
         }
-        if check_salt && salt.is_empty() {
+        if args.check_salt && salt.is_empty() {
             Log::stop(50, None);
             return None;
         }
+        if let Some(l) = args.lang {
+            lang = l;
+        }
+        if let Some(p) = args.protocol {
+            protocol = p;
+        }
+
         let conf = Config {
             is_default: false,
-            name: name.to_owned(),
-            desc: desc.to_owned(),
-            version: version.to_owned(),
+            name: args.name.to_owned(),
+            desc: args.desc.to_owned(),
+            version: args.version.to_owned(),
             lang: Arc::new(lang),
             max,
             bind_accept: Arc::new(bind_accept),

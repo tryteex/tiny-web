@@ -1,8 +1,10 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
+use percent_encoding::percent_decode_str;
+
 use crate::sys::{
     action::ActionData,
-    request::{HttpMethod, Input, RawData, Request, WebFile},
+    request::{HttpMethod, HttpVersion, Input, RawData, Request, WebFile},
     worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
@@ -19,7 +21,7 @@ impl Net {
         // Check package size
         let mut buf = stream_read.get(SCGI_LEN_PACKAGE_SIZE);
         while buf.len() < SCGI_LEN_PACKAGE_SIZE {
-            if stream_read.read(1000).await.is_err() {
+            if stream_read.read(300).await.is_err() {
                 return;
             }
             buf = stream_read.get(SCGI_LEN_PACKAGE_SIZE);
@@ -141,7 +143,7 @@ impl Net {
         while content_len > 0 {
             max_read = min(content_len, stream.available());
             while max_read == 0 {
-                if stream.read(1000).await.is_err() {
+                if stream.read(300).await.is_err() {
                     return None;
                 }
                 max_read = min(content_len, stream.available());
@@ -195,7 +197,7 @@ impl Net {
         while header_len > 0 {
             max_read = min(header_len, stream.available());
             while max_read == 0 {
-                if stream.read(1000).await.is_err() {
+                if stream.read(300).await.is_err() {
                     return None;
                 }
                 max_read = min(header_len, stream.available());
@@ -265,7 +267,9 @@ impl Net {
                     b"DOCUMENT_ROOT" => path = val,
                     b"REDIRECT_URL" => {
                         if let Some(u) = val.split('?').next() {
-                            u.clone_into(&mut url);
+                            if let Ok(u) = percent_decode_str(u).decode_utf8() {
+                                url = u.to_string();
+                            }
                         }
                     }
                     b"QUERY_STRING" => {
@@ -275,10 +279,18 @@ impl Net {
                             for v in gets {
                                 let key: Vec<&str> = v.splitn(2, '=').collect();
                                 match key.len() {
-                                    1 => get.insert(v.to_owned(), String::new()),
-                                    _ => get.insert(unsafe { (*key.get_unchecked(0)).to_owned() }, unsafe {
-                                        (*key.get_unchecked(1)).to_owned()
-                                    }),
+                                    1 => {
+                                        if let Ok(u) = percent_decode_str(v).decode_utf8() {
+                                            get.insert(u.to_string(), String::new());
+                                        }
+                                    }
+                                    _ => {
+                                        if let Ok(u) = percent_decode_str(unsafe { key.get_unchecked(0) }).decode_utf8() {
+                                            if let Ok(v) = percent_decode_str(unsafe { key.get_unchecked(1) }).decode_utf8() {
+                                                get.insert(u.to_string(), v.to_string());
+                                            }
+                                        }
+                                    }
                                 };
                             }
                         }
@@ -321,18 +333,7 @@ impl Net {
             }
         }
         params.shrink_to_fit();
-        let method = match method.as_str() {
-            "GET" => HttpMethod::Get,
-            "HEAD" => HttpMethod::Head,
-            "POST" => HttpMethod::Post,
-            "PUT" => HttpMethod::Put,
-            "DELETE" => HttpMethod::Delete,
-            "CONNECT" => HttpMethod::Connect,
-            "OPTIONS" => HttpMethod::Options,
-            "TRACE" => HttpMethod::Trace,
-            "PATCH" => HttpMethod::Patch,
-            _ => HttpMethod::Other(method),
-        };
+        let method = method.parse().unwrap_or(HttpMethod::Get);
         let site = format!("{}://{}", scheme, host);
         Some((
             Request {
@@ -354,6 +355,7 @@ impl Net {
                     raw: RawData::None,
                 },
                 site,
+                version: HttpVersion::None,
             },
             content_type,
             session_key,

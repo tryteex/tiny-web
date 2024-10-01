@@ -1,10 +1,13 @@
+use percent_encoding::percent_decode_str;
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     fs::File,
     future::Future,
     io::{Error, Write},
     path::PathBuf,
     pin::Pin,
+    str::Utf8Error,
     sync::Arc,
 };
 use tiny_web_macro::fnv1a_64;
@@ -671,8 +674,13 @@ impl Action {
     }
 
     /// Get path of current exe file
-    pub fn get_root(&self) ->Arc<String> {
+    pub fn get_root(&self) -> Arc<String> {
         Arc::clone(&self.root)
+    }
+
+    /// Percent decode url
+    pub fn percent_decode<'a>(&self, url: &'a str) -> Result<Cow<'a, str>, Utf8Error> {
+        percent_decode_str(url).decode_utf8()
     }
 
     /// Check db connection

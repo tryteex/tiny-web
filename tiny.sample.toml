@@ -62,7 +62,7 @@ sslmode = true
 db_max = "auto"
 
 # Used net protocol
-# Maybe: FastCGI, SCGI, uWSGI (modifier1=0), gRPC, HTTP or WebSocket.
+# Maybe: FastCGI, SCGI, uWSGI (modifier1=0), or HTTP.
 protocol = "FastCGI"
 
 # Default controller for request "/" or default class or default action

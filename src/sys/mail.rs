@@ -726,7 +726,7 @@ impl Mail {
                                     let mime = match &f.mime {
                                         Some(m) => m,
                                         None => {
-                                            let (_, ext) = f.name.rsplit_once('.').unwrap_or_default();
+                                            let (_, ext) = f.name.rsplit_once('.').unwrap_or(("", ""));
                                             Mail::get_mime(ext)
                                         }
                                     };
@@ -749,7 +749,7 @@ impl Mail {
                         let mime = match &file.mime {
                             Some(m) => m,
                             None => {
-                                let (_, ext) = file.name.rsplit_once('.').unwrap_or_default();
+                                let (_, ext) = file.name.rsplit_once('.').unwrap_or(("", ""));
                                 Mail::get_mime(ext)
                             }
                         };

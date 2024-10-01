@@ -223,6 +223,8 @@ impl Log {
             77 => "The 'action_not_found' parameter in the configuration file must start with the character '/' and consist of 3 or 4 non-empty parts separated by the character '/'",
             78 => "The 'action_err' parameter in the configuration file must be a string",
             79 => "The 'action_err' parameter in the configuration file must start with the character '/' and consist of 3 or 4 non-empty parts separated by the character '/'",
+            80 => "The 'protocol' parameter in the command line must be only string: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
+            81 => "The 'lang' parameter in the command line must consist of two characters according to ISO 639-1",
 
             100 => "Error sending message",
             101 => "Error write message to the tcp stream",
@@ -260,6 +262,8 @@ impl Log {
             229 => "Load lang file",
             #[cfg(debug_assertions)]
             230 => "Load html template file",
+
+            400 => "Unsupported HTTP protocol",
 
             500 => "Unable to open server port",
             501 => "IP address from which to accept connections is not allowed",

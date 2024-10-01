@@ -1123,7 +1123,7 @@ where
                     let hash = digest::digest(algorithm, certs[0].as_ref());
                     ChannelBinding::tls_server_end_point(hash.as_ref().into())
                 })
-                .unwrap_or(ChannelBinding::none()),
+                .unwrap_or_else(ChannelBinding::none),
             _ => ChannelBinding::none(),
         }
     }

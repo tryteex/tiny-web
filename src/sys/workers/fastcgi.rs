@@ -1,8 +1,10 @@
 use std::{cmp::min, collections::HashMap, sync::Arc};
 
+use percent_encoding::percent_decode_str;
+
 use crate::sys::{
     action::ActionData,
-    request::{HttpMethod, Input, RawData, Request},
+    request::{HttpMethod, HttpVersion, Input, RawData, Request},
     worker::{StreamRead, StreamWrite, Worker, WorkerData},
 };
 
@@ -42,7 +44,6 @@ pub(crate) struct Record {
 /// # Values
 ///
 /// * `Some(Record)` - Some FastCGI value.
-/// * `Error(Vec<u8>)` - Error recognizing FastCGI record.
 /// * `StreamClose` - The stream was closed.
 #[derive(Debug)]
 pub(crate) enum RecordType {
@@ -97,7 +98,7 @@ impl Net {
                 // Loop until empty records PARAMS and STDIN are received
                 loop {
                     // Gets next Record
-                    let record = match FastCGI::read_record_raw(&mut stream_read, 1000).await {
+                    let record = match FastCGI::read_record_raw(&mut stream_read, 300).await {
                         RecordType::Some(r) => r,
                         RecordType::StreamClose => break,
                     };
@@ -271,7 +272,9 @@ impl Net {
                 b"DOCUMENT_ROOT" => path = value,
                 b"REDIRECT_URL" => {
                     if let Some(u) = value.split('?').next() {
-                        u.clone_into(&mut url);
+                        if let Ok(u) = percent_decode_str(u).decode_utf8() {
+                            url = u.to_string();
+                        }
                     }
                 }
                 b"QUERY_STRING" => {
@@ -281,8 +284,18 @@ impl Net {
                         for v in gets {
                             let key: Vec<&str> = v.splitn(2, '=').collect();
                             match key.len() {
-                                1 => get.insert(v.to_owned(), String::new()),
-                                _ => get.insert(key[0].to_owned(), key[1].to_owned()),
+                                1 => {
+                                    if let Ok(u) = percent_decode_str(v).decode_utf8() {
+                                        get.insert(u.to_string(), String::new());
+                                    }
+                                }
+                                _ => {
+                                    if let Ok(u) = percent_decode_str(unsafe { key.get_unchecked(0) }).decode_utf8() {
+                                        if let Ok(v) = percent_decode_str(unsafe { key.get_unchecked(1) }).decode_utf8() {
+                                            get.insert(u.to_string(), v.to_string());
+                                        }
+                                    }
+                                }
                             };
                         }
                     }
@@ -318,18 +331,7 @@ impl Net {
             }
         }
         params.shrink_to_fit();
-        let method = match method.as_str() {
-            "GET" => HttpMethod::Get,
-            "HEAD" => HttpMethod::Head,
-            "POST" => HttpMethod::Post,
-            "PUT" => HttpMethod::Put,
-            "DELETE" => HttpMethod::Delete,
-            "CONNECT" => HttpMethod::Connect,
-            "OPTIONS" => HttpMethod::Options,
-            "TRACE" => HttpMethod::Trace,
-            "PATCH" => HttpMethod::Patch,
-            _ => HttpMethod::Other(method),
-        };
+        let method = method.parse().unwrap_or(HttpMethod::Get);
         let site = format!("{}://{}", scheme, host);
         (
             Request {
@@ -351,6 +353,7 @@ impl Net {
                     raw: RawData::None,
                 },
                 site,
+                version: HttpVersion::None,
             },
             content_type,
             session_key,
@@ -381,7 +384,7 @@ impl Net {
         while total > 0 {
             max_read = min(total, stream.available());
             while max_read == 0 {
-                if stream.read(1000).await.is_err() {
+                if stream.read(300).await.is_err() {
                     return RecordType::StreamClose;
                 }
                 max_read = min(total, stream.available());

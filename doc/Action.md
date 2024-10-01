@@ -22,6 +22,7 @@ In this case, the following functionality will be available for the variable __t
 | 𝑓 | get | no || Getting references to data from internal memory |
 | 𝑓 | get_cpu | no || Get number of avaible CPU |
 | 𝑓 | get_root | no || Get path of current exe file |
+| 𝑓 | percent_decode | no || Percent decode url |
 | 𝑓 | take | no || Takining (removing) data from internal memory |
 | 𝑓 | set_lang | no || Setting data for rendering an HTML page from translation |
 | 𝑓 | set_lang_arr | no || Setting the array data for rendering an HTML page from translation |

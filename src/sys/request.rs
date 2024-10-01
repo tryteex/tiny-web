@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use serde_json::Value;
 
@@ -53,6 +53,14 @@ pub struct Input {
     pub raw: RawData,
 }
 
+/// Http version
+#[derive(Debug, Clone)]
+pub enum HttpVersion {
+    None,
+    HTTP1_0,
+    HTTP1_1,
+}
+
 /// Request parameters
 ///
 ///  # Values
@@ -91,10 +99,12 @@ pub struct Request {
     pub input: Input,
     /// Site name. Example: https://example.com
     pub site: String,
+    /// Http version
+    pub version: HttpVersion,
 }
 
 /// HTTP Methods
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum HttpMethod {
     Get,
     Head,
@@ -106,4 +116,22 @@ pub enum HttpMethod {
     Trace,
     Patch,
     Other(String),
+}
+impl FromStr for HttpMethod {
+    type Err = ();
+
+    fn from_str(method: &str) -> Result<Self, Self::Err> {
+        Ok(match method {
+            "GET" => HttpMethod::Get,
+            "HEAD" => HttpMethod::Head,
+            "POST" => HttpMethod::Post,
+            "PUT" => HttpMethod::Put,
+            "DELETE" => HttpMethod::Delete,
+            "CONNECT" => HttpMethod::Connect,
+            "OPTIONS" => HttpMethod::Options,
+            "TRACE" => HttpMethod::Trace,
+            "PATCH" => HttpMethod::Patch,
+            _ => HttpMethod::Other(method.to_owned()),
+        })
+    }
 }
