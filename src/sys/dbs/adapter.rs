@@ -105,7 +105,7 @@ impl DB {
         return MsSql::check_db(config).await;
 
         #[cfg(not(any(feature = "pgsql", feature = "mssql")))]
-        return Ok(());
+        return Ok(String::new());
     }
 
     /// Execute query to database synchronously

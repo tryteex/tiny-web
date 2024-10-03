@@ -14,6 +14,9 @@ For __Development__, each project should be structured as follows:
     │           ├── html___.html
     │           └── lang.___
     ├── www/
+    ├── ssl/
+    │   ├── certificate.crt
+    │   └── privateKey.key
     ├── src/
     │   ├── main.rs
     │   └── app/
@@ -29,6 +32,9 @@ For __Production__, each project should be structured as follows:
     ├── bin/
     │   ├── tiny-shop.exe
     │   ├── tiny.toml
+    │   ├── ssl/
+    │   │   ├── certificate.crt
+    │   │   └── privateKey.key
     │   └── app/
     │       └── module___/
     │           └── class___/

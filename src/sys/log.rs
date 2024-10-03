@@ -207,7 +207,6 @@ impl Log {
             57 => "The 'db_port' parameter in the configuration file must be bool. If true sslmode is requeres",
             58 => "The 'db_max' parameter in the configuration file must be usize and greater than 0 or \"auto\"",
             59 => "The 'db_host' parameter in the configuration file can't be empty",
-            60 => "The 'protocol' parameter in the configuration file must be only string: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
             61 => "The 'log' parameter in the configuration file must be a string",
             62 => "The 'salt' parameter in the configuration file must be a string",
             63 => "The 'db_host' parameter in the configuration file must be a string",
@@ -215,7 +214,6 @@ impl Log {
             65 => "The 'db_user' parameter in the configuration file must be a string",
             66 => "The 'db_pwd' parameter in the configuration file must be a string",
             67 => "The 'sslmode' parameter in the configuration file can be a bool",
-            68 => "The 'protocol' parameter in the configuration file must be a string",
             71 => "The 'session' parameter in the configuration file must be a string",
             74 => "The 'action_index' parameter in the configuration file must be a string",
             75 => "The 'action_index' parameter in the configuration file must start with the character '/' and consist of 3 or 4 non-empty parts separated by the character '/'",
@@ -223,13 +221,11 @@ impl Log {
             77 => "The 'action_not_found' parameter in the configuration file must start with the character '/' and consist of 3 or 4 non-empty parts separated by the character '/'",
             78 => "The 'action_err' parameter in the configuration file must be a string",
             79 => "The 'action_err' parameter in the configuration file must start with the character '/' and consist of 3 or 4 non-empty parts separated by the character '/'",
-            80 => "The 'protocol' parameter in the command line must be only string: 'FastCGI, SCGI, uWSGI, gRPC, HTTP or WebSocket'",
             81 => "The 'lang' parameter in the command line must consist of two characters according to ISO 639-1",
 
             100 => "Error sending message",
             101 => "Error write message to the tcp stream",
             102 => "Error wait join handle",
-            // 103 => "Error wait join handle",
 
             200 => "Start",
             201 => "Stop",
@@ -262,6 +258,7 @@ impl Log {
             229 => "Load lang file",
             #[cfg(debug_assertions)]
             230 => "Load html template file",
+            231 => "Couldn't get client",
 
             400 => "Unsupported HTTP protocol",
 
@@ -272,6 +269,7 @@ impl Log {
             504 => "Critical socket operation error",
             505 => "An error occurred while waiting for the threads to abort",
             506 => "Can't set TCP_NODELAY", 
+            507 => "Can't load SSL certicertificate or private key files", 
 
             600 => "Can't create tlsconnector to database",
             601 => "Can't connect to database",
@@ -311,6 +309,8 @@ impl Log {
             2004 => "The temporary file is partially written",
             2005 => "Clock may have gone backwards",
             2006 => "System error with buffer",
+            #[cfg(feature = "https")]
+            2007 => "A wrapper around a rustls::ServerConfig, providing an async accept method cannot accept an https stream",
 
             // Ation engine
             3000 => "Wrong cache type key of Redirect",

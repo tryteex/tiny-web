@@ -118,15 +118,6 @@ Example:
 * `db_max = 2`
 * `db_max = 24`
 
-### protocol
-Used net protocol. Maybe: FastCGI, SCGI, uWSGI (modifier1=0), or HTTP.
-
-Example:
-* `protocol = "FastCGI"`
-* `protocol = "SCGI"`
-* `protocol = "uWSGI"`
-* `protocol = "HTTP"`
-
 ### action_index
 Default controller for request "/" or default class or default action.
 

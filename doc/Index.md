@@ -1,5 +1,5 @@
 # tiny-web library
-This asynchronous library is designed for creating the server-side (back-end) of a web application (site). Users get the minimum necessary functionality for quickly writing web controllers. The library should not be applied to handling user web requests directly; it is intended to be behind a reliable web server. Developers are advised to use it with the Nginx server through the Fast CGI protocol. In the future, support for other network protocols is planned.
+This asynchronous library is designed for creating the server-side (back-end) of a web application (site). Users get the minimum necessary functionality for quickly writing web controllers. The library should not be applied to handling user web requests directly; it is intended to be behind a reliable web server. Developers are advised to use it with the Nginx server through the FastCGI, SCGI, UWSGI (modifier1=0) and HTTP protocols.
 
 To implement functionality using this library, mandatory interaction with the Postgresql database server is required. Support for other databases is unlikely. Developers must be able to write raw SQL queries for data manipulation.
 
@@ -24,6 +24,7 @@ This library is developed in parallel with an internet store (marketplace), and 
 * Response [https://github.com/tryteex/tiny-web/blob/main/doc/Response.md](https://github.com/tryteex/tiny-web/blob/main/doc/Response.md)
 * Email system [https://github.com/tryteex/tiny-web/blob/main/doc/Email.md](https://github.com/tryteex/tiny-web/blob/main/doc/Email.md)
 * First-Time start [https://github.com/tryteex/tiny-web/blob/main/doc/First.md](https://github.com/tryteex/tiny-web/blob/main/doc/First.md)
+* Network protocols [https://github.com/tryteex/tiny-web/blob/main/doc/Net.md](https://github.com/tryteex/tiny-web/blob/main/doc/Net.md)
 * Configuring nginx [https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md](https://github.com/tryteex/tiny-web/blob/main/doc/Nginx.md)
 * Example [https://github.com/tryteex/tiny-web/blob/main/doc/Example.md](https://github.com/tryteex/tiny-web/blob/main/doc/Example.md)
 * Todo [Thttps://github.com/tryteex/tiny-web/blob/main/doc/odo.md](https://github.com/tryteex/tiny-web/blob/main/doc/Todo.md)

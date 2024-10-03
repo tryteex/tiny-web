@@ -87,7 +87,6 @@ impl Go {
         let session_key = Arc::clone(&init.conf.session);
         let salt = Arc::clone(&init.conf.salt);
         let engine_data = func();
-        let protocol = init.conf.protocol.clone();
 
         let action_index = Arc::clone(&init.conf.action_index);
         let action_not_found = Arc::clone(&init.conf.action_not_found);
@@ -99,9 +98,18 @@ impl Go {
         let signal_stop =
             if db.in_use() { None } else { Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal, Arc::clone(&init.exe_path))) };
 
+        #[cfg(feature = "https")]
+        let acceptor = match Worker::load_cert(Arc::clone(&root_path)) {
+            Ok(acceptor) => acceptor,
+            Err(e) => {
+                Log::stop(507, Some(e.to_string()));
+                return None;
+            }
+        };
+
         let main = tokio::spawn(async move {
             #[cfg(not(debug_assertions))]
-            let lang = Arc::new(Lang::new(&root_path, &lang, &mut db).await);
+            let lang = Arc::new(Lang::new(Arc::clone(&root_path), &lang, &mut db).await);
 
             #[cfg(debug_assertions)]
             let lang = Arc::new(RwLock::new(Lang::new(Arc::clone(&root_path), &lang, &mut db).await));
@@ -118,7 +126,6 @@ impl Go {
             let session_key = Arc::clone(&session_key);
             let salt = Arc::clone(&salt);
             let mail = Arc::new(Mutex::new(Mail::new(Arc::clone(&db)).await));
-            let protocol = Arc::new(protocol);
 
             let action_index = Arc::clone(&action_index);
             let action_not_found = Arc::clone(&action_not_found);
@@ -130,6 +137,8 @@ impl Go {
             };
 
             let root_path = Arc::clone(&root_path);
+            #[cfg(feature = "https")]
+            let acceptor = Arc::clone(&acceptor);
 
             // Started (accepted) threads
             let handles = Arc::new(Mutex::new(BTreeMap::new()));
@@ -169,7 +178,6 @@ impl Go {
                 let session_key = Arc::clone(&session_key);
                 let salt = Arc::clone(&salt);
                 let mail = Arc::clone(&mail);
-                let protocol = Arc::clone(&protocol);
                 let action_index = Arc::clone(&action_index);
                 let action_not_found = Arc::clone(&action_not_found);
                 let action_err = Arc::clone(&action_err);
@@ -178,6 +186,8 @@ impl Go {
                     None => None,
                 };
                 let root_path = Arc::clone(&root_path);
+                #[cfg(feature = "https")]
+                let acceptor = Arc::clone(&acceptor);
 
                 let handle = tokio::spawn(async move {
                     let id = counter;
@@ -208,9 +218,12 @@ impl Go {
                         action_err,
                         stop: signal_stop,
                         root: root_path,
+                        #[cfg(any(feature = "http", feature = "https"))]
                         ip: addr.ip(),
+                        #[cfg(feature = "https")]
+                        acceptor,
                     };
-                    Worker::run(stream, data, protocol).await;
+                    Worker::run(stream, data).await;
                     if let Err(i) = tx.send(id) {
                         Log::error(502, Some(i.to_string()));
                     }
@@ -259,7 +272,13 @@ impl Go {
         };
         loop {
             // accept rpc
-            let (mut stream, addr) = rpc.accept().await.unwrap();
+            let (mut stream, addr) = match rpc.accept().await {
+                Ok(acpt) => acpt,
+                Err(e) => {
+                    Log::warning(231, Some(e.to_string()));
+                    continue;
+                }
+            };
             if let AcceptAddr::IpAddr(ip) = conf.rpc_accept {
                 if addr.ip() != ip {
                     Log::warning(203, Some(addr.ip().to_string()));

@@ -1,14 +1,14 @@
-use core::str;
-use std::{cmp::min, collections::HashMap, io::Error, net::IpAddr, sync::Arc};
+use core::{fmt, str};
+use std::{cmp::min, collections::HashMap, io::Error, sync::Arc};
+
+#[cfg(any(feature = "http", feature = "https"))]
+use std::net::IpAddr;
 
 use chrono::{TimeDelta, Utc};
 use serde_json::Value;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
-        TcpStream,
-    },
+    net::TcpStream,
     sync::{
         mpsc::{self, Sender},
         Mutex,
@@ -16,8 +16,13 @@ use tokio::{
     task::JoinHandle,
 };
 
+#[cfg(not(feature = "https"))]
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+
 #[cfg(debug_assertions)]
 use tokio::sync::RwLock;
+#[cfg(feature = "https")]
+use tokio_rustls::TlsAcceptor;
 
 use super::{
     action::{ActMap, Action, ActionData, Answer},
@@ -31,8 +36,16 @@ use super::{
     mail::Mail,
     request::{HttpVersion, RawData, WebFile},
     route::Route,
-    workers::{fastcgi, grpc, http, scgi, uwsgi, websocket},
 };
+
+#[cfg(feature = "fastcgi")]
+use super::workers::fastcgi;
+#[cfg(any(feature = "http", feature = "https"))]
+use super::workers::http;
+#[cfg(feature = "scgi")]
+use super::workers::scgi;
+#[cfg(feature = "uwsgi")]
+use super::workers::uwsgi;
 
 /// Buffer for read data from TcpStream
 pub const BUFFER_SIZE: usize = 8192;
@@ -44,34 +57,7 @@ const ONE_YEAR: i64 = 31622400;
 #[derive(Debug)]
 pub(crate) struct Worker;
 
-/// Worker type
-///
-/// # Values
-///
-/// * `FastCGI` - FastCGI protocol.
-/// * `Uwsgi` - UWSGI protocol.
-/// * `Grpc` - GRPC protocol.
-/// * `Scgi` - SCGI protocol.
-/// * `Http` - HTTP protocol.
-/// * `WebSocket` - WebSocket protocol.
-#[derive(Debug, Clone)]
-pub(crate) enum WorkerType {
-    /// FastCGI protocol.
-    FastCGI,
-    /// UWSGI protocol.
-    Uwsgi,
-    /// GRPC protocol.
-    Grpc,
-    /// SCGI protocol.
-    Scgi,
-    /// HTTP or WebSocket protocol.
-    Http,
-    /// WebSocket
-    WebSocket,
-}
-
 /// General data
-#[derive(Debug)]
 pub(crate) struct WorkerData {
     /// Engine - binary tree of controller functions.
     pub engine: Arc<ActMap>,
@@ -108,7 +94,11 @@ pub(crate) struct WorkerData {
     /// The full path to the folder where the server was started.
     pub(crate) root: Arc<String>,
     /// Remote IP
+    #[cfg(any(feature = "http", feature = "https"))]
     pub(crate) ip: IpAddr,
+    /// A wrapper around a rustls::ServerConfig, providing an async accept method
+    #[cfg(feature = "https")]
+    pub(crate) acceptor: Arc<TlsAcceptor>,
 }
 
 /// A network stream errors
@@ -126,7 +116,11 @@ pub(crate) enum StreamError {
 /// Half of the network to read
 pub(crate) struct StreamRead {
     /// A Tokio network stream
+    #[cfg(not(feature = "https"))]
     tcp: OwnedReadHalf,
+    /// A Tokio network stream
+    #[cfg(feature = "https")]
+    tcp: tokio::io::ReadHalf<tokio_rustls::server::TlsStream<TcpStream>>,
     /// Reading buffer
     buf: [u8; BUFFER_SIZE],
     /// The number of bytes in the buffer
@@ -225,7 +219,10 @@ pub(crate) enum MessageWrite {
 }
 
 impl StreamWrite {
-    pub async fn new(mut tcp: OwnedWriteHalf, protocol: Arc<WorkerType>) -> (Arc<StreamWrite>, JoinHandle<()>) {
+    pub async fn new(
+        #[cfg(not(feature = "https"))] mut tcp: OwnedWriteHalf,
+        #[cfg(feature = "https")] mut tcp: tokio::io::WriteHalf<tokio_rustls::server::TlsStream<TcpStream>>,
+    ) -> (Arc<StreamWrite>, JoinHandle<()>) {
         let (tx, mut rx) = mpsc::channel(32);
         let stream = Arc::new(StreamWrite { tx: Arc::new(tx) });
 
@@ -233,14 +230,15 @@ impl StreamWrite {
             while let Some(message) = rx.recv().await {
                 match message {
                     MessageWrite::Message(message, end) => {
-                        let data = match protocol.as_ref() {
-                            WorkerType::FastCGI => fastcgi::Net::write(message, end),
-                            WorkerType::Uwsgi => uwsgi::Net::write(message, end),
-                            WorkerType::Grpc => grpc::Net::write(message, end),
-                            WorkerType::Scgi => scgi::Net::write(message, end),
-                            WorkerType::Http => http::Net::write(message, end),
-                            WorkerType::WebSocket => websocket::Net::write(message, end),
-                        };
+                        #[cfg(feature = "fastcgi")]
+                        let data = fastcgi::Net::write(message, end);
+                        #[cfg(feature = "uwsgi")]
+                        let data = uwsgi::Net::write(message, end);
+                        #[cfg(feature = "scgi")]
+                        let data = scgi::Net::write(message, end);
+                        #[cfg(any(feature = "http", feature = "https"))]
+                        let data = http::Net::write(message, end);
+
                         if let Err(e) = tcp.write_all(&data).await {
                             Log::warning(101, Some(e.to_string()));
                         }
@@ -276,16 +274,29 @@ impl Worker {
     ///
     /// * `stream: TcpStream` - Tokio tcp stream.
     /// * `data: WorkerData` - General data for the web engine.
-    /// * `protocol: Arc<WorkerType>` - Used protocol.
-    pub async fn run(stream: TcpStream, data: WorkerData, protocol: Arc<WorkerType>) {
+    pub async fn run(stream: TcpStream, data: WorkerData) {
+        #[cfg(not(feature = "https"))]
         let (read, write) = stream.into_split();
+        #[cfg(feature = "https")]
+        let (read, write) = {
+            let tls_stream = match data.acceptor.accept(stream).await {
+                Ok(stream) => stream,
+                Err(e) => {
+                    Log::warning(2007, Some(e.to_string()));
+                    return;
+                }
+            };
+            let (tls_read, tls_write) = tokio::io::split(tls_stream);
+            (tls_read, tls_write)
+        };
+
         let mut stream_read = StreamRead {
             tcp: read,
             buf: [0; BUFFER_SIZE],
             len: 0,
             shift: 0,
         };
-        let (stream_write, handle) = StreamWrite::new(write, Arc::clone(&protocol)).await;
+        let (stream_write, handle) = StreamWrite::new(write).await;
         let tx = Arc::clone(&stream_write.tx);
         if let Err(e) = stream_read.read(300).await {
             match e {
@@ -302,14 +313,15 @@ impl Worker {
             }
             return;
         }
-        match protocol.as_ref() {
-            WorkerType::FastCGI => fastcgi::Net::run(stream_read, stream_write, data).await,
-            WorkerType::Uwsgi => uwsgi::Net::run(stream_read, stream_write, data).await,
-            WorkerType::Grpc => grpc::Net::run(stream_read, stream_write, data).await,
-            WorkerType::Scgi => scgi::Net::run(stream_read, stream_write, data).await,
-            WorkerType::Http => http::Net::run(stream_read, stream_write, data).await,
-            WorkerType::WebSocket => websocket::Net::run(stream_read, stream_write, data).await,
-        }
+        #[cfg(feature = "fastcgi")]
+        fastcgi::Net::run(stream_read, stream_write, data).await;
+        #[cfg(feature = "uwsgi")]
+        uwsgi::Net::run(stream_read, stream_write, data).await;
+        #[cfg(feature = "scgi")]
+        scgi::Net::run(stream_read, stream_write, data).await;
+        #[cfg(any(feature = "http", feature = "https"))]
+        http::Net::run(stream_read, stream_write, data).await;
+
         StreamWrite::end(handle, tx).await;
     }
 
@@ -400,6 +412,7 @@ impl Worker {
             HttpVersion::None => "Status:",
             HttpVersion::HTTP1_0 => "HTTP/1.0",
             HttpVersion::HTTP1_1 => "HTTP/1.1",
+            HttpVersion::HTTP2 => "HTTP/2",
         };
 
         let mut action = match Action::new(data).await {
@@ -476,6 +489,7 @@ impl Worker {
             HttpVersion::None => "Status:",
             HttpVersion::HTTP1_0 => "HTTP/1.0",
             HttpVersion::HTTP1_1 => "HTTP/1.1",
+            HttpVersion::HTTP2 => "HTTP/2",
         };
 
         // Write status
@@ -677,5 +691,122 @@ impl Worker {
                 };
             }
         }
+    }
+
+    #[cfg(feature = "https")]
+    pub fn load_cert(root: Arc<String>) -> Result<Arc<TlsAcceptor>, Error> {
+        use std::{
+            fs::File,
+            io::{BufReader, ErrorKind},
+        };
+
+        use rustls::{
+            pki_types::{CertificateDer, PrivateKeyDer},
+            ServerConfig,
+        };
+        use rustls_pemfile::{certs, read_all, Item};
+
+        let mut cert_file = BufReader::new(File::open(format!("{root}/ssl/certificate.crt"))?);
+        let mut key_file = BufReader::new(File::open(format!("{root}/ssl/privateKey.key"))?);
+
+        let certs = certs(&mut cert_file).collect::<Result<Vec<CertificateDer<'static>>, Error>>()?;
+
+        let pem_files = match read_all(&mut key_file).next() {
+            Some(file) => file?,
+            None => return Err(Error::new(ErrorKind::Other, format!("Private key not found in file {root}/ssl/privateKey.key",))),
+        };
+        let key = match pem_files {
+            Item::Pkcs1Key(key) => PrivateKeyDer::Pkcs1(key),
+            Item::Pkcs8Key(key) => PrivateKeyDer::Pkcs8(key),
+            Item::Sec1Key(key) => PrivateKeyDer::Sec1(key),
+            e => return Err(Error::new(ErrorKind::Other, format!("Private key not support {:?} in file {root}/ssl/privateKey.key", e))),
+        };
+
+        let tls_config = match ServerConfig::builder().with_no_client_auth().with_single_cert(certs, key) {
+            Ok(config) => Arc::new(config),
+            Err(e) => return Err(Error::new(ErrorKind::Other, e)),
+        };
+
+        Ok(Arc::new(TlsAcceptor::from(tls_config)))
+    }
+}
+
+impl fmt::Debug for WorkerData {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        let WorkerData {
+            engine,
+            lang,
+            html,
+            cache,
+            db,
+            session_key,
+            salt,
+            mail,
+            action_index,
+            action_not_found,
+            action_err,
+            stop,
+            root,
+            #[cfg(any(feature = "http", feature = "https"))]
+            ip,
+            #[cfg(feature = "https")]
+                acceptor: _,
+        } = self;
+        #[cfg(feature = "https")]
+        let res = f
+            .debug_struct("WorkerData")
+            .field("engine", &engine)
+            .field("lang", &lang)
+            .field("html", &html)
+            .field("cache", &cache)
+            .field("db", &db)
+            .field("session_key", &session_key)
+            .field("salt", &salt)
+            .field("mail", &mail)
+            .field("action_index", &action_index)
+            .field("action_not_found", &action_not_found)
+            .field("action_err", &action_err)
+            .field("stop", &stop)
+            .field("root", &root)
+            .field("ip", &ip)
+            .field("acceptor", &"Not implemented")
+            .finish();
+        #[cfg(feature = "http")]
+        let res = f
+            .debug_struct("WorkerData")
+            .field("engine", &engine)
+            .field("lang", &lang)
+            .field("html", &html)
+            .field("cache", &cache)
+            .field("db", &db)
+            .field("session_key", &session_key)
+            .field("salt", &salt)
+            .field("mail", &mail)
+            .field("action_index", &action_index)
+            .field("action_not_found", &action_not_found)
+            .field("action_err", &action_err)
+            .field("stop", &stop)
+            .field("root", &root)
+            .field("ip", &ip)
+            .field("acceptor", &"Not implemented")
+            .finish();
+        #[cfg(not(any(feature = "http", feature = "https")))]
+        let res = f
+            .debug_struct("WorkerData")
+            .field("engine", &engine)
+            .field("lang", &lang)
+            .field("html", &html)
+            .field("cache", &cache)
+            .field("db", &db)
+            .field("session_key", &session_key)
+            .field("salt", &salt)
+            .field("mail", &mail)
+            .field("action_index", &action_index)
+            .field("action_not_found", &action_not_found)
+            .field("action_err", &action_err)
+            .field("stop", &stop)
+            .field("root", &root)
+            .finish();
+        res
     }
 }

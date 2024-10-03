@@ -72,6 +72,7 @@ pub struct Lang {
     #[cfg(debug_assertions)]
     hash: i128,
     /// Path to langs' files
+    #[cfg(debug_assertions)]
     pub(crate) root: Arc<String>,
     /// List of lang codes
     codes: BTreeMap<String, i64>,
@@ -134,6 +135,7 @@ impl Lang {
                 last: last_time,
                 #[cfg(debug_assertions)]
                 hash: 0,
+                #[cfg(debug_assertions)]
                 root,
                 codes,
             };
@@ -154,6 +156,7 @@ impl Lang {
             last: last_time,
             #[cfg(debug_assertions)]
             hash: 0,
+            #[cfg(debug_assertions)]
             root,
             codes,
         };

@@ -54,11 +54,12 @@ pub struct Input {
 }
 
 /// Http version
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HttpVersion {
     None,
     HTTP1_0,
     HTTP1_1,
+    HTTP2,
 }
 
 /// Request parameters

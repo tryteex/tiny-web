@@ -22,6 +22,8 @@ impl Help {
         status        : show server status
         help          : show this help
         
+    Keys:
+        -r            : path to root folder, where located the conf file
     ",
             name
         );

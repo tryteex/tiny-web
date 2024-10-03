@@ -97,6 +97,10 @@ impl Net {
             // Run main controller
             let answer = Worker::call_action(data).await;
             stream_write.write(answer).await;
+
+            if header.version == HttpVersion::HTTP1_0 {
+                break;
+            }
         }
     }
 
@@ -366,6 +370,7 @@ impl Net {
                     Some(version) => match version {
                         "HTTP/1.0" => head.version = HttpVersion::HTTP1_0,
                         "HTTP/1.1" => head.version = HttpVersion::HTTP1_1,
+                        //"HTTP/2" => head.version = HttpVersion::HTTP2,
                         _ => {
                             Log::warning(400, Some(version.to_owned()));
                         }

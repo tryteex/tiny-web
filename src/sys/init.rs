@@ -12,7 +12,7 @@ use toml::{Table, Value};
 use crate::fnv1a_64;
 use tiny_web_macro::fnv1a_64 as m_fnv1a_64;
 
-use super::{log::Log, route::Route, worker::WorkerType};
+use super::{log::Log, route::Route};
 
 /// Responsible for the IP address that should be accepted.
 ///
@@ -109,8 +109,6 @@ pub(crate) struct Config {
     pub stop_signal: i64,
     /// Status signal
     pub status_signal: i64,
-    /// Protocol
-    pub protocol: WorkerType,
     /// Default controller for request "/" or default class or default action
     pub action_index: Arc<Route>,
     /// Default controller for 404 Not Found
@@ -140,7 +138,6 @@ impl Config {
         Log::set_path(log.clone());
 
         let lang = if let Some(lang) = args.lang { lang } else { "en".to_owned() };
-        let protocol = if let Some(protocol) = args.protocol { protocol } else { WorkerType::FastCGI };
 
         Config {
             is_default: true,
@@ -158,7 +155,6 @@ impl Config {
             db: Arc::new(db),
             stop_signal: m_fnv1a_64!("stopsalt"),
             status_signal: m_fnv1a_64!("statussalt"),
-            protocol,
             action_index: Arc::new(Route::default_index()),
             action_not_found: Arc::new(Route::default_not_found()),
             action_err: Arc::new(Route::default_err()),
@@ -216,9 +212,8 @@ pub(crate) struct Init {
 /// Startup parameters
 #[derive(Debug, Clone)]
 struct InitArgs<'a> {
-    path: Option<String>,         // -r start path for searching log file
-    protocol: Option<WorkerType>, // -p Default protoco;
-    lang: Option<String>,         // -l Default lang
+    path: Option<String>, // -r start path for searching log file
+    lang: Option<String>, // -l Default lang
 
     file: Option<&'a str>,
     check_salt: bool,
@@ -269,7 +264,6 @@ impl Init {
 
         let mut iar = InitArgs {
             path: None,
-            protocol: None,
             lang: None,
             file: None,
             check_salt: false,
@@ -306,23 +300,6 @@ impl Init {
                             match args.next() {
                                 Some(value) => {
                                     iar.path = Some(value);
-                                }
-                                None => break,
-                            }
-                        } else if command == "-p" {
-                            match args.next() {
-                                Some(value) => {
-                                    match value.as_str() {
-                                        "FastCGI" => iar.protocol = Some(WorkerType::FastCGI),
-                                        "SCGI" => iar.protocol = Some(WorkerType::Scgi),
-                                        "uWSGI" => iar.protocol = Some(WorkerType::Uwsgi),
-                                        "FastgRPCCGI" => iar.protocol = Some(WorkerType::Grpc),
-                                        "HTTP" => iar.protocol = Some(WorkerType::Http),
-                                        "WebSocket" => iar.protocol = Some(WorkerType::WebSocket),
-                                        _ => {
-                                            Log::warning(80, Some(value.to_owned()));
-                                        }
-                                    };
                                 }
                                 None => break,
                             }
@@ -485,7 +462,6 @@ impl Init {
         let mut salt = String::new();
         let mut stop_signal = 0;
         let mut status_signal = 0;
-        let mut protocol = WorkerType::FastCGI;
 
         let mut db = DBConfig {
             host: String::new(),
@@ -739,24 +715,6 @@ impl Init {
                         Log::warning(58, Some(value.to_string()));
                     }
                 },
-                "protokol" => {
-                    if let Value::String(val) = value {
-                        protocol = match val.as_str() {
-                            "FastCGI" => WorkerType::FastCGI,
-                            "SCGI" => WorkerType::Scgi,
-                            "uWSGI" => WorkerType::Uwsgi,
-                            "FastgRPCCGI" => WorkerType::Grpc,
-                            "HTTP" => WorkerType::Http,
-                            "WebSocket" => WorkerType::WebSocket,
-                            _ => {
-                                Log::warning(60, Some(val.to_owned()));
-                                WorkerType::FastCGI
-                            }
-                        }
-                    } else {
-                        Log::warning(68, Some(value.to_string()));
-                    }
-                }
                 "action_index" => {
                     if let Value::String(val) = &value {
                         if let Some(route) = Route::parse(val) {
@@ -805,9 +763,6 @@ impl Init {
         if let Some(l) = args.lang {
             lang = l;
         }
-        if let Some(p) = args.protocol {
-            protocol = p;
-        }
 
         let conf = Config {
             is_default: false,
@@ -825,7 +780,6 @@ impl Init {
             db: Arc::new(db),
             stop_signal,
             status_signal,
-            protocol,
             action_index: Arc::new(action_index),
             action_not_found: Arc::new(action_not_found),
             action_err: Arc::new(action_err),
