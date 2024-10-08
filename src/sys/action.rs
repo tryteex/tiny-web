@@ -2,9 +2,7 @@ use percent_encoding::percent_decode_str;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
-    fs::File,
     future::Future,
-    io::{Error, Write},
     path::PathBuf,
     pin::Pin,
     str::Utf8Error,
@@ -24,12 +22,11 @@ use tokio::sync::RwLock;
 use crate::{fnv1a_64, StrOrI64};
 
 use super::{
-    app::App,
     cache::{Cache, CacheSys},
     data::Data,
     dbs::adapter::DB,
     html::{Html, Nodes},
-    init::{Addr, DBConfig},
+    init::Addr,
     lang::{Lang, LangItem},
     log::Log,
     mail::{Mail, MailMessage},
@@ -37,6 +34,7 @@ use super::{
     response::{Redirect, Response},
     route::Route,
     session::{Flash, Session},
+    tool::Tool,
     worker::{MessageWrite, Worker},
 };
 
@@ -109,7 +107,7 @@ pub(crate) struct ActionData {
     /// Default controller for error_route
     pub(crate) action_err: Arc<Route>,
     /// Stop signal
-    pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
+    pub(crate) stop: Option<(Arc<Addr>, i64)>,
     /// The full path to the folder where the server was started.
     pub(crate) root: Arc<String>,
 }
@@ -196,8 +194,6 @@ pub struct Action {
     pub db: Arc<DB>,
     /// Mail function
     mail: Arc<Mutex<Mail>>,
-    /// The full path to the folder where the server was started.
-    root: Arc<String>,
 
     /// Internal call of controller
     pub internal: bool,
@@ -209,8 +205,8 @@ pub struct Action {
 
     /// Default controller for 404 Not Found
     not_found: Arc<Route>,
-    /// Stop signal
-    stop: Option<(Arc<Addr>, i64, Arc<String>)>,
+    /// Different features
+    pub tool: Tool,
 }
 
 impl Action {
@@ -309,7 +305,7 @@ impl Action {
             language: data.lang,
             template: data.html,
             cache: Cache::new(data.cache),
-            db: data.db,
+            db: Arc::clone(&data.db),
             mail: data.mail,
 
             internal: false,
@@ -317,9 +313,7 @@ impl Action {
             tx: data.tx,
             header_send: false,
             not_found: data.action_not_found,
-
-            stop: data.stop,
-            root: data.root,
+            tool: Tool::new(data.db, data.stop, data.root),
         })
     }
 
@@ -529,19 +523,6 @@ impl Action {
         }
     }
 
-    /// Restart the web server after creating the configuration file
-    pub fn install_end(&mut self, conf: String) -> Result<(), Error> {
-        if !self.db.in_use() {
-            if let Some((rpc, stop, path)) = self.stop.take() {
-                let mut file = File::create(format!("{}/tiny.toml", path))?;
-                file.write_all(conf.as_bytes())?;
-
-                App::stop(rpc, stop);
-            }
-        }
-        Ok(())
-    }
-
     /// Render template
     ///
     /// # Value
@@ -668,43 +649,9 @@ impl Action {
         Mail::send(provider, Arc::clone(&self.db), message, self.session.user_id, self.request.host.clone()).await
     }
 
-    /// Get number of avaible CPU
-    pub fn get_cpu(&self) -> usize {
-        num_cpus::get()
-    }
-
-    /// Get path of current exe file
-    pub fn get_root(&self) -> Arc<String> {
-        Arc::clone(&self.root)
-    }
-
     /// Percent decode url
     pub fn percent_decode<'a>(&self, url: &'a str) -> Result<Cow<'a, str>, Utf8Error> {
         percent_decode_str(url).decode_utf8()
-    }
-
-    /// Check db connection
-    pub async fn check_db(&self, host: &str, port: u16, name: &str, user: &str, pwd: &str, ssl: bool) -> Result<String, String> {
-        let config = DBConfig {
-            host: host.to_owned(),
-            port: if port == 0 { None } else { Some(port) },
-            name: name.to_owned(),
-            user: if user.is_empty() { None } else { Some(user.to_owned()) },
-            pwd: if pwd.is_empty() { None } else { Some(pwd.to_owned()) },
-            sslmode: ssl,
-            max: 0,
-        };
-        DB::check_db(&config).await
-    }
-
-    /// Get database type
-    pub fn get_db_type(&self) -> &'static str {
-        #[cfg(feature = "pgsql")]
-        return "PostgreSQL";
-        #[cfg(feature = "mssql")]
-        return "MS Sql Server";
-        #[cfg(not(any(feature = "pgsql", feature = "mssql")))]
-        return "Not defined";
     }
 
     /// Get not_found url
@@ -794,7 +741,7 @@ impl Action {
     }
 
     /// Finish work of controller
-    pub(crate) async fn end(action: Action) {
+    pub(crate) async fn end(mut action: Action) {
         // Save session
         Session::save_session(action.db, &action.session, &action.request).await;
         // Remove temp file
@@ -804,6 +751,9 @@ impl Action {
                     Log::warning(1103, Some(format!("filename={}. Error={}", &f.tmp.display(), e)));
                 };
             }
+        }
+        if action.tool.install_end {
+            action.tool.stop();
         }
     }
 

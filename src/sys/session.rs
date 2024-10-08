@@ -141,7 +141,7 @@ impl Session {
             } else {
                 return Session::with_key(lang_id, key, session_key);
             };
-            let data = if let Data::Raw(val) = unsafe { row.get_unchecked(2) } {
+            let data = if let Data::Raw(val) = unsafe { row.get_unchecked(3) } {
                 val.to_owned()
             } else {
                 return Session::with_key(lang_id, key, session_key);

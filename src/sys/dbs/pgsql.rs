@@ -15,11 +15,7 @@ use postgres::{
     Column, Error, NoTls, Row, Statement, ToStatement,
 };
 use ring::digest;
-use rustls::{
-    client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
-    pki_types::{CertificateDer, ServerName, UnixTime},
-    ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme,
-};
+use rustls::{pki_types::ServerName, ClientConfig, RootCertStore};
 use serde_json::Value;
 use tiny_web_macro::fnv1a_64;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -33,7 +29,7 @@ use x509_certificate::{
 
 use crate::sys::{data::Data, init::DBConfig, log::Log};
 
-use super::adapter::{KeyOrQuery, StrOrI64OrUSize};
+use super::adapter::{KeyOrQuery, NoCertificateVerification, StrOrI64OrUSize};
 
 /// Response to the result of the query
 #[derive(Debug)]
@@ -152,7 +148,7 @@ impl PgSql {
         Ok((sql_conn, tls))
     }
 
-    pub(crate) async fn check_db(config: &DBConfig) -> Result<String, String> {
+    pub(crate) async fn check_db(config: &DBConfig, sql: Option<Vec<String>>) -> Result<String, String> {
         let (sql_conn, tls) = match PgSql::create_connect_string(config) {
             Ok(v) => v,
             Err(e) => return Err(e.to_string()),
@@ -177,6 +173,13 @@ impl PgSql {
                 Err(e) => return Err(e.to_string()),
             },
         };
+        if let Some(sqls) = sql {
+            for q in sqls {
+                if let Err(e) = client.query(&q, &[]).await {
+                    return Err(e.to_string());
+                }
+            }
+        }
         let row = match client.query_one("SELECT now()::text", &[]).await {
             Ok(r) => r,
             Err(e) => return Err(e.to_string()),
@@ -242,7 +245,7 @@ impl PgSql {
             Some(client) => {
                 let mut map = BTreeMap::new();
 
-                // Get avaible lang
+                // Get avaible lang 4156762777733340057
                 let sql = r#"
                     SELECT lang_id, code, name, index
                     FROM lang
@@ -251,7 +254,7 @@ impl PgSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_langs"), (client.prepare_typed(sql, &[]), sql.to_owned()));
 
-                // Get all lang
+                // Get all lang 3367482389811013093
                 let sql = r#"
                     SELECT lang_id, code, name, index
                     FROM lang
@@ -259,7 +262,7 @@ impl PgSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_all_langs"), (client.prepare_typed(sql, &[]), sql.to_owned()));
 
-                // Get session
+                // Get session 6716397077443474616
                 let sql = r#"
                     WITH upd AS (
                         UPDATE session
@@ -277,7 +280,7 @@ impl PgSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_session"), (client.prepare_typed(sql, &[Type::TEXT]), sql.to_owned()));
 
-                // Update session
+                // Update session -400086351751991892
                 let sql = r#"
                     UPDATE session
                     SET 
@@ -295,7 +298,7 @@ impl PgSql {
                     (client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::BYTEA, Type::TEXT, Type::TEXT, Type::INT8]), sql.to_owned()),
                 );
 
-                // Insert session
+                // Insert session 8029853374838241583
                 let sql = r#"
                     INSERT INTO session (user_id, lang_id, session, data, created, last, ip, user_agent)
                     SELECT $1, $2, $3, $4, now(), now(), $5, $6
@@ -305,13 +308,13 @@ impl PgSql {
                     (client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::TEXT, Type::BYTEA, Type::TEXT, Type::TEXT]), sql.to_owned()),
                 );
 
-                // Get redirect
+                // Get redirect -1566077906756142556
                 let sql = r#"
                     SELECT redirect, permanently FROM redirect WHERE url=$1
                 "#;
                 map.insert(fnv1a_64!("lib_get_redirect"), (client.prepare_typed(sql, &[Type::TEXT]), sql.to_owned()));
 
-                // Get route
+                // Get route 3077841024002823969
                 let sql = r#"
                     SELECT 
                         c.module, c.class, c.action,
@@ -323,7 +326,8 @@ impl PgSql {
                     WHERE r.url=$1
                 "#;
                 map.insert(fnv1a_64!("lib_get_route"), (client.prepare_typed(sql, &[Type::TEXT]), sql.to_owned()));
-                // Get route from module/class/action
+
+                // Get route from module/class/action 8508883211214576597
                 let sql = r#"
                     SELECT r.url 
                     FROM 
@@ -338,7 +342,7 @@ impl PgSql {
                     (client.prepare_typed(sql, &[Type::INT8, Type::INT8, Type::INT8, Type::TEXT, Type::INT8]), sql.to_owned()),
                 );
 
-                // Get auth permissions
+                // Get auth permissions -4169186416014187350
                 let sql = r#"
                     SELECT COALESCE(MAX(a.access::int), 0) AS access
                     FROM
@@ -360,39 +364,45 @@ impl PgSql {
                         sql.to_owned(),
                     ),
                 );
-                // Get not found
+
+                // Get not found -8338028735031617838
                 let sql = r#"
                     SELECT url
                     FROM route
                     WHERE controller_id=3 AND lang_id=$1
                 "#;
                 map.insert(fnv1a_64!("lib_get_not_found"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
-                // Get settings
+
+                // Get settings 2305043036426846632
                 let sql = r#"
                     SELECT data FROM setting WHERE key=$1
                 "#;
                 map.insert(fnv1a_64!("lib_get_setting"), (client.prepare_typed(sql, &[Type::INT8]), sql.to_owned()));
-                // Insert email
+
+                // Insert email 5843182919945045895
                 let sql = r#"
                     INSERT INTO mail(user_id, mail, "create", err, transport)
                     VALUES ($1, $2, now(), false, $3)
                     RETURNING mail_id;
                 "#;
                 map.insert(fnv1a_64!("lib_mail_new"), (client.prepare_typed(sql, &[Type::INT8, Type::JSON, Type::TEXT]), sql.to_owned()));
-                // Insert email without provider
+
+                // Insert email without provider 4032848019693494130
                 let sql = r#"
                     INSERT INTO mail(user_id, mail, "create", send, err, transport)
                     VALUES ($1, $2, now(), now(), false, 'None')
                 "#;
                 map.insert(fnv1a_64!("lib_mail_add"), (client.prepare_typed(sql, &[Type::INT8, Type::JSON]), sql.to_owned()));
-                // Insert error send email
+
+                // Insert error send email 1423150573745747914
                 let sql = r#"
                     UPDATE mail
                     SET err=true, send=now(), err_text=$1
                     WHERE mail_id=$2
                 "#;
                 map.insert(fnv1a_64!("lib_mail_err"), (client.prepare_typed(sql, &[Type::TEXT, Type::INT8]), sql.to_owned()));
-                // Insert success send email
+
+                // Insert success send email 2568591733020940649
                 let sql = r#"
                     UPDATE mail
                     SET err=false, send=now()
@@ -993,58 +1003,6 @@ impl std::fmt::Debug for PgStatement {
             .field("columns", &statement.columns())
             .field("params", &statement.params())
             .finish()
-    }
-}
-
-#[derive(Debug)]
-struct NoCertificateVerification;
-
-impl ServerCertVerifier for NoCertificateVerification {
-    fn verify_server_cert(
-        &self,
-        _: &CertificateDer<'_>,
-        _: &[CertificateDer<'_>],
-        _: &ServerName<'_>,
-        _: &[u8],
-        _: UnixTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        Ok(ServerCertVerified::assertion())
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer<'_>,
-        _: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        _: &[u8],
-        _: &CertificateDer<'_>,
-        _: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        Ok(HandshakeSignatureValid::assertion())
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
-        vec![
-            SignatureScheme::RSA_PKCS1_SHA1,
-            SignatureScheme::ECDSA_SHA1_Legacy,
-            SignatureScheme::RSA_PKCS1_SHA256,
-            SignatureScheme::ECDSA_NISTP256_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA384,
-            SignatureScheme::ECDSA_NISTP384_SHA384,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::ECDSA_NISTP521_SHA512,
-            SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PSS_SHA384,
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::ED25519,
-            SignatureScheme::ED448,
-        ]
     }
 }
 

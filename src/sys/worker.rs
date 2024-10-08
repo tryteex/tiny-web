@@ -90,7 +90,7 @@ pub(crate) struct WorkerData {
     /// Default controller for error_route
     pub action_err: Arc<Route>,
     /// Stop signal
-    pub(crate) stop: Option<(Arc<Addr>, i64, Arc<String>)>,
+    pub(crate) stop: Option<(Arc<Addr>, i64)>,
     /// The full path to the folder where the server was started.
     pub(crate) root: Arc<String>,
     /// Remote IP

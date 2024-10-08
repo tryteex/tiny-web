@@ -85,7 +85,7 @@ impl MsSql {
         cfg
     }
 
-    pub(crate) async fn check_db(config: &DBConfig) -> Result<String, String> {
+    pub(crate) async fn check_db(config: &DBConfig, sql: Option<Vec<String>>) -> Result<String, String> {
         let config = MsSql::create_config(config);
         let tcp = match timeout(Duration::from_secs(1), TcpStream::connect(config.get_addr())).await {
             Ok(Ok(tcp)) => tcp,
@@ -99,7 +99,13 @@ impl MsSql {
             Ok(client) => client,
             Err(e) => return Err(e.to_string()),
         };
-
+        if let Some(sqls) = sql {
+            for q in sqls {
+                if let Err(e) = client.query(&q, &[]).await {
+                    return Err(e.to_string());
+                }
+            }
+        }
         let row = match client.query("SELECT FORMAT(SYSDATETIMEOFFSET(), 'yyyy-MM-dd HH:mm:ss.fff zzz')", &[]).await {
             Ok(mut s) => loop {
                 match s.try_next().await {
@@ -165,7 +171,7 @@ impl MsSql {
         match self.client.as_mut() {
             Some(client) => {
                 let mut map = BTreeMap::new();
-                // Get avaible lang
+                // Get avaible lang 4156762777733340057
                 let sql = r#"
                     SELECT [lang_id], [code], [name], [index]
                     FROM [lang]
@@ -174,7 +180,7 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_langs"), ("".to_owned(), sql.to_owned()));
 
-                // Get all lang
+                // Get all lang 3367482389811013093
                 let sql = r#"
                     SELECT [lang_id], [code], [name], [index]
                     FROM [lang]
@@ -182,7 +188,7 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_all_langs"), ("".to_owned(), sql.to_owned()));
 
-                // Get session
+                // Get session 6716397077443474616
                 let sql = r#"
                     UPDATE [session] 
                     SET
@@ -195,7 +201,7 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_session"), ("'@P1 VARCHAR(512)".to_owned(), sql.to_owned()));
 
-                // Update session
+                // Update session -400086351751991892
                 let sql = r#"
                     UPDATE [session]
                     SET
@@ -216,7 +222,7 @@ impl MsSql {
                     ),
                 );
 
-                // Insert session
+                // Insert session 8029853374838241583
                 let sql = r#"
                     INSERT INTO [session] ([user_id], [lang_id], [session], [data], [created], [last], [ip], [user_agent])
                     SELECT @P1, @P2, @P3, @P4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, @P5, @P6
@@ -229,13 +235,13 @@ impl MsSql {
                     ),
                 );
 
-                // Get redirect
+                // Get redirect -1566077906756142556
                 let sql = r#"
                     SELECT [redirect], [permanently] FROM [redirect] WHERE [url]=@P1
                 "#;
                 map.insert(fnv1a_64!("lib_get_redirect"), ("@P1 VARCHAR(4000)".to_owned(), sql.to_owned()));
 
-                // Get route
+                // Get route 3077841024002823969
                 let sql = r#"
                     SELECT
                         c.[module], c.[class], c.[action],
@@ -248,7 +254,7 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_route"), ("@P1 VARCHAR(4000)".to_owned(), sql.to_owned()));
 
-                // Get route from module/class/action
+                // Get route from module/class/action 8508883211214576597
                 let sql = r#"
                     SELECT r.[url]
                     FROM
@@ -263,7 +269,7 @@ impl MsSql {
                     ("@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 VARCHAR(255), @P5 BIGINT".to_owned(), sql.to_owned()),
                 );
 
-                // Get auth permissions
+                // Get auth permissions -4169186416014187350
                 let sql = r#"
                     SELECT ISNULL(MAX(CAST(a.[access] as TINYINT)), 0) AS [access]
                     FROM
@@ -283,7 +289,7 @@ impl MsSql {
                     ("@P1 BIGINT, @P2 BIGINT, @P3 BIGINT, @P4 BIGINT, @P5 BIGINT, @P6 BIGINT, @P7 BIGINT".to_owned(), sql.to_owned()),
                 );
 
-                // Get not found
+                // Get not found -8338028735031617838
                 let sql = r#"
                     SELECT [url]
                     FROM [route]
@@ -291,13 +297,13 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_get_not_found"), ("@P1 BIGINT".to_owned(), sql.to_owned()));
 
-                // Get settings
+                // Get settings 2305043036426846632
                 let sql = r#"
                     SELECT [data] FROM [setting] WHERE [key]=@P1
                 "#;
                 map.insert(fnv1a_64!("lib_get_setting"), ("@P1 BIGINT".to_owned(), sql.to_owned()));
 
-                // Insert email
+                // Insert email 5843182919945045895
                 let sql = r#"
                     INSERT INTO [mail]([user_id], [mail], [create], [err], [transport])
                     OUTPUT INSERTED.[mail_id]
@@ -305,14 +311,14 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_mail_new"), ("@P1 BIGINT, @P2 NVARCHAR(MAX), @P3 VARCHAR(255)".to_owned(), sql.to_owned()));
 
-                // Insert email without provider
+                // Insert email without provider 4032848019693494130
                 let sql = r#"
                     INSERT INTO [mail]([user_id], [mail], [create], [send], [err], [transport])
                     VALUES (@P1, @P2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, 'None')
                 "#;
                 map.insert(fnv1a_64!("lib_mail_add"), ("@P1 BIGINT, @P2 NVARCHAR(MAX)".to_owned(), sql.to_owned()));
 
-                // Insert error send email
+                // Insert error send email 1423150573745747914
                 let sql = r#"
                     UPDATE [mail]
                     SET [err]=1, [send]=CURRENT_TIMESTAMP, [err_text]=@P1
@@ -320,7 +326,7 @@ impl MsSql {
                 "#;
                 map.insert(fnv1a_64!("lib_mail_err"), ("@P1 NVARCHAR(MAX), @P2 BIGINT".to_owned(), sql.to_owned()));
 
-                // Insert success send email
+                // Insert success send email 2568591733020940649
                 let sql = r#"
                     UPDATE [mail]
                     SET [err]=0, [send]=CURRENT_TIMESTAMP

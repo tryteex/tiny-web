@@ -51,7 +51,7 @@ impl Net {
             request.input.raw = raw;
 
             let stop = match data.stop {
-                Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
+                Some((ref rpc, stop)) => Some((Arc::clone(rpc), stop)),
                 None => None,
             };
 

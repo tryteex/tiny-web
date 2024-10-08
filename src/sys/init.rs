@@ -60,7 +60,7 @@ pub(crate) enum Addr {
 /// * `sslmode: bool` - Use for sslmode=require when connecting to the database;
 /// * `max: SysCount` - The number of connections that will be used in the pool;
 #[derive(Debug, Clone)]
-pub(crate) struct DBConfig {
+pub struct DBConfig {
     /// Host of database.
     pub host: String,
     /// Port of database.

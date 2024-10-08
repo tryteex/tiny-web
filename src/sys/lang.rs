@@ -437,8 +437,8 @@ impl Lang {
                         },
                         None => continue,
                     };
-                    if code.starts_with("lang.") && code.len() == 7 {
-                        let code = code[5..7].to_owned();
+                    if code.starts_with("lang.") && code.ends_with(".toml") && code.len() == 12 {
+                        let code = unsafe { code.get_unchecked(5..7) }.to_owned();
                         vec.push((path, module.to_owned(), class.to_owned(), code));
                     }
                 }

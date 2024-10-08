@@ -95,8 +95,7 @@ impl Go {
         let max = db.max;
         let mut db = DB::new(max, db).await?;
 
-        let signal_stop =
-            if db.in_use() { None } else { Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal, Arc::clone(&init.exe_path))) };
+        let signal_stop = if db.in_use() { None } else { Some((Arc::clone(&init.conf.rpc), init.conf.stop_signal)) };
 
         #[cfg(feature = "https")]
         let acceptor = match Worker::load_cert(Arc::clone(&root_path)) {
@@ -132,7 +131,7 @@ impl Go {
             let action_err = Arc::clone(&action_err);
 
             let signal_stop = match signal_stop {
-                Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
+                Some((ref rpc, stop)) => Some((Arc::clone(rpc), stop)),
                 None => None,
             };
 
@@ -182,7 +181,7 @@ impl Go {
                 let action_not_found = Arc::clone(&action_not_found);
                 let action_err = Arc::clone(&action_err);
                 let signal_stop = match signal_stop {
-                    Some((ref rpc, stop, ref path)) => Some((Arc::clone(rpc), stop, Arc::clone(path))),
+                    Some((ref rpc, stop)) => Some((Arc::clone(rpc), stop)),
                     None => None,
                 };
                 let root_path = Arc::clone(&root_path);
@@ -248,7 +247,9 @@ impl Go {
             }
             for (_, handle) in handles.lock().await.iter_mut() {
                 if let Err(e) = handle.await {
-                    Log::stop(505, Some(e.to_string()));
+                    if !e.is_cancelled() {
+                        Log::stop(505, Some(e.to_string()));
+                    }
                 }
             }
         });
