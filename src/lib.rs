@@ -1,46 +1,19 @@
+use sys::{app::app::App, web::action::ModuleMap};
+
 /// Show help message
-pub mod help;
+pub(crate) mod help;
+
 /// Web server
 pub mod sys;
 
-use std::mem::transmute;
+/// Different useful functions
+pub(crate) mod tool;
 
-use sys::{action::ActMap, app::App, init::Mode, log::Log};
-
-/// Entry point
-pub fn run(name: &str, version: &str, desc: &str, func: impl Fn() -> ActMap) {
-    let app = match execute(name, version, desc, &func, true) {
-        Some(app) => app,
-        None => return,
-    };
-    if let Mode::Go = app.init.mode {
-        if app.init.conf.is_default {
-            execute(name, version, desc, &func, false);
-        }
-    }
-}
-
-/// Run application
-fn execute(name: &str, version: &str, desc: &str, func: &impl Fn() -> ActMap, allow_no_config: bool) -> Option<App> {
-    let app = match App::new(name, version, desc, allow_no_config) {
-        Some(a) => a,
-        None => return None,
-    };
-    Log::info(200, None);
-    app.run(func);
-    Log::info(201, None);
-    Some(app)
+pub fn run(name: &str, version: &str, desc: &str, func: ModuleMap) -> bool {
+    App::run(name, version, desc, func).is_ok()
 }
 
 /// fnv1a_64 hash function
-///
-/// # Parameters
-///
-/// * `text: &str` - Origin string.
-///
-/// # Return
-///
-/// i64 hash
 #[inline]
 pub fn fnv1a_64(bytes: &[u8]) -> i64 {
     let mut hash = 0xcbf29ce484222325;
@@ -48,38 +21,5 @@ pub fn fnv1a_64(bytes: &[u8]) -> i64 {
         hash ^= u64::from(*c);
         hash = hash.wrapping_mul(0x100000001b3);
     }
-    unsafe { transmute(hash) }
-}
-
-/// Trait `StrOrI64` defines a method for converting different types to `i64`.
-pub trait StrOrI64 {
-    /// The `to_i64` method takes input data and returns an `i64`.
-    fn to_i64(&self) -> i64;
-    /// The `to_str` method takes input data and returns an `&str`.
-    fn to_str(&self) -> &str;
-}
-
-impl StrOrI64 for i64 {
-    /// Implementation of the `to_i64` method for the `i64` type.  
-    /// Simply returns the input `i64`.
-    fn to_i64(&self) -> i64 {
-        *self
-    }
-    /// The `to_str` method takes input data and returns an `&str`.
-    fn to_str(&self) -> &str {
-        ""
-    }
-}
-
-impl StrOrI64 for &str {
-    /// Implementation of the `to_i64` method for the `&str` type.  
-    /// Computes the hash of the `&str` and returns it as an `i64`.
-    fn to_i64(&self) -> i64 {
-        fnv1a_64(self.as_bytes())
-    }
-    /// The `to_str` method takes input data and returns an `&str`.
-    /// Simply returns the input `i64`.
-    fn to_str(&self) -> &str {
-        self
-    }
+    unsafe { std::mem::transmute(hash) }
 }

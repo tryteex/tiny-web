@@ -43,86 +43,56 @@ jobs:
     - name: Run Clippy for debug (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        cargo clippy --no-default-features --features "pgsql,fastcgi" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,http" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,https" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,scgi" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,uwsgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,fastcgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,http" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,https" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,scgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,uwsgi" -- -D warnings
+        cargo clippy --no-default-features --features "fastcgi" -- -D warnings
+        cargo clippy --no-default-features --features "http" -- -D warnings
+        cargo clippy --no-default-features --features "https" -- -D warnings
+        cargo clippy --no-default-features --features "scgi" -- -D warnings
+        cargo clippy --no-default-features --features "uwsgi" -- -D warnings
 
     - name: Run Clippy for debug (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        cargo clippy --no-default-features --features "pgsql,fastcgi" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,http" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,https" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,scgi" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,uwsgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,fastcgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,http" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,https" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,scgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,uwsgi" -- -D warnings
+        cargo clippy --no-default-features --features "fastcgi" -- -D warnings
+        cargo clippy --no-default-features --features "http" -- -D warnings
+        cargo clippy --no-default-features --features "https" -- -D warnings
+        cargo clippy --no-default-features --features "scgi" -- -D warnings
+        cargo clippy --no-default-features --features "uwsgi" -- -D warnings
 
     - name: Run Clippy for debug (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        cargo clippy --no-default-features --features "pgsql,fastcgi" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,http" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,https" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,scgi" -- -D warnings
-        cargo clippy --no-default-features --features "pgsql,uwsgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,fastcgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,http" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,https" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,scgi" -- -D warnings
-        cargo clippy --no-default-features --features "mssql,uwsgi" -- -D warnings
+        cargo clippy --no-default-features --features "fastcgi" -- -D warnings
+        cargo clippy --no-default-features --features "http" -- -D warnings
+        cargo clippy --no-default-features --features "https" -- -D warnings
+        cargo clippy --no-default-features --features "scgi" -- -D warnings
+        cargo clippy --no-default-features --features "uwsgi" -- -D warnings
 
     - name: Run Clippy for release (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
       run: |
-        cargo clippy --release --no-default-features --features "pgsql,fastcgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,http" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,https" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,scgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,uwsgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,fastcgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,http" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,https" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,scgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,uwsgi" -- -D warnings
+        cargo clippy --no-default-features --features "fastcgi" -- -D warnings
+        cargo clippy --no-default-features --features "http" -- -D warnings
+        cargo clippy --no-default-features --features "https" -- -D warnings
+        cargo clippy --no-default-features --features "scgi" -- -D warnings
+        cargo clippy --no-default-features --features "uwsgi" -- -D warnings
 
     - name: Run Clippy for release (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        cargo clippy --release --no-default-features --features "pgsql,fastcgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,http" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,https" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,scgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,uwsgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,fastcgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,http" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,https" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,scgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,uwsgi" -- -D warnings
+        cargo clippy --no-default-features --features "fastcgi" -- -D warnings
+        cargo clippy --no-default-features --features "http" -- -D warnings
+        cargo clippy --no-default-features --features "https" -- -D warnings
+        cargo clippy --no-default-features --features "scgi" -- -D warnings
+        cargo clippy --no-default-features --features "uwsgi" -- -D warnings
 
     - name: Run Clippy for release (Windows)
       if: matrix.os == 'windows-latest'
       run: |
-        cargo clippy --release --no-default-features --features "pgsql,fastcgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,http" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,https" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,scgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "pgsql,uwsgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,fastcgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,http" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,https" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,scgi" -- -D warnings
-        cargo clippy --release --no-default-features --features "mssql,uwsgi" -- -D warnings
+        cargo clippy --no-default-features --features "fastcgi" -- -D warnings
+        cargo clippy --no-default-features --features "http" -- -D warnings
+        cargo clippy --no-default-features --features "https" -- -D warnings
+        cargo clippy --no-default-features --features "scgi" -- -D warnings
+        cargo clippy --no-default-features --features "uwsgi" -- -D warnings
 
     - name: Build with default features (debug)
       run: cargo build --verbose

@@ -1,56 +1,90 @@
-/// Web engine.
-pub mod action;
+pub(crate) mod app;
 
-/// Application management.
-pub mod app;
+pub(crate) mod db;
 
-/// Cache system.
-pub mod cache;
+#[cfg(any(feature = "debug-v", feature = "debug-vv", feature = "debug-vvv"))]
+pub(crate) mod log;
 
-/// Work with databases.
-pub mod dbs;
+pub(crate) mod net;
 
-/// User session.
-pub mod session;
+pub(crate) mod plugin;
 
-/// Launching the application.
-pub mod go;
+pub(crate) mod stat;
 
-/// Template maker.
-pub mod html;
+pub mod web;
 
-/// Init parameters.
-pub mod init;
+#[cfg(any(feature = "html-reload", feature = "lang-reload", feature = "cache"))]
+pub(crate) mod wrlock;
 
-/// Multi lang system (i18n).
-pub mod lang;
+#[cfg(any(
+    all(feature = "debug-v", any(feature = "debug-vv", feature = "debug-vvv")),
+    all(feature = "debug-vv", feature = "debug-vvv")
+))]
+compile_error!("Only one features from 'debug-v', 'debug-vv', 'debug-vv' can be enabled for this crate.");
 
-/// Writing short messages about the system status in the message log.
-pub mod log;
+#[macro_export]
+macro_rules! log {
+    ($level:ident, $number:expr) => {
+        {
+            #[cfg(any(feature = "debug-v", feature = "debug-vv", feature = "debug-vvv"))]
+            {
+                $crate::sys::log::Log::$level($number, None, line!(), file!());
+            }
+        }
+    };
+    ($level:ident, $number:expr, $fmt:expr, $($arg:tt)*) => {
+        {
+            #[cfg(any(feature = "debug-v", feature = "debug-vv", feature = "debug-vvv"))]
+            {
+                $crate::sys::log::Log::$level($number, Some(format!($fmt, $($arg)*)), line!(), file!());
+            }
+        }
+    };
+}
 
-/// Main worker to run web engine.
-pub mod worker;
+#[macro_export]
+macro_rules! log_v {
+    ($($arg:tt)*) => {
+        log!($($arg)*);
+    };
+}
 
-/// A set of web protocols.
-pub mod workers;
+#[macro_export]
+macro_rules! log_vv {
+    ($level:ident, $number:expr) => {
+        {
+            #[cfg(any(feature = "debug-vv", feature = "debug-vvv"))]
+            {
+                $crate::sys::log::Log::$level($number, None, line!(), file!());
+            }
+        }
+    };
+    ($level:ident, $number:expr, $fmt:expr, $($arg:tt)*) => {
+        {
+            #[cfg(any(feature = "debug-vv", feature = "debug-vvv"))]
+            {
+                $crate::sys::log::Log::$level($number, Some(format!($fmt, $($arg)*)), line!(), file!());
+            }
+        }
+    };
+}
 
-/// Temp files.
-pub mod file;
-
-/// Send mail functions.
-pub mod mail;
-
-/// Data type.
-pub mod data;
-
-/// Request data.
-pub mod request;
-
-/// Response answer.
-pub mod response;
-
-/// Route
-pub mod route;
-
-/// Tool
-pub mod tool;
+#[macro_export]
+macro_rules! log_vvv {
+    ($level:ident, $number:expr) => {
+        {
+            #[cfg(feature = "7-vvv")]
+            {
+                $crate::sys::log::Log::$level($number, None, line!(), file!());
+            }
+        }
+    };
+    ($level:ident, $number:expr, $fmt:expr, $($arg:tt)*) => {
+        {
+            #[cfg(feature = "debug-vvv")]
+            {
+                $crate::sys::log::Log::$level($number, Some(format!($fmt, $($arg)*)), line!(), file!());
+            }
+        }
+    };
+}
