@@ -1,0 +1,190 @@
+# Path to log file.
+# If the parameter is missing, the log file will be created automatically.
+log = "/home/user/log/tiny.log"
+
+[web]
+# Default language.
+# Must consist of two characters according to ISO 639-1.
+# Used in "lang-static" or "lang-reload" features
+lang = "uk"
+
+# Salt for a crypto functions
+salt = "secret-salt"
+
+# Session key
+# Used in "session-memory", "session-file" or "session-db" features
+session_key = "tinysession"
+
+# Path to where session files are stored
+# Used in "session-memory" or "session-file" features
+session_path = "/home/user/session"
+
+# Default controller for request "/" or default class or default action
+index=["index", "index", "index"]
+
+# Default controller for 404 Not Found
+# The parameter may be missing
+not_found=["index", "index", "not_found"]
+
+[net]
+# IP address and port to work this server.
+# To receive from any network, set this parameter to "0.0.0.0:12500"
+# On Unix systems, a "bind" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.
+bind = "127.0.0.1:12500"
+
+# IP address from which to accept connections.
+# Set "0.0.0.0" to use any IP addresses. The parameter is missing if the "bind" parameter is Unix domain sockets.
+bind_from = "127.0.0.1"
+
+# IP address and port to manage this server.
+# On Unix systems, a "rpc" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.
+rpc = "127.0.0.1:12501"
+
+# IP address from which to accept connections for managing the server.
+# Set "0.0.0.0" to use any IPs. The parameter is missing if the "rpc" parameter is Unix domain sockets.
+rpc_from = "127.0.0.1"
+
+[async]
+# Defines the number of threads used for processing asynchronous tasks.
+# Default Value: "auto". The number of threads will equal the number of available CPU cores.
+# 
+# Increasing this value may lead to better performance in systems with a large number of concurrent tasks, but it 
+# may also introduce overhead for managing threads, resulting in decreased performance if there aren’t enough tasks.
+# 
+# Decreasing this value can lead to delays in task processing, especially if the system is overloaded, but it will
+#  reduce the overhead of managing threads.
+worker_threads = "auto"
+
+# Determines the number of scheduler ticks after which the scheduler checks for external events (timers, I/O, etc.).
+# Default Value: 61.
+# Increasing this value may result in delays in responding to new external events, as the scheduler will check for 
+# them less frequently, potentially reducing the program's sensitivity to I/O events.
+# Decreasing this value may improve sensitivity to I/O events, as the scheduler will check for them more often, 
+# but it may increase synchronization and system call overhead.
+event_interval = "auto"
+
+# Defines the number of scheduler ticks after which the global queue is checked for new tasks. This parameter 
+# controls how often the scheduler will process new tasks in the global queue.
+# Default Value: 31.
+# 
+# Increasing this value may lead to less frequent checks of the global queue for new tasks. This can decrease 
+# the system's sensitivity to new tasks arriving in the queue and potentially increase delays in their processing. 
+# If tasks arrive frequently, this may result in increased wait times for some of them.
+# 
+# Decreasing this value may allow the system to check the global queue more frequently, improving responsiveness 
+# to new tasks. This can enhance the overall sensitivity of the system to events, but it may also increase overhead 
+# from frequent queue check calls, which could reduce performance if there aren’t enough tasks.
+global_queue_interval = "auto"
+
+# Defines the maximum number of blocking threads that can run concurrently.
+# Default Value: 512.
+# 
+# Increasing this parameter allows more blocking operations to run simultaneously, which can improve performance in 
+# scenarios with a large number of blocking tasks.
+# 
+# Decreasing this value may lead to increased delays in executing blocking operations, as processing will be limited 
+# to fewer threads.
+max_blocking_threads = "auto"
+
+# Determines the maximum number of I/O events processed per scheduler tick.
+# Default Value: 1024.
+# 
+# Increasing this parameter may result in faster processing of I/O events, as the system can handle more events at 
+# once, but it may also increase the overhead for managing events.
+# 
+# Decreasing this value may lead to delays in processing I/O events, as the system will handle fewer events at a time.
+max_io_events_per_tick = "auto"
+
+# Defines the time for which inactive threads remain alive.
+# Default Value: 10000 (10 seconds).
+# 
+# Increasing this value allows threads to remain active longer, which can be useful in cases where the system 
+# frequently starts new tasks, but it may also lead to higher resource consumption.
+# 
+# Decreasing this value may result in faster termination of inactive threads, reducing resource usage, but it may 
+# lead to delays when starting new tasks.
+thread_keep_alive = "auto"
+
+# Defines the stack size for each thread.
+# Default Value: 2MB.
+# 
+# Increasing the stack size allows for deeper function calls or more local variables, but it may lead to a decrease 
+# in the maximum number of threads that can be run concurrently due to memory constraints.
+# 
+# Decreasing the stack size may lead to faster thread termination under heavy load, but it can cause stack overflow 
+# for deep recursions or large local variables.
+thread_stack_size = "auto"
+
+# Used in "pgsql" or "mssql" features
+[db]
+# Database host.
+# On Unix systems, a "host" starting with a "/" is interpreted as a path to a directory containing Unix domain sockets.
+host = "127.0.0.1"
+
+# Database port.
+# The parameter may be missing
+port = 5432
+
+# Database name.
+name = "name"
+
+# Database username.
+# The parameter may be missing
+user = "user"
+
+# Database password.
+# The parameter may be missing
+pwd = "pwd"
+
+# Database sslmode mode.
+# true is require
+ssl = false
+
+# Number of connections to the database for all work threads in async.
+# Usually set from 2 to 4 on one work thread.
+# Set "auto" to detect automatically.
+max = "auto"
+
+[mail]
+# Path to the sendmail executable (used for sending mail via the local sendmail)
+# Required if feature = "mail-sendmail" is enabled
+sendmail = "/usr/sbin/sendmail"
+
+# Local directory for storing email copies
+# Required if feature = "mail-file" is enabled
+path = "/home/user/mail"
+
+# Address of the SMTP server for sending emails
+# Required if feature = "mail-smtp" is enabled
+server = "localhost"
+
+# Port of the SMTP server (465 is the standard port for SSL/TLS)
+# Required if feature = "mail-smtp" is enabled
+port = 465
+
+# TLS type for secure connection to the SMTP server
+# Available options:
+# - NONE: no encryption
+# - STARTTLS: encryption after the connection is established
+# - SSL/TLS: encryption for the entire connection
+# Required if feature = "mail-smtp" is enabled
+tls = "SSL/TLS"
+
+# Authentication type for the SMTP server
+# Available options:
+# - NONE: no authentication
+# - PLAIN: simple plain-text login (less secure)
+# - LOGIN: standard username and password login
+# - XOAUTH2: authentication via OAuth2
+# Required if feature = "mail-smtp" is enabled
+auth = "PLAIN"
+
+# Username for authentication with the SMTP server
+# Required if feature = "mail-smtp" is enabled
+# Can be empty if auth = "None"
+user = "user"
+
+# Password for authentication with the SMTP server
+# Required if feature = "mail-smtp" is enabled
+# Can be empty if auth = "None"
+pwd = "pwd"

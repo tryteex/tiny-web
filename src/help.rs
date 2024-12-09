@@ -1,32 +1,29 @@
+use crate::sys::app::init::Init;
+
 /// Responsible for simple help message:
 pub(crate) struct Help;
 
 impl Help {
     /// Show imple help message in console.
-    ///
-    /// # Parameters
-    ///
-    /// * `name: &str` - Name of app.
-    /// * `version: &str` - Version of app.
-    /// * `desc: &str` - Desciption of app.
-    pub fn show(name: &str, version: &str, desc: &str) {
-        let desc = desc.to_owned();
-        let ver = format!("{} version: {}", name, version);
-        let help = format!(
-            "
-    Usage: {} [start|stop|status|help] [-r <path to root folder>]
+    pub(crate) fn show(init: Init) {
+        println!(
+            r#"
+{}
+{} version: {}
+
+Usage: {} [start|stop|status|help] [-r <path to root folder>]
+
+Actions:
+    start         : start server in the background mode
+    stop          : stop server
+    status        : show server status
+    run           : start server in interactive mode
+    help          : show this help
     
-    Actions:
-        start         : start server
-        stop          : stop server
-        status        : show server status
-        help          : show this help
-        
-    Keys:
-        -r            : path to root folder, where located the conf file
-    ",
-            name
+Options:
+    -r            : path to root folder, where located the config file "config.toml"
+"#,
+            init.desc, init.name, init.version, init.name
         );
-        println!("\n{}\n{}\n{}\n", desc, ver, help);
     }
 }

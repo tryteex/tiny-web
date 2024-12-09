@@ -4,16 +4,13 @@
 
 Short documentation for the library is [https://github.com/tryteex/tiny-web/blob/main/doc/Index.md](https://github.com/tryteex/tiny-web/blob/main/doc/Index.md).
 
-> **Note**  
-> For security reasons, this library must be located behind the Primary web server, for example, under Nginx.
-
-This library works only with FastCGI, SCGI, UWSGI (modifier1=0) and HTTP protocols.
+This library works only with FastCGI, SCGI, UWSGI (modifier1=0) and HTTP and HTTPS protocols.
 
 This library works with Postgresql or MS Sql Server databases.
 
 ## Stability Notice
 
-Please be aware that this library is not yet stable. Some components may change, however, the main interface for interacting with the application will remain finalized. The functionality will only be expanded. We are planning to create a stable version with the release of version 0.6.
+Some components may change, however, the main interface for interacting with the application will remain finalized. The functionality will only be expanded.
 
 ## Contributing
 

@@ -1,13 +1,13 @@
 [package]
 name = "tiny-web"
 authors = ["Volodymyr Zamkovyi <v.zamkovyi@gmail.com>"]
-version = "0.6.0"
+version = "0.7.0-a1"
 edition = "2021"
 license = "MIT"
 description = "tiny-web is a tiny async library (backend web server) that allows you to write a Laravel-style or Django-style backend in Rust language."
 keywords = ["web", "server", "backend", "fastcgi", "async"]
 repository = "https://github.com/tryteex/tiny-web"
-exclude = ["example", "doc"]
+exclude = ["example", "doc"]    
 
 [dependencies]
 tiny-web-macro="0.1.6"
@@ -18,9 +18,9 @@ futures-util = "0.3"
 postgres = { version = "0.19", features = ["with-chrono-0_4"] }
 rustls = { version = "0.23", default-features = false, features = ["tls12", "logging", "std", "tls12"]}
 rustls-pemfile = "2.2"
-x509-certificate = {version = "0.23", default-features = false }
-tokio = { version = "1.40", features = ["full"] }
-tokio-util = { version = "0.7", features = ["compat"] }
+x509-certificate = {version = "0.24", default-features = false }
+tokio = { version = "1.42", default-features = false, features = ["full"] }
+tokio-util = { version = "0.7", default-features = false, features = ["compat"] }
 tokio-rustls = { version = "0.26", default-features = false }
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1", "with-serde_json-1"] }
 tiberius = { version = "0.12", default-features = false, features = ["tds73", "chrono", "rustls", "rust_decimal", "bigdecimal"]}
@@ -31,18 +31,69 @@ serde_json = "1.0"
 toml = "0.8"
 uuid = "1"
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "hostname", "builder", "sendmail-transport", "file-transport", "tokio1-rustls-tls", "serde"] }
-percent-encoding = "2"
+percent-encoding = "2"   
 
 [features]
-# Connect to database
-pgsql = []
-mssql = []
-
-# Web server protocol
-fastcgi = []
+# Web protocol
+# One is required
 http = []
 https = []
+fastcgi = []
 scgi = []
 uwsgi = []
 
-default = ["pgsql", "fastcgi"]
+# Where is storega Post file
+file-disk = []
+file-memory = []
+
+# Templates
+html-static = []
+html-reload = []
+
+# Connect to database
+# None or one is required
+pgsql = []
+mssql = []
+
+# Return native row or Data from query
+row-data = [] # One is required, pgsql or mssql is required
+row-native = [] # One is required, pgsql or mssql is required
+
+# Use session
+# None or one is required
+session-memory = []
+session-db = []     # Allow if pgsql or mssql is allow
+session-file = []
+
+# Langs
+lang-static = [] # One is required, session-memory, session-db or session-file is required
+lang-reload = [] # One is required, session-memory, session-db or session-file is required
+
+# Use database tables
+# Redirect from table
+redirect-db = []    # One is required, pgsql or mssql is required
+# Route url from table
+route-db = []       # One is required, pgsql or mssql is required
+# Settings from table
+setting-db = []     # One is required, pgsql or mssql is required
+# User, role and access from table
+access-db = []      # One is required, pgsql or mssql is required
+
+# Use mail 
+mail-sendmail = [] # One is required, pgsql or mssql is required
+mail-smtp = [] # One is required, pgsql or mssql is required
+mail-file = [] # One is required, pgsql or mssql is required
+mail-db = [] # One is required, pgsql or mssql is required
+
+# Memory cache
+cache = []
+
+# Debug
+# None or one is required
+debug-v = []
+debug-vv = []
+debug-vvv = []
+
+default = ["http"]
+
+
